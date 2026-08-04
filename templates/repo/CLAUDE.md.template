@@ -1,0 +1,13 @@
+<!-- Template for a nested/subdirectory CLAUDE.md, once TTUI grows enough
+structure to need scoped context (e.g. a crates/<name>/ or pkg/<name>/
+subtree). Keep it short and specific to that subtree only — don't
+duplicate root CLAUDE.md or .claude/rules/*. -->
+
+# <subtree name>
+
+<One-paragraph description of what lives here and why.>
+
+## Conventions specific to this subtree
+
+<Only what differs from the repo-wide rules in .claude/rules/ — if
+nothing differs, this file probably shouldn't exist yet.>

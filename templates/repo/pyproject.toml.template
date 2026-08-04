@@ -1,0 +1,15 @@
+# Template pyproject.toml for Python-based tooling/scripts in this repo
+# (not necessarily TTUI's core language, which is still undecided).
+# Copy to e.g. tooling/<script-name>/pyproject.toml and fill in.
+# Managed with uv — see docs/tooling/submodule-upgrade.md.
+
+[project]
+name = "ttui-tooling-CHANGE-ME"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.11"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

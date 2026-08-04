@@ -1,0 +1,26 @@
+# Template .gitignore — merge relevant sections into the real root
+# .gitignore. Keep the "# Added by code-review-graph" block in the real
+# file untouched; that's managed by the code-review-graph installer.
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Rust (uncomment if TTUI's core ends up in Rust)
+# /target/
+# Cargo.lock  # keep committed for binaries, ignore for libraries
+
+# Go (uncomment if TTUI's core ends up in Go)
+# /bin/
+# *.exe
+# *.test
+
+# Python tooling (scripts, code-review-graph, etc.)
+__pycache__/
+*.pyc
+.venv/

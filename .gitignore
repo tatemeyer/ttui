@@ -1,0 +1,20 @@
+# Added by code-review-graph
+.code-review-graph/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Python tooling (scripts, code-review-graph, etc.)
+__pycache__/
+*.pyc
+.venv/
+
+# Installer backups
+*.bak
+

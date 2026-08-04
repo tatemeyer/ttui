@@ -1,0 +1,18 @@
+# Template GitHub label set — apply via `gh label create` or a labels-sync
+# action once the repo goes public. Whether TTUI adopts Model-Experiments'
+# autonomy:safe / autonomy:review / autonomy:human / needs-intent scheme
+# (see .claude/rules/code-forge.md) is an open question for the code-forge
+# brainstorm — this default set is deliberately minimal until that's decided.
+
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working
+- name: enhancement
+  color: "a2eeef"
+  description: New feature or request
+- name: docs
+  color: "0075ca"
+  description: Documentation only
+- name: needs-design
+  color: "fbca04"
+  description: Requires a /superpowers:brainstorm pass before implementation

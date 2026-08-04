@@ -1,0 +1,12 @@
+# Template pre-commit config — copy into repo root as .pre-commit-config.yaml.
+# Language-specific hooks (rustfmt, clippy, gofmt, golangci-lint, etc.) are
+# TODO once the core language is chosen; the hooks below are language-agnostic.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
