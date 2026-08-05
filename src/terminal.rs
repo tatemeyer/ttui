@@ -52,6 +52,15 @@ impl Drop for Terminal {
     }
 }
 
+pub fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = terminal::disable_raw_mode();
+        let _ = execute!(stdout(), terminal::LeaveAlternateScreen, cursor::Show);
+        default_hook(info);
+    }));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,6 +74,21 @@ mod tests {
             let _term = Terminal::new().unwrap();
             assert!(terminal::is_raw_mode_enabled().unwrap());
         }
+        assert!(!terminal::is_raw_mode_enabled().unwrap());
+    }
+
+    #[test]
+    #[ignore = "requires a real terminal (TTY); run with `cargo test -- --ignored`"]
+    fn panic_hook_disables_raw_mode_before_unwinding() {
+        install_panic_hook();
+        terminal::enable_raw_mode().unwrap();
+        assert!(terminal::is_raw_mode_enabled().unwrap());
+
+        let result = std::panic::catch_unwind(|| {
+            panic!("simulated crash");
+        });
+
+        assert!(result.is_err());
         assert!(!terminal::is_raw_mode_enabled().unwrap());
     }
 }
