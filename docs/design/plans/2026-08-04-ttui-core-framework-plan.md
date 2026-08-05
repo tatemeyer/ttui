@@ -56,10 +56,13 @@ by input events, never a polling tick. Full detail:
 - Create: `Cargo.toml`
 - Create: `src/lib.rs`
 - Create: `.gitignore` (Rust section: `/target`)
+- Create: `tests/README.md`
 
 **Interfaces:**
 - Consumes: nothing (first task)
-- Produces: an empty `ttui` library crate that later tasks add modules to.
+- Produces: an empty `ttui` library crate that later tasks add modules
+  to, plus a `tests/` integration-test placeholder (see
+  `docs/design/specs/2026-08-04-testing-verification-conventions-design.md`).
 
 - [ ] **Step 1: Create `Cargo.toml`**
 
@@ -85,16 +88,30 @@ crossterm = "0.27"
 /target
 ```
 
-- [ ] **Step 4: Verify the crate builds**
+- [ ] **Step 4: Create `tests/README.md`**
+
+```markdown
+# Integration tests
+
+Not used yet. Unit tests live inline via `#[cfg(test)] mod tests` in
+each module — see
+`docs/design/specs/2026-08-04-testing-verification-conventions-design.md`.
+This directory is for integration tests that exercise the crate as an
+external consumer would, via the public `ttui::` API across module
+boundaries. Add a test file here the first time one is actually
+needed, not before.
+```
+
+- [ ] **Step 5: Verify the crate builds**
 
 Run: `cargo build`
 Expected: builds successfully with no errors (crossterm downloads and
 compiles as a dependency).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add Cargo.toml Cargo.lock src/lib.rs .gitignore
+git add Cargo.toml Cargo.lock src/lib.rs .gitignore tests/README.md
 git commit -m "chore: initialize ttui crate with crossterm dependency"
 ```
 
