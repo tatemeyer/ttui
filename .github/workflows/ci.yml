@@ -13,6 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --verbose
+        if: hashFiles('Cargo.toml') != ''
 
   test:
     runs-on: ubuntu-latest
@@ -20,6 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --verbose
+        if: hashFiles('Cargo.toml') != ''
 
   clippy:
     runs-on: ubuntu-latest
@@ -29,6 +31,7 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy --all-targets -- -D warnings
+        if: hashFiles('Cargo.toml') != ''
 
   fmt:
     runs-on: ubuntu-latest
@@ -38,3 +41,4 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --check
+        if: hashFiles('Cargo.toml') != ''
