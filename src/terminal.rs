@@ -1,6 +1,9 @@
-use std::io::{stdout, Stdout};
+use std::io::{stdout, Stdout, Write};
 
+use crossterm::style::{Print, SetBackgroundColor, SetForegroundColor};
 use crossterm::{cursor, execute, terminal};
+
+use crate::buffer::CellDiff;
 
 pub struct Terminal {
     out: Stdout,
@@ -16,6 +19,19 @@ impl Terminal {
 
     pub fn size(&self) -> std::io::Result<(u16, u16)> {
         terminal::size()
+    }
+
+    pub fn draw_diff(&mut self, diffs: &[CellDiff]) -> std::io::Result<()> {
+        for d in diffs {
+            execute!(
+                self.out,
+                cursor::MoveTo(d.x, d.y),
+                SetForegroundColor(d.cell.fg),
+                SetBackgroundColor(d.cell.bg),
+                Print(d.cell.symbol),
+            )?;
+        }
+        self.out.flush()
     }
 }
 
