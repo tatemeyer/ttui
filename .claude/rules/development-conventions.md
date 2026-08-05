@@ -52,11 +52,11 @@ gap shows up in practice.
 merging any PR touching terminal/raw-mode code, run
 `cargo test -- --ignored` locally and note the result in the PR
 template's existing freeform Verification section. `cargo test`'s
-default exclusion of `#[ignore]`'d tests already makes CI do the right
-thing automatically;
-no CI workflow change is needed to keep this policy in effect. A
-self-hosted runner with real TTY access was considered and rejected —
-infrastructure/maintenance burden not justified for a solo project.
+default exclusion of `#[ignore]`'d tests already makes CI do the
+right thing automatically; no CI workflow change is needed to keep
+this policy in effect. A self-hosted runner with real TTY access was
+considered and rejected — infrastructure/maintenance burden not
+justified for a solo project.
 
 Full rationale: `docs/design/specs/2026-08-04-testing-verification-conventions-design.md`.
 
