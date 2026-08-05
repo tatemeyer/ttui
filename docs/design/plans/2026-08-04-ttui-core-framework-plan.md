@@ -70,7 +70,7 @@ by input events, never a polling tick. Full detail:
   to, plus a `tests/` integration-test placeholder (see
   `docs/design/specs/2026-08-04-testing-verification-conventions-design.md`).
 
-- [ ] **Step 1: Create and check out the implementation branch**
+- [x] **Step 1: Create and check out the implementation branch**
 
 `main` is branch-protected and requires a PR with green `build`, `test`,
 `clippy`, and `fmt` checks (`.github/workflows/ci.yml`) — this plan lands
@@ -80,7 +80,7 @@ as a single PR, opened in Task 17 once all of Arc 1-5 is committed here:
 git checkout -b core/ttui-core-framework-impl
 ```
 
-- [ ] **Step 2: Create `Cargo.toml`**
+- [x] **Step 2: Create `Cargo.toml`**
 
 ```toml
 [package]
@@ -92,13 +92,13 @@ edition = "2021"
 crossterm = "0.27"
 ```
 
-- [ ] **Step 3: Create `src/lib.rs`**
+- [x] **Step 3: Create `src/lib.rs`**
 
 ```rust
 // Modules are added by later tasks as each one lands.
 ```
 
-- [ ] **Step 4: Append a Rust section to `.gitignore`**
+- [x] **Step 4: Append a Rust section to `.gitignore`**
 
 The repo's `.gitignore` already exists with code-review-graph/OS/
 editor/Python-tooling/installer-backup sections — append to it, do not
@@ -110,7 +110,7 @@ installer-managed and must not be lost):
 /target
 ```
 
-- [ ] **Step 5: Create `tests/README.md`**
+- [x] **Step 5: Create `tests/README.md`**
 
 ```markdown
 # Integration tests
@@ -124,7 +124,7 @@ boundaries. Add a test file here the first time one is actually
 needed, not before.
 ```
 
-- [ ] **Step 6: Verify the crate builds and is fmt/clippy-clean**
+- [x] **Step 6: Verify the crate builds and is fmt/clippy-clean**
 
 Run: `cargo build`
 Expected: builds successfully with no errors (crossterm downloads and
@@ -136,7 +136,7 @@ Expected: clean (no output).
 Run: `cargo clippy --all-targets -- -D warnings`
 Expected: clean.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add Cargo.toml Cargo.lock src/lib.rs .gitignore tests/README.md
