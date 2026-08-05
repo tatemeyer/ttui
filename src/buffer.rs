@@ -78,8 +78,6 @@ pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
 // layer below.
 #[derive(Clone, Debug)]
 pub struct LayerStack {
-    width: u16,
-    height: u16,
     // Invariant: always has length >= 1; layers[0] is the base layer. This
     // is what keeps Deref's `&self.layers[0]` from ever panicking.
     layers: Vec<Buffer>,
@@ -88,14 +86,14 @@ pub struct LayerStack {
 impl LayerStack {
     pub fn new(width: u16, height: u16) -> Self {
         LayerStack {
-            width,
-            height,
             layers: vec![Buffer::new(width, height)],
         }
     }
 
     pub fn push_layer(&mut self) -> &mut Buffer {
-        self.layers.push(Buffer::new(self.width, self.height));
+        let width = self.layers[0].width;
+        let height = self.layers[0].height;
+        self.layers.push(Buffer::new(width, height));
         self.layers.last_mut().unwrap()
     }
 
@@ -106,21 +104,36 @@ impl LayerStack {
         &mut self.layers[index]
     }
 
+    // Read-only counterpart to `layer_mut` — same out-of-range panic
+    // behavior (standard Vec indexing panic).
+    pub fn layer(&self, index: usize) -> &Buffer {
+        &self.layers[index]
+    }
+
+    // Number of layers currently in the stack (always >= 1).
+    pub fn layer_count(&self) -> usize {
+        self.layers.len()
+    }
+
     // Depth-1 fast path: returns a clone of the base layer with no scan.
-    // For depth > 1: bottom-to-top scan where the last (topmost) non-default
-    // cell at each position wins (see transparency rule on `LayerStack`).
+    // For depth > 1: top-to-bottom scan, stopping at the first (topmost)
+    // non-default cell at each position (see transparency rule on
+    // `LayerStack`).
     pub fn composite(&self) -> Buffer {
         if self.layers.len() == 1 {
             return self.layers[0].clone();
         }
-        let mut out = Buffer::new(self.width, self.height);
-        for y in 0..self.height {
-            for x in 0..self.width {
+        let width = self.layers[0].width;
+        let height = self.layers[0].height;
+        let mut out = Buffer::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
                 let mut cell = Cell::default();
-                for layer in &self.layers {
+                for layer in self.layers.iter().rev() {
                     let c = layer.get(x, y);
                     if *c != Cell::default() {
                         cell = c.clone();
+                        break;
                     }
                 }
                 out.set(x, y, cell);
@@ -307,5 +320,27 @@ mod tests {
         let out = cloned.composite();
         assert_eq!(*out.get(1, 0), top_cell);
         assert_eq!(*out.get(0, 0), base_cell);
+    }
+
+    #[test]
+    fn layer_count_reflects_pushed_layers() {
+        let mut stack = LayerStack::new(2, 2);
+        assert_eq!(stack.layer_count(), 1);
+        stack.push_layer();
+        stack.push_layer();
+        assert_eq!(stack.layer_count(), 3);
+    }
+
+    #[test]
+    fn layer_gives_read_only_access_to_a_pushed_layer() {
+        let mut stack = LayerStack::new(2, 2);
+        let cell = Cell {
+            symbol: 'q',
+            fg: Color::Reset,
+            bg: Color::Reset,
+        };
+        stack.push_layer().set(0, 0, cell.clone());
+
+        assert_eq!(*stack.layer(1).get(0, 0), cell);
     }
 }
