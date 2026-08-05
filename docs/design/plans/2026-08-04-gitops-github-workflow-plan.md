@@ -455,7 +455,6 @@ gh api repos/tatemeyer/ttui/branches/main/protection \
 {
   "required_status_checks": {
     "strict": false,
-    "contexts": ["build", "test", "clippy", "fmt"],
     "checks": [
       {"context": "build"},
       {"context": "test"},
@@ -487,11 +486,22 @@ admin's standard GitHub bypass for the exceptions noted in the spec —
 not a separate override mechanism, just leaving GitHub's default admin
 behavior in place.
 
+`required_status_checks` uses `checks` only, not both `checks` and the
+legacy `contexts` array — confirmed against GitHub's live API during
+execution (2026-08-04): sending both fields at once returns HTTP 422
+("More than one subschema in oneOf matched"), because GitHub's schema
+treats `contexts` and `checks` as mutually exclusive alternatives, not
+fields that coexist. `checks` is the modern, more precise form (each
+entry can optionally pin an `app_id`) and is what's used here.
+
 - [ ] **Step 2: Verify protection is active**
 
-Run: `gh api repos/tatemeyer/ttui/branches/main/protection --jq '.required_status_checks.contexts, .required_pull_request_reviews.required_approving_review_count'`
-Expected: `["build", "test", "clippy", "fmt"]` followed by `0` — status
-checks required and PR-required-with-zero-reviewers both active.
+Run: `gh api repos/tatemeyer/ttui/branches/main/protection --jq '.required_status_checks.checks, .required_pull_request_reviews.required_approving_review_count'`
+Expected: an array of 4 objects with `context` values `build`, `test`,
+`clippy`, `fmt`, followed by `0` — status checks required and
+PR-required-with-zero-reviewers both active. (GitHub's GET response may
+also include a derived `contexts` array alongside `checks` for backward
+compatibility — that's fine, only `checks` was sent in the PUT.)
 
 - [ ] **Step 3: Confirm a direct push is now rejected**
 
