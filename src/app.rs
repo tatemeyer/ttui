@@ -8,6 +8,12 @@ pub trait App {
     fn update(&mut self, event: &Event);
     fn view(&self, area: Rect, buf: &mut Buffer);
     fn should_quit(&self) -> bool;
+
+    fn tick_rate(&self) -> Option<Duration> {
+        None
+    }
+
+    fn on_tick(&mut self, _elapsed: Duration) {}
 }
 
 pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
@@ -15,6 +21,7 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
     let mut term = Terminal::new()?;
 
     let (w, h) = term.size()?;
+    let mut last_tick_at = std::time::Instant::now();
     let mut prev = Buffer::new(w, h);
     let mut next = Buffer::new(w, h);
     app.view(
@@ -30,11 +37,38 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
     prev = next;
 
     loop {
-        if let Some(event) = term.next_event(Duration::from_millis(250))? {
-            app.update(&event);
-            if app.should_quit() {
-                break;
+        let poll_timeout = app.tick_rate().unwrap_or(Duration::from_millis(250));
+        let mut should_redraw = false;
+
+        match term.next_event(poll_timeout)? {
+            Some(event) => {
+                app.update(&event);
+                if app.should_quit() {
+                    break;
+                }
+                should_redraw = true;
+                // Reset the tick tracker on every input event too, so a
+                // burst of rapid typing followed by a tick doesn't report
+                // one huge elapsed jump.
+                last_tick_at = std::time::Instant::now();
             }
+            None => {
+                // Poll timed out with no input. If the app has opted into a
+                // tick rate, this timeout IS the tick — call on_tick and
+                // redraw. If it hasn't (tick_rate() is None), do nothing,
+                // exactly like today: redraw only ever happens as a direct
+                // consequence of an input event.
+                if app.tick_rate().is_some() {
+                    let now = std::time::Instant::now();
+                    let elapsed = now.duration_since(last_tick_at);
+                    last_tick_at = now;
+                    app.on_tick(elapsed);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
             let (w, h) = term.size()?;
             if (w, h) != (prev.width, prev.height) {
                 prev = Buffer::new(w, h); // force full redraw on resize
@@ -54,4 +88,34 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::buffer::Buffer;
+    use crate::layout::Rect;
+
+    struct Dummy;
+
+    impl App for Dummy {
+        fn update(&mut self, _event: &Event) {}
+        fn view(&self, _area: Rect, _buf: &mut Buffer) {}
+        fn should_quit(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn tick_rate_defaults_to_none() {
+        let dummy = Dummy;
+        assert_eq!(dummy.tick_rate(), None);
+    }
+
+    #[test]
+    fn on_tick_default_is_a_no_op() {
+        let mut dummy = Dummy;
+        dummy.on_tick(Duration::from_millis(16));
+        assert!(!dummy.should_quit());
+    }
 }
