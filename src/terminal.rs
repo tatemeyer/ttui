@@ -1,5 +1,7 @@
 use std::io::{stdout, Stdout, Write};
+use std::time::Duration;
 
+use crossterm::event::{self, Event};
 use crossterm::style::{Print, SetBackgroundColor, SetForegroundColor};
 use crossterm::{cursor, execute, terminal};
 
@@ -32,6 +34,14 @@ impl Terminal {
             )?;
         }
         self.out.flush()
+    }
+
+    pub fn next_event(&self, timeout: Duration) -> std::io::Result<Option<Event>> {
+        if event::poll(timeout)? {
+            Ok(Some(event::read()?))
+        } else {
+            Ok(None)
+        }
     }
 }
 
