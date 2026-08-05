@@ -36,11 +36,31 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
     prev = next;
 
     loop {
-        if let Some(event) = term.next_event(Duration::from_millis(250))? {
-            app.update(&event);
-            if app.should_quit() {
-                break;
+        let poll_timeout = app.tick_rate().unwrap_or(Duration::from_millis(250));
+        let mut should_redraw = false;
+
+        match term.next_event(poll_timeout)? {
+            Some(event) => {
+                app.update(&event);
+                if app.should_quit() {
+                    break;
+                }
+                should_redraw = true;
             }
+            None => {
+                // Poll timed out with no input. If the app has opted into a
+                // tick rate, this timeout IS the tick — call on_tick and
+                // redraw. If it hasn't (tick_rate() is None), do nothing,
+                // exactly like today: redraw only ever happens as a direct
+                // consequence of an input event.
+                if let Some(tick_rate) = app.tick_rate() {
+                    app.on_tick(tick_rate);
+                    should_redraw = true;
+                }
+            }
+        }
+
+        if should_redraw {
             let (w, h) = term.size()?;
             if (w, h) != (prev.width, prev.height) {
                 prev = Buffer::new(w, h); // force full redraw on resize
