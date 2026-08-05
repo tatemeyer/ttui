@@ -21,6 +21,7 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
     let mut term = Terminal::new()?;
 
     let (w, h) = term.size()?;
+    let mut last_tick_at = std::time::Instant::now();
     let mut prev = Buffer::new(w, h);
     let mut next = Buffer::new(w, h);
     app.view(
@@ -46,6 +47,10 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
                     break;
                 }
                 should_redraw = true;
+                // Reset the tick tracker on every input event too, so a
+                // burst of rapid typing followed by a tick doesn't report
+                // one huge elapsed jump.
+                last_tick_at = std::time::Instant::now();
             }
             None => {
                 // Poll timed out with no input. If the app has opted into a
@@ -53,8 +58,11 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
                 // redraw. If it hasn't (tick_rate() is None), do nothing,
                 // exactly like today: redraw only ever happens as a direct
                 // consequence of an input event.
-                if let Some(tick_rate) = app.tick_rate() {
-                    app.on_tick(tick_rate);
+                if app.tick_rate().is_some() {
+                    let now = std::time::Instant::now();
+                    let elapsed = now.duration_since(last_tick_at);
+                    last_tick_at = now;
+                    app.on_tick(elapsed);
                     should_redraw = true;
                 }
             }

@@ -39,18 +39,10 @@ impl Omnitrix {
         // bright green, matching the Omnitrix vision doc's "Recharge
         // Pulse" description.
         let brightness = (self.pulse_phase.sin() + 1.0) / 2.0;
-        let primary = if brightness > 0.5 {
-            Color::Rgb {
-                r: 0,
-                g: 255,
-                b: 65,
-            }
-        } else {
-            Color::Rgb {
-                r: 0,
-                g: 120,
-                b: 32,
-            }
+        let primary = Color::Rgb {
+            r: 0,
+            g: (120.0 + brightness * 135.0) as u8,
+            b: (32.0 + brightness * 33.0) as u8,
         };
         Theme {
             background: Color::Black,
