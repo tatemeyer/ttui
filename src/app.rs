@@ -8,6 +8,12 @@ pub trait App {
     fn update(&mut self, event: &Event);
     fn view(&self, area: Rect, buf: &mut Buffer);
     fn should_quit(&self) -> bool;
+
+    fn tick_rate(&self) -> Option<Duration> {
+        None
+    }
+
+    fn on_tick(&mut self, _elapsed: Duration) {}
 }
 
 pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
@@ -54,4 +60,34 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::buffer::Buffer;
+    use crate::layout::Rect;
+
+    struct Dummy;
+
+    impl App for Dummy {
+        fn update(&mut self, _event: &Event) {}
+        fn view(&self, _area: Rect, _buf: &mut Buffer) {}
+        fn should_quit(&self) -> bool {
+            false
+        }
+    }
+
+    #[test]
+    fn tick_rate_defaults_to_none() {
+        let dummy = Dummy;
+        assert_eq!(dummy.tick_rate(), None);
+    }
+
+    #[test]
+    fn on_tick_default_is_a_no_op() {
+        let mut dummy = Dummy;
+        dummy.on_tick(Duration::from_millis(16));
+        assert!(!dummy.should_quit());
+    }
 }
