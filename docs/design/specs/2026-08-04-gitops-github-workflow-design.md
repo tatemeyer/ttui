@@ -75,10 +75,13 @@ directly rather than deferring to some later "make it public" step.
 - `cargo clippy -- -D warnings`
 - `cargo fmt --check`
 
-This replaces `templates/ci/github-ci.yml`, which is currently a
-placeholder ("TODO: add language toolchain setup... once the core
-language is chosen") — stale now that Rust is the confirmed core
-language per the core framework design doc. The template's `Makefile`
+This replaces `templates/ci/github-ci.yml` (deleted during
+implementation once `.github/workflows/ci.yml` existed — it was a
+placeholder, "TODO: add language toolchain setup... once the core
+language is chosen," stale now that Rust is the confirmed core
+language per the core framework design doc, and its duplicate `name:
+CI` would have collided with the real workflow if left in place). The
+template's `Makefile`
 (`templates/ci/Makefile`) has the same staleness; whether CI calls
 `cargo` directly or through `make` targets is an implementation-plan
 detail, not a design decision — either satisfies this spec.

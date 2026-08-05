@@ -89,16 +89,16 @@ to the user's account, verified working).
   repo pointing at it. Every later task in this plan pushes commits to
   this remote.
 
-- [ ] **Step 1: Rename the local branch from `master` to `main`**
+- [x] **Step 1: Rename the local branch from `master` to `main`**
 
 Run: `git branch -m master main`
 
-- [ ] **Step 2: Verify the rename**
+- [x] **Step 2: Verify the rename**
 
 Run: `git branch --show-current`
 Expected: `main`
 
-- [ ] **Step 3: Create the GitHub repo from the current source and push**
+- [x] **Step 3: Create the GitHub repo from the current source and push**
 
 Run: `gh repo create ttui --public --source=. --remote=origin --push`
 
@@ -106,7 +106,7 @@ This single command creates a public repo named `ttui` under the
 authenticated account, adds it as the `origin` remote, and pushes the
 current branch (`main`) to it.
 
-- [ ] **Step 4: Verify the repo exists and `main` is pushed**
+- [x] **Step 4: Verify the repo exists and `main` is pushed**
 
 Run: `gh repo view --web=false --json name,visibility,defaultBranchRef`
 Expected: JSON showing `"name": "ttui"`, `"visibility": "PUBLIC"`,
@@ -134,7 +134,7 @@ and remote `main` match).
 - Produces: four named GitHub Actions checks (`build`, `test`, `clippy`,
   `fmt`) that Task 7's branch protection will require by name.
 
-- [ ] **Step 1: Write the workflow file**
+- [x] **Step 1: Write the workflow file**
 
 ```yaml
 # .github/workflows/ci.yml
@@ -183,7 +183,7 @@ jobs:
         if: hashFiles('Cargo.toml') != ''
 ```
 
-- [ ] **Step 2: Commit and push directly to `main`**
+- [x] **Step 2: Commit and push directly to `main`**
 
 ```bash
 git add .github/workflows/ci.yml
@@ -194,12 +194,12 @@ git push origin main
 Branch protection isn't enabled yet (that's Task 7), so a direct push to
 `main` is expected to work here.
 
-- [ ] **Step 3: Verify the workflow triggered**
+- [x] **Step 3: Verify the workflow triggered**
 
 Run: `gh run list --workflow=ci.yml --limit=1`
 Expected: one run listed, triggered by the push in Step 2.
 
-- [ ] **Step 4: Confirm the four jobs ran (pass/fail doesn't matter yet)**
+- [x] **Step 4: Confirm the four jobs ran (pass/fail doesn't matter yet)**
 
 Run: `gh run view --workflow=ci.yml`
 Expected: four jobs named `build`, `test`, `clippy`, `fmt` are listed.
@@ -225,7 +225,7 @@ wiring is correct, not that the (nonexistent) crate builds.
 - Produces: a "Bug Report" issue form selectable when filing a new
   issue.
 
-- [ ] **Step 1: Write the form**
+- [x] **Step 1: Write the form**
 
 ```yaml
 # .github/ISSUE_TEMPLATE/bug_report.yml
@@ -271,7 +271,7 @@ body:
       required: false
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .github/ISSUE_TEMPLATE/bug_report.yml
@@ -293,7 +293,7 @@ single-file pushes back to back — see Task 4.)
   false` so the two forms are the only way to file an issue (per the
   spec's "no freeform fallback template").
 
-- [ ] **Step 1: Write the feature request form**
+- [x] **Step 1: Write the feature request form**
 
 ```yaml
 # .github/ISSUE_TEMPLATE/feature_request.yml
@@ -323,14 +323,14 @@ body:
       required: false
 ```
 
-- [ ] **Step 2: Disable the blank-issue fallback**
+- [x] **Step 2: Disable the blank-issue fallback**
 
 ```yaml
 # .github/ISSUE_TEMPLATE/config.yml
 blank_issues_enabled: false
 ```
 
-- [ ] **Step 3: Commit both files and push**
+- [x] **Step 3: Commit both files and push**
 
 ```bash
 git add .github/ISSUE_TEMPLATE/feature_request.yml .github/ISSUE_TEMPLATE/config.yml
@@ -338,7 +338,7 @@ git commit -m "chore: add feature request issue form, disable blank issues"
 git push origin main
 ```
 
-- [ ] **Step 4: Verify both forms are live and blank issues are off**
+- [x] **Step 4: Verify both forms are live and blank issues are off**
 
 Run: `gh issue create --web` (opens the browser to the "new issue"
 picker without submitting anything — close the tab without submitting).
@@ -366,7 +366,7 @@ Expected: two options shown, "Bug Report" and "Feature Request", with no
 - Produces: `.github/PULL_REQUEST_TEMPLATE.md`, which GitHub
   auto-populates into every new PR's description.
 
-- [ ] **Step 1: Fix the paths in the source template**
+- [x] **Step 1: Fix the paths in the source template**
 
 In `templates/github/PULL_REQUEST_TEMPLATE.md`, replace:
 
@@ -382,13 +382,13 @@ with:
 - Plan: `docs/design/plans/YYYY-MM-DD-<feature-name>.md`
 ```
 
-- [ ] **Step 2: Copy the corrected template into `.github/`**
+- [x] **Step 2: Copy the corrected template into `.github/`**
 
 ```bash
 cp templates/github/PULL_REQUEST_TEMPLATE.md .github/PULL_REQUEST_TEMPLATE.md
 ```
 
-- [ ] **Step 3: Commit and push**
+- [x] **Step 3: Commit and push**
 
 ```bash
 git add templates/github/PULL_REQUEST_TEMPLATE.md .github/PULL_REQUEST_TEMPLATE.md
@@ -396,7 +396,7 @@ git commit -m "fix: correct stale docs paths in PR template, publish to .github/
 git push origin main
 ```
 
-- [ ] **Step 4: Verify GitHub picks it up**
+- [x] **Step 4: Verify GitHub picks it up**
 
 Run: `gh api repos/tatemeyer/ttui/contents/.github/PULL_REQUEST_TEMPLATE.md --jq .name`
 Expected: `PULL_REQUEST_TEMPLATE.md`
@@ -422,7 +422,7 @@ Expected: `PULL_REQUEST_TEMPLATE.md`
   already happen to match this file's color/description; `--force`
   below makes all four idempotent regardless.)
 
-- [ ] **Step 1: Apply each label**
+- [x] **Step 1: Apply each label**
 
 ```bash
 gh label create bug --color d73a4a --description "Something isn't working" --force
@@ -431,7 +431,7 @@ gh label create docs --color 0075ca --description "Documentation only" --force
 gh label create needs-design --color fbca04 --description "Requires a /superpowers:brainstorm pass before implementation" --force
 ```
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `gh label list`
 Expected: `bug`, `enhancement`, `docs`, `needs-design` all present with
@@ -462,7 +462,7 @@ for deleting them.)
   checks. After this task, direct pushes to `main` (without admin
   bypass) are rejected.
 
-- [ ] **Step 1: Apply branch protection via the API**
+- [x] **Step 1: Apply branch protection via the API**
 
 ```bash
 gh api repos/tatemeyer/ttui/branches/main/protection \
@@ -510,7 +510,7 @@ treats `contexts` and `checks` as mutually exclusive alternatives, not
 fields that coexist. `checks` is the modern, more precise form (each
 entry can optionally pin an `app_id`) and is what's used here.
 
-- [ ] **Step 2: Verify protection is active**
+- [x] **Step 2: Verify protection is active**
 
 Run: `gh api repos/tatemeyer/ttui/branches/main/protection --jq '.required_status_checks.checks, .required_pull_request_reviews.required_approving_review_count'`
 Expected: an array of 4 objects with `context` values `build`, `test`,
@@ -519,7 +519,7 @@ PR-required-with-zero-reviewers both active. (GitHub's GET response may
 also include a derived `contexts` array alongside `checks` for backward
 compatibility — that's fine, only `checks` was sent in the PUT.)
 
-- [ ] **Step 3: Confirm protection is enforced**
+- [x] **Step 3: Confirm protection is enforced**
 
 A literal push-rejection test (`git commit --allow-empty` + `git push
 origin main`, expecting rejection) **cannot pass on this repo**: the
