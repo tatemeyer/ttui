@@ -1,4 +1,4 @@
-use crate::buffer::{diff, Buffer};
+use crate::buffer::{diff, Buffer, LayerStack};
 use crate::layout::Rect;
 use crate::terminal::{install_panic_hook, Terminal};
 use crossterm::event::Event;
@@ -6,7 +6,7 @@ use std::time::Duration;
 
 pub trait App {
     fn update(&mut self, event: &Event);
-    fn view(&self, area: Rect, buf: &mut Buffer);
+    fn view(&self, area: Rect, buf: &mut LayerStack);
     fn should_quit(&self) -> bool;
 
     fn tick_rate(&self) -> Option<Duration> {
@@ -23,7 +23,7 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
     let (w, h) = term.size()?;
     let mut last_tick_at = std::time::Instant::now();
     let mut prev = Buffer::new(w, h);
-    let mut next = Buffer::new(w, h);
+    let mut stack = LayerStack::new(w, h);
     app.view(
         Rect {
             x: 0,
@@ -31,8 +31,9 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
             width: w,
             height: h,
         },
-        &mut next,
+        &mut stack,
     );
+    let next = stack.composite();
     term.draw_diff(&diff(&prev, &next))?;
     prev = next;
 
@@ -73,7 +74,7 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
             if (w, h) != (prev.width, prev.height) {
                 prev = Buffer::new(w, h); // force full redraw on resize
             }
-            let mut next = Buffer::new(w, h);
+            let mut stack = LayerStack::new(w, h);
             app.view(
                 Rect {
                     x: 0,
@@ -81,8 +82,9 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
                     width: w,
                     height: h,
                 },
-                &mut next,
+                &mut stack,
             );
+            let next = stack.composite();
             term.draw_diff(&diff(&prev, &next))?;
             prev = next;
         }
@@ -93,14 +95,13 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer::Buffer;
     use crate::layout::Rect;
 
     struct Dummy;
 
     impl App for Dummy {
         fn update(&mut self, _event: &Event) {}
-        fn view(&self, _area: Rect, _buf: &mut Buffer) {}
+        fn view(&self, _area: Rect, _buf: &mut LayerStack) {}
         fn should_quit(&self) -> bool {
             false
         }
