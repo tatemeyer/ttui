@@ -71,6 +71,31 @@ pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
     out
 }
 
+pub struct LayerStack {
+    width: u16,
+    height: u16,
+    layers: Vec<Buffer>,
+}
+
+impl LayerStack {
+    pub fn new(width: u16, height: u16) -> Self {
+        LayerStack {
+            width,
+            height,
+            layers: vec![Buffer::new(width, height)],
+        }
+    }
+
+    pub fn push_layer(&mut self) -> &mut Buffer {
+        self.layers.push(Buffer::new(self.width, self.height));
+        self.layers.last_mut().unwrap()
+    }
+
+    pub fn layer_mut(&mut self, index: usize) -> &mut Buffer {
+        &mut self.layers[index]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,5 +142,26 @@ mod tests {
         let a = Buffer::new(2, 2);
         let b = Buffer::new(2, 2);
         assert!(diff(&a, &b).is_empty());
+    }
+
+    #[test]
+    fn new_layer_stack_has_one_default_filled_base_layer() {
+        let mut stack = LayerStack::new(3, 2);
+        assert_eq!(*stack.layer_mut(0).get(0, 0), Cell::default());
+        assert_eq!(*stack.layer_mut(0).get(2, 1), Cell::default());
+    }
+
+    #[test]
+    fn push_layer_appends_a_same_dimension_default_filled_layer() {
+        let mut stack = LayerStack::new(3, 2);
+        let cell = Cell {
+            symbol: 'x',
+            fg: Color::Red,
+            bg: Color::Reset,
+        };
+        stack.push_layer().set(1, 1, cell.clone());
+
+        assert_eq!(*stack.layer_mut(1).get(1, 1), cell);
+        assert_eq!(*stack.layer_mut(0).get(1, 1), Cell::default());
     }
 }
