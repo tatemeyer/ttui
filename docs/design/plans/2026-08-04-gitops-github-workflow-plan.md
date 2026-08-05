@@ -41,6 +41,18 @@ to the user's account, verified working).
   this is fine and doesn't block anything, because branch protection
   isn't enabled until the last task, after all bootstrap files are
   already on `main`.
+- **Post-final-review correction:** that "expected to fail" reasoning
+  held only up through Task 7. The moment Task 7 made all four checks
+  required, "expected to fail" silently became "permanently blocks
+  every future PR" — including near-term docs-only PRs — since a
+  required check that always fails can never satisfy a merge gate. The
+  final whole-branch review caught this and added an
+  `if: hashFiles('Cargo.toml') != ''` guard to each job's real command
+  step (in both `.github/workflows/ci.yml` and Task 2's embedded YAML
+  above), so a skipped step reports success instead of failure until a
+  real `Cargo.toml` lands, at which point the jobs start actually
+  building/testing/linting automatically with no further changes
+  needed.
 - Issue intake is two structured forms only — `bug_report.yml` and
   `feature_request.yml` under `.github/ISSUE_TEMPLATE/` — with blank
   issues disabled. No freeform fallback template.
@@ -140,6 +152,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo build --verbose
+        if: hashFiles('Cargo.toml') != ''
 
   test:
     runs-on: ubuntu-latest
@@ -147,6 +160,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --verbose
+        if: hashFiles('Cargo.toml') != ''
 
   clippy:
     runs-on: ubuntu-latest
@@ -156,6 +170,7 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy --all-targets -- -D warnings
+        if: hashFiles('Cargo.toml') != ''
 
   fmt:
     runs-on: ubuntu-latest
@@ -165,6 +180,7 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --check
+        if: hashFiles('Cargo.toml') != ''
 ```
 
 - [ ] **Step 2: Commit and push directly to `main`**
@@ -519,10 +535,15 @@ Instead, treat Step 2's config output as the verification: if GitHub
 accepted the PUT and echoes back the four `checks` entries and
 `required_approving_review_count: 0`, protection is live. If you do
 push as the admin (e.g. to confirm the bypass itself works as
-intended), GitHub's response includes a `Bypassed rule violations for
-refs/heads/main` remote message — that message is itself confirmation
-that a rule exists to bypass, i.e. positive evidence protection is
-active, not a sign it failed. If you do this, revert any resulting
-test commit with `git revert <sha> --no-edit` (never `git reset --hard`
-or a force-push — the commit is already on `origin/main` and public
-history shouldn't be rewritten) so history stays clean.
+intended), note that GitHub may report a `Bypassed rule violations for
+refs/heads/main` message even though this repo uses classic branch
+protection, not rulesets (empirically observed during this plan's own
+execution — the exact mechanism connecting the two isn't independently
+confirmed; a follow-up review checked
+`gh api repos/tatemeyer/ttui/rulesets` and found it returns `[]`, so
+the message isn't coming from an actual ruleset on this repo). Treat
+Step 2's accepted config as the primary verification regardless. If
+you do push as the admin, revert any resulting test commit with `git
+revert <sha> --no-edit` (never `git reset --hard` or a force-push —
+the commit is already on `origin/main` and public history shouldn't be
+rewritten) so history stays clean.
