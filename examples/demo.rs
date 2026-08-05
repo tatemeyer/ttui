@@ -1,5 +1,5 @@
 // examples/demo.rs
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ttui::app::{run, App};
 use ttui::buffer::Buffer;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
@@ -41,6 +41,9 @@ impl Demo {
 impl App for Demo {
     fn update(&mut self, event: &Event) {
         let Event::Key(k) = event else { return };
+        if k.kind != KeyEventKind::Press {
+            return;
+        }
         match k.code {
             KeyCode::Tab => {
                 self.focus = match self.focus {
