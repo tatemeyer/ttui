@@ -20,7 +20,6 @@ pub enum Constraint {
     Fill(u16),
 }
 
-#[allow(dead_code)]
 pub struct Layout {
     direction: Direction,
     constraints: Vec<Constraint>,
@@ -38,7 +37,25 @@ impl Layout {
         }
     }
 
+    pub fn margin(mut self, m: u16) -> Self {
+        self.margin = m;
+        self
+    }
+
+    pub fn spacing(mut self, s: u16) -> Self {
+        self.spacing = s;
+        self
+    }
+
     pub fn split(&self, area: Rect) -> Vec<Rect> {
+        let area = Rect {
+            x: area.x + self.margin,
+            y: area.y + self.margin,
+            width: area.width.saturating_sub(self.margin * 2),
+            height: area.height.saturating_sub(self.margin * 2),
+        };
+        let n = self.constraints.len() as u16;
+        let spacing_total = if n > 0 { self.spacing * (n - 1) } else { 0 };
         let total = match self.direction {
             Direction::Horizontal => area.width,
             Direction::Vertical => area.height,
@@ -48,6 +65,8 @@ impl Layout {
         let mut used = 0u16;
         let mut fill_indices = Vec::new();
         let mut fill_weight_total = 0u32;
+
+        let total = total.saturating_sub(spacing_total);
 
         for (i, c) in self.constraints.iter().enumerate() {
             match c {
@@ -100,7 +119,7 @@ impl Layout {
                 },
             };
             rects.push(rect);
-            offset += size;
+            offset += size + self.spacing;
         }
         rects
     }
@@ -217,6 +236,42 @@ mod tests {
                     y: 0,
                     width: 3,
                     height: 1
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn margin_and_spacing_shrink_and_separate_children() {
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 5,
+        };
+        let layout = Layout::new(
+            Direction::Horizontal,
+            vec![Constraint::Fixed(2), Constraint::Fixed(2)],
+        )
+        .margin(1)
+        .spacing(1);
+
+        let rects = layout.split(area);
+
+        assert_eq!(
+            rects,
+            vec![
+                Rect {
+                    x: 1,
+                    y: 1,
+                    width: 2,
+                    height: 3
+                },
+                Rect {
+                    x: 4,
+                    y: 1,
+                    width: 2,
+                    height: 3
                 },
             ]
         );
