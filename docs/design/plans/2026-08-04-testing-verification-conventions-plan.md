@@ -7,8 +7,9 @@
 > `writing-plans` skill defaults to. Arc/Slice headings are pure
 > grouping; tasks still follow the skill's bite-sized step structure,
 > adapted for documentation-only work (no unit-testable code here —
-> both tasks are pure `admin`/`git-adjacent` doc edits, one of this
-> plan's own named TDD exceptions).
+> both tasks are tagged `admin`/`git-adjacent`, not `coding`, so the
+> TDD-mandatory policy this plan itself documents doesn't apply to
+> them in the first place).
 
 **Goal:** Resolve `.claude/rules/development-conventions.md`'s
 testing-discipline open question, and scaffold a `tests/` placeholder
@@ -37,9 +38,11 @@ explicitly requires none).
 - Real-TTY tests (`#[ignore]`'d) are verified permanently manually via
   `cargo test -- --ignored`, noted in the PR template's existing
   freeform Verification section. No CI workflow changes.
-- Both tasks in this plan are documentation edits only — no test code
-  applies to either (matches this same plan's "pure config/git-adjacent
-  work" TDD exception).
+- Both tasks in this plan are tagged `admin, git-adjacent`, not
+  `coding` — the TDD-mandatory policy above applies only to
+  `coding`-tagged work, so it doesn't apply to this plan's own tasks in
+  the first place (no exception needs to be invoked; there's nothing to
+  be exempted from).
 
 ---
 
@@ -109,10 +112,11 @@ beyond the four above.
 
 **Test structure:** inline `#[cfg(test)] mod tests` per module is the
 default (matches every task in the core framework plan). A top-level
-`tests/` integration directory exists (scaffolded via the core
-framework plan's Task 1) for the moment a test needs to exercise the
-crate as an external consumer would, via the public `ttui::` API across
-module boundaries — not before.
+`tests/` integration directory is scaffolded by the core framework
+plan's Task 1 (not yet executed — that plan is still blocked) for the
+moment a test needs to exercise the crate as an external consumer
+would, via the public `ttui::` API across module boundaries — not
+before.
 
 **Coverage tooling:** none. TDD-with-exceptions already means most code
 has tests by construction; a tracked coverage percentage adds CI
@@ -123,9 +127,9 @@ gap shows up in practice.
 merging any PR touching terminal/raw-mode code, run
 `cargo test -- --ignored` locally and note the result in the PR
 template's existing freeform Verification section. `cargo test`'s
-default exclusion of
-`#[ignore]`'d tests already makes CI do the right thing automatically;
-no CI workflow change is needed to keep this policy in effect. A
+default exclusion of `#[ignore]`'d tests already makes CI do the right
+thing automatically; no CI workflow change is needed to keep this
+policy in effect. A
 self-hosted runner with real TTY access was considered and rejected —
 infrastructure/maintenance burden not justified for a solo project.
 

@@ -37,10 +37,11 @@ beyond the four above.
 
 **Test structure:** inline `#[cfg(test)] mod tests` per module is the
 default (matches every task in the core framework plan). A top-level
-`tests/` integration directory exists (scaffolded via the core
-framework plan's Task 1) for the moment a test needs to exercise the
-crate as an external consumer would, via the public `ttui::` API across
-module boundaries — not before.
+`tests/` integration directory is scaffolded by the core framework
+plan's Task 1 (not yet executed — that plan is still blocked) for the
+moment a test needs to exercise the crate as an external consumer
+would, via the public `ttui::` API across module boundaries — not
+before.
 
 **Coverage tooling:** none. TDD-with-exceptions already means most code
 has tests by construction; a tracked coverage percentage adds CI
@@ -51,8 +52,8 @@ gap shows up in practice.
 merging any PR touching terminal/raw-mode code, run
 `cargo test -- --ignored` locally and note the result in the PR
 template's existing freeform Verification section. `cargo test`'s
-default exclusion of
-`#[ignore]`'d tests already makes CI do the right thing automatically;
+default exclusion of `#[ignore]`'d tests already makes CI do the right
+thing automatically;
 no CI workflow change is needed to keep this policy in effect. A
 self-hosted runner with real TTY access was considered and rejected —
 infrastructure/maintenance burden not justified for a solo project.
