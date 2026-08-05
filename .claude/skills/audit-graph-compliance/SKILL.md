@@ -24,8 +24,8 @@ scope, not to be invoked yet.
 4. **Interrupt handling** — define and check what "safely interrupted"
    means for in-flight agent work (partial commits, dangling branches).
 5. **Artifact completeness** — confirm that a unit of work has both its
-   `docs/superpowers/specs/...` design doc and
-   `docs/superpowers/plans/...` plan present and linked before the
+   `docs/design/specs/...` design doc and
+   `docs/design/plans/...` plan present and linked before the
    branch is considered mergeable.
 
 ### Likely dependencies once implemented
