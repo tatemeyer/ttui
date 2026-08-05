@@ -94,6 +94,26 @@ impl LayerStack {
     pub fn layer_mut(&mut self, index: usize) -> &mut Buffer {
         &mut self.layers[index]
     }
+
+    pub fn composite(&self) -> Buffer {
+        if self.layers.len() == 1 {
+            return self.layers[0].clone();
+        }
+        let mut out = Buffer::new(self.width, self.height);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let mut cell = Cell::default();
+                for layer in &self.layers {
+                    let c = layer.get(x, y);
+                    if *c != Cell::default() {
+                        cell = c.clone();
+                    }
+                }
+                out.set(x, y, cell);
+            }
+        }
+        out
+    }
 }
 
 impl std::ops::Deref for LayerStack {
@@ -190,5 +210,53 @@ mod tests {
 
         assert_eq!(*stack.get(0, 1), cell); // Deref -> base layer
         assert_eq!(*stack.layer_mut(0).get(0, 1), cell); // same cell via explicit index
+    }
+
+    #[test]
+    fn composite_of_a_single_layer_stack_matches_that_layer() {
+        let mut stack = LayerStack::new(2, 2);
+        let cell = Cell {
+            symbol: 'z',
+            fg: Color::Green,
+            bg: Color::Reset,
+        };
+        stack.set(1, 0, cell.clone());
+
+        let out = stack.composite();
+
+        assert_eq!(*out.get(1, 0), cell);
+        assert_eq!(*out.get(0, 0), Cell::default());
+        assert_eq!(*out.get(0, 1), Cell::default());
+        assert_eq!(*out.get(1, 1), Cell::default());
+    }
+
+    #[test]
+    fn composite_of_a_three_layer_stack_lets_topmost_non_default_cell_win() {
+        let mut stack = LayerStack::new(3, 1);
+        let a = Cell {
+            symbol: 'a',
+            fg: Color::Reset,
+            bg: Color::Reset,
+        };
+        let b = Cell {
+            symbol: 'b',
+            fg: Color::Reset,
+            bg: Color::Reset,
+        };
+        let c = Cell {
+            symbol: 'c',
+            fg: Color::Reset,
+            bg: Color::Reset,
+        };
+
+        stack.set(0, 0, a.clone()); // base layer: 'a' at x=0
+        stack.push_layer().set(1, 0, b.clone()); // layer 1: 'b' at x=1
+        stack.push_layer().set(0, 0, c.clone()); // layer 2 (top): 'c' at x=0
+
+        let out = stack.composite();
+
+        assert_eq!(*out.get(0, 0), c); // layer 2's 'c' overwrites layer 0's 'a'
+        assert_eq!(*out.get(1, 0), b); // layer 1's 'b' survives (layer 2 is default here)
+        assert_eq!(*out.get(2, 0), Cell::default()); // every layer default here
     }
 }
