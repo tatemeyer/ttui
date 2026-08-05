@@ -1,14 +1,19 @@
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
+use crate::theme::{BorderSet, Theme};
 use crossterm::style::Color;
 
 pub struct Block<'a> {
     title: Option<&'a str>,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Block<'a> {
     pub fn new() -> Self {
-        Block { title: None }
+        Block {
+            title: None,
+            theme: None,
+        }
     }
 
     pub fn title(mut self, t: &'a str) -> Self {
@@ -16,21 +21,30 @@ impl<'a> Block<'a> {
         self
     }
 
+    pub fn theme(mut self, theme: &'a Theme) -> Self {
+        self.theme = Some(theme);
+        self
+    }
+
     pub fn render(&self, area: Rect, buf: &mut Buffer) -> Rect {
         if area.width < 2 || area.height < 2 {
             return area;
         }
+        let (border, fg, bg) = match self.theme {
+            Some(t) => (t.border, t.primary, t.background),
+            None => (BorderSet::default(), Color::Reset, Color::Reset),
+        };
         let plain = || Cell {
             symbol: ' ',
-            fg: Color::Reset,
-            bg: Color::Reset,
+            fg,
+            bg,
         };
         for x in area.x..area.x + area.width {
             buf.set(
                 x,
                 area.y,
                 Cell {
-                    symbol: '-',
+                    symbol: border.horizontal,
                     ..plain()
                 },
             );
@@ -38,7 +52,7 @@ impl<'a> Block<'a> {
                 x,
                 area.y + area.height - 1,
                 Cell {
-                    symbol: '-',
+                    symbol: border.horizontal,
                     ..plain()
                 },
             );
@@ -48,7 +62,7 @@ impl<'a> Block<'a> {
                 area.x,
                 y,
                 Cell {
-                    symbol: '|',
+                    symbol: border.vertical,
                     ..plain()
                 },
             );
@@ -56,7 +70,7 @@ impl<'a> Block<'a> {
                 area.x + area.width - 1,
                 y,
                 Cell {
-                    symbol: '|',
+                    symbol: border.vertical,
                     ..plain()
                 },
             );
@@ -65,7 +79,7 @@ impl<'a> Block<'a> {
             area.x,
             area.y,
             Cell {
-                symbol: '+',
+                symbol: border.corner,
                 ..plain()
             },
         );
@@ -73,7 +87,7 @@ impl<'a> Block<'a> {
             area.x + area.width - 1,
             area.y,
             Cell {
-                symbol: '+',
+                symbol: border.corner,
                 ..plain()
             },
         );
@@ -81,7 +95,7 @@ impl<'a> Block<'a> {
             area.x,
             area.y + area.height - 1,
             Cell {
-                symbol: '+',
+                symbol: border.corner,
                 ..plain()
             },
         );
@@ -89,7 +103,7 @@ impl<'a> Block<'a> {
             area.x + area.width - 1,
             area.y + area.height - 1,
             Cell {
-                symbol: '+',
+                symbol: border.corner,
                 ..plain()
             },
         );
@@ -131,6 +145,7 @@ mod tests {
     use super::*;
     use crate::buffer::Buffer;
     use crate::layout::Rect;
+    use crate::theme::{BorderSet, Theme};
 
     #[test]
     fn draws_border_and_returns_inner_area() {
@@ -172,5 +187,53 @@ mod tests {
 
         assert_eq!(buf.get(1, 0).symbol, 'H');
         assert_eq!(buf.get(2, 0).symbol, 'i');
+    }
+
+    #[test]
+    fn without_theme_border_colors_are_reset() {
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().render(area, &mut buf);
+
+        assert_eq!(buf.get(0, 0).symbol, '+');
+        assert_eq!(buf.get(0, 0).fg, Color::Reset);
+        assert_eq!(buf.get(0, 0).bg, Color::Reset);
+    }
+
+    #[test]
+    fn with_theme_border_uses_theme_glyphs_and_colors() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+        };
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        assert_eq!(buf.get(0, 0).symbol, '*'); // corner
+        assert_eq!(buf.get(1, 0).symbol, '='); // horizontal
+        assert_eq!(buf.get(0, 1).symbol, '#'); // vertical
+        assert_eq!(buf.get(0, 0).fg, Color::Green);
+        assert_eq!(buf.get(0, 0).bg, Color::Black);
     }
 }
