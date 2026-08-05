@@ -47,6 +47,30 @@ impl Buffer {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct CellDiff {
+    pub x: u16,
+    pub y: u16,
+    pub cell: Cell,
+}
+
+pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
+    let mut out = Vec::new();
+    for y in 0..next.height {
+        for x in 0..next.width {
+            let n = next.get(x, y);
+            if n != prev.get(x, y) {
+                out.push(CellDiff {
+                    x,
+                    y,
+                    cell: n.clone(),
+                });
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -70,5 +94,28 @@ mod tests {
         };
         buf.set(1, 1, cell.clone());
         assert_eq!(*buf.get(1, 1), cell);
+    }
+
+    #[test]
+    fn diff_returns_only_changed_cells() {
+        let prev = Buffer::new(2, 1);
+        let mut next = Buffer::new(2, 1);
+        let cell = Cell {
+            symbol: 'x',
+            fg: Color::Reset,
+            bg: Color::Reset,
+        };
+        next.set(1, 0, cell.clone());
+
+        let diffs = diff(&prev, &next);
+
+        assert_eq!(diffs, vec![CellDiff { x: 1, y: 0, cell }]);
+    }
+
+    #[test]
+    fn diff_of_identical_buffers_is_empty() {
+        let a = Buffer::new(2, 2);
+        let b = Buffer::new(2, 2);
+        assert!(diff(&a, &b).is_empty());
     }
 }
