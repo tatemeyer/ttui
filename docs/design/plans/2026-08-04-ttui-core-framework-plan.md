@@ -41,6 +41,12 @@ by input events, never a polling tick. Full detail:
   Task 17. Tests that do need a real terminal/TTY (raw-mode enter/exit,
   panic-hook behavior) are marked `#[ignore]` and run manually with
   `cargo test -- --ignored`, not as part of a headless `cargo test`.
+- Every task's commit must pass this repo's required CI checks locally
+  before committing: `cargo build`, `cargo test`, `cargo fmt --check`,
+  `cargo clippy --all-targets -- -D warnings`. `main` requires all four
+  (`.github/workflows/ci.yml`) and this plan lands as a single PR (opened
+  in Task 17), so an unchecked failure in an early task blocks the whole
+  PR later.
 
 ---
 
@@ -64,7 +70,17 @@ by input events, never a polling tick. Full detail:
   to, plus a `tests/` integration-test placeholder (see
   `docs/design/specs/2026-08-04-testing-verification-conventions-design.md`).
 
-- [ ] **Step 1: Create `Cargo.toml`**
+- [ ] **Step 1: Create and check out the implementation branch**
+
+`main` is branch-protected and requires a PR with green `build`, `test`,
+`clippy`, and `fmt` checks (`.github/workflows/ci.yml`) — this plan lands
+as a single PR, opened in Task 17 once all of Arc 1-5 is committed here:
+
+```bash
+git checkout -b core/ttui-core-framework-impl
+```
+
+- [ ] **Step 2: Create `Cargo.toml`**
 
 ```toml
 [package]
@@ -76,13 +92,13 @@ edition = "2021"
 crossterm = "0.27"
 ```
 
-- [ ] **Step 2: Create `src/lib.rs`**
+- [ ] **Step 3: Create `src/lib.rs`**
 
 ```rust
 // Modules are added by later tasks as each one lands.
 ```
 
-- [ ] **Step 3: Append a Rust section to `.gitignore`**
+- [ ] **Step 4: Append a Rust section to `.gitignore`**
 
 The repo's `.gitignore` already exists with code-review-graph/OS/
 editor/Python-tooling/installer-backup sections — append to it, do not
@@ -94,7 +110,7 @@ installer-managed and must not be lost):
 /target
 ```
 
-- [ ] **Step 4: Create `tests/README.md`**
+- [ ] **Step 5: Create `tests/README.md`**
 
 ```markdown
 # Integration tests
@@ -108,13 +124,19 @@ boundaries. Add a test file here the first time one is actually
 needed, not before.
 ```
 
-- [ ] **Step 5: Verify the crate builds**
+- [ ] **Step 6: Verify the crate builds and is fmt/clippy-clean**
 
 Run: `cargo build`
 Expected: builds successfully with no errors (crossterm downloads and
 compiles as a dependency).
 
-- [ ] **Step 6: Commit**
+Run: `cargo fmt --check`
+Expected: clean (no output).
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add Cargo.toml Cargo.lock src/lib.rs .gitignore tests/README.md
@@ -233,6 +255,12 @@ pub mod buffer;
 Run: `cargo test buffer::`
 Expected: PASS (2 tests)
 
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -309,6 +337,12 @@ pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
 
 Run: `cargo test buffer::`
 Expected: PASS (4 tests total in this module)
+
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
 
 - [ ] **Step 5: Commit**
 
@@ -408,6 +442,12 @@ pub mod terminal;
 Run (in an actual terminal, not a headless shell): `cargo test terminal:: -- --ignored`
 Expected: PASS
 
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -459,6 +499,12 @@ impl Terminal {
 Run: `cargo build`
 Expected: builds successfully.
 
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
 - [ ] **Step 3: Commit**
 
 ```bash
@@ -498,6 +544,12 @@ impl Terminal {
 
 Run: `cargo build`
 Expected: builds successfully.
+
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
 
 - [ ] **Step 3: Commit**
 
@@ -559,6 +611,12 @@ pub fn install_panic_hook() {
 
 Run (in an actual terminal): `cargo test terminal:: -- --ignored`
 Expected: PASS
+
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
 
 - [ ] **Step 5: Commit**
 
@@ -712,6 +770,12 @@ pub mod layout;
 Run: `cargo test layout::`
 Expected: PASS (2 tests)
 
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -791,6 +855,12 @@ if fill_weight_total > 0 {
 Run: `cargo test layout::`
 Expected: PASS (3 tests)
 
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -869,6 +939,12 @@ offset += size + self.spacing;
 
 Run: `cargo test layout::`
 Expected: PASS (4 tests)
+
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
 
 - [ ] **Step 5: Commit**
 
@@ -980,6 +1056,12 @@ pub mod widgets;
 
 Run: `cargo test widgets::text::`
 Expected: PASS (2 tests)
+
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
 
 - [ ] **Step 6: Commit**
 
@@ -1116,6 +1198,12 @@ pub mod block;
 Run: `cargo test widgets::block::`
 Expected: PASS (2 tests)
 
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -1226,6 +1314,12 @@ pub mod list;
 
 Run: `cargo test widgets::list::`
 Expected: PASS (2 tests)
+
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
 
 - [ ] **Step 5: Commit**
 
@@ -1354,6 +1448,12 @@ pub mod table;
 Run: `cargo test widgets::table::`
 Expected: PASS (2 tests)
 
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -1439,6 +1539,12 @@ pub mod app;
 
 Run: `cargo build`
 Expected: builds successfully.
+
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
 
 - [ ] **Step 4: Commit**
 
@@ -1563,6 +1669,12 @@ fn main() -> std::io::Result<()> {
 Run: `cargo build --examples`
 Expected: builds successfully.
 
+Run: `cargo fmt --check`
+Expected: clean.
+
+Run: `cargo clippy --all-targets -- -D warnings`
+Expected: clean.
+
 - [ ] **Step 3: Commit**
 
 ```bash
@@ -1617,3 +1729,33 @@ anything fails, open a follow-up task (or fix inline, per
 `superpowers:executing-plans`/`superpowers:subagent-driven-development`
 convention) before considering this plan complete — do not mark this
 task done with a known failure.
+
+- [ ] **Step 5: Push the branch and open a PR**
+
+Only after Step 4 records a pass. This is the single PR for the whole
+Arc 1-5 implementation (see the branch created in Task 1, Step 1):
+
+```bash
+git push -u origin core/ttui-core-framework-impl
+gh pr create --title "feat: TTUI v1 core framework (Arc 1-5)" --body "$(cat <<'EOF'
+## Summary
+- Design: docs/design/specs/2026-08-04-ttui-core-framework-design.md
+- Plan: docs/design/plans/2026-08-04-ttui-core-framework-plan.md
+
+Implements the full v1 core framework per the plan above: Cell/Buffer
+diffing, panic-safe Terminal I/O, constraint-based Layout engine, the
+Text/Block/List/Table widget set, the App trait + event-driven run loop,
+and the demo dashboard app.
+
+## Verification
+- `cargo build`, `cargo test`, `cargo fmt --check`, and `cargo clippy
+  --all-targets -- -D warnings` pass clean at every task (see commit
+  history).
+- Manual verification against the spec's success criteria (Task 17, Steps
+  1-3) confirmed: panes/focus/navigation/clean-quit/panic-safety all pass.
+EOF
+)"
+```
+
+Expected: PR opens against `main` and the `build`/`test`/`clippy`/`fmt`
+required status checks (`.github/workflows/ci.yml`) run and pass.
