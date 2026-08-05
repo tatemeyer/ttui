@@ -26,3 +26,17 @@ model tier.
 - Concrete label set and what triggers each one.
 - Whether model-tiered dispatch is expressed as subagent `model:`
   frontmatter conventions, or something more automated.
+- **Does agent-authored work get a real merge gate, or is admin bypass
+  accepted as the norm?** `main`'s branch protection
+  (`docs/design/plans/2026-08-04-gitops-github-workflow-plan.md`, Task 7)
+  sets `enforce_admins: false` — the repo owner (whose credentials an
+  agent operates under) can push straight past required PRs and CI
+  checks. This was a deliberate spec decision (the stated "escape valve
+  for exceptions"), but in practice, within minutes of protection going
+  live, three docs-only commits landed through that exact bypass rather
+  than as PRs — bypass was the normal path, not the exception. The
+  GitOps final review flagged this as worth resolving explicitly here:
+  is that acceptable given "agentic-first development" means the agent
+  *is* the admin, or does the autonomy-tier label scheme above need to
+  gate this (e.g. only `autonomy:safe`-tier changes may bypass; anything
+  else must go through a real PR with checks green)?
