@@ -45,13 +45,39 @@ impl Layout {
         };
 
         let mut sizes = vec![0u16; self.constraints.len()];
+        let mut used = 0u16;
+        let mut fill_indices = Vec::new();
+        let mut fill_weight_total = 0u32;
+
         for (i, c) in self.constraints.iter().enumerate() {
-            sizes[i] = match c {
-                Constraint::Fixed(v) => *v,
-                Constraint::Percentage(p) => (total as u32 * *p as u32 / 100) as u16,
-                Constraint::Min(v) => *v,
-                Constraint::Fill(_) => 0, // resolved in Task 9
-            };
+            match c {
+                Constraint::Fixed(v) => {
+                    sizes[i] = *v;
+                    used += v;
+                }
+                Constraint::Percentage(p) => {
+                    let v = (total as u32 * *p as u32 / 100) as u16;
+                    sizes[i] = v;
+                    used += v;
+                }
+                Constraint::Min(v) => {
+                    sizes[i] = *v;
+                    used += v;
+                }
+                Constraint::Fill(w) => {
+                    fill_indices.push(i);
+                    fill_weight_total += *w as u32;
+                }
+            }
+        }
+
+        let remaining = total.saturating_sub(used);
+        if fill_weight_total > 0 {
+            for &i in &fill_indices {
+                if let Constraint::Fill(w) = self.constraints[i] {
+                    sizes[i] = (remaining as u32 * w as u32 / fill_weight_total) as u16;
+                }
+            }
         }
 
         let mut rects = Vec::with_capacity(sizes.len());
@@ -145,6 +171,50 @@ mod tests {
                     y: 4,
                     width: 4,
                     height: 6
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn fill_constraints_split_remaining_space_by_weight() {
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 1,
+        };
+        let layout = Layout::new(
+            Direction::Horizontal,
+            vec![
+                Constraint::Fixed(4),
+                Constraint::Fill(1),
+                Constraint::Fill(1),
+            ],
+        );
+
+        let rects = layout.split(area);
+
+        assert_eq!(
+            rects,
+            vec![
+                Rect {
+                    x: 0,
+                    y: 0,
+                    width: 4,
+                    height: 1
+                },
+                Rect {
+                    x: 4,
+                    y: 0,
+                    width: 3,
+                    height: 1
+                },
+                Rect {
+                    x: 7,
+                    y: 0,
+                    width: 3,
+                    height: 1
                 },
             ]
         );
