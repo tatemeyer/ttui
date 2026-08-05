@@ -1,5 +1,3 @@
-<!-- Template PR description — copy into .github/PULL_REQUEST_TEMPLATE.md -->
-
 ## Summary
 
 <!-- What changed and why. Link the design doc and plan this implements: -->
