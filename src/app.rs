@@ -36,6 +36,9 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
                 break;
             }
             let (w, h) = term.size()?;
+            if (w, h) != (prev.width, prev.height) {
+                prev = Buffer::new(w, h); // force full redraw on resize
+            }
             let mut next = Buffer::new(w, h);
             app.view(
                 Rect {
