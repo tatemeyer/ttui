@@ -87,9 +87,9 @@ across the whole codebase regardless of language.
 
 Core language is Rust (`docs/design/specs/2026-08-04-ttui-core-framework-design.md`).
 
-**TDD is mandatory for all `coding`-tagged work** (per the Arc/Slice/Task
-tag system in `docs/design/README.md`), via `superpowers:test-driven-
-development`, with four named exceptions:
+**TDD is mandatory for all `coding`-tagged work** (per the
+Arc/Slice/Task tag system in `docs/design/README.md`), via
+`superpowers:test-driven-development`, with four named exceptions:
 
 - **Pure config/git-adjacent work** — nothing to unit-test (e.g. YAML/API
   configuration, no application logic).
@@ -120,9 +120,10 @@ complexity without much added signal. Not revisited unless a concrete
 gap shows up in practice.
 
 **Real-TTY tests:** permanently manual — not "manual for now." Before
-merging any PR touching terminal/raw-mode code, run `cargo test --
---ignored` locally and note the result in the PR template's existing
-freeform Verification section. `cargo test`'s default exclusion of
+merging any PR touching terminal/raw-mode code, run
+`cargo test -- --ignored` locally and note the result in the PR
+template's existing freeform Verification section. `cargo test`'s
+default exclusion of
 `#[ignore]`'d tests already makes CI do the right thing automatically;
 no CI workflow change is needed to keep this policy in effect. A
 self-hosted runner with real TTY access was considered and rejected —
