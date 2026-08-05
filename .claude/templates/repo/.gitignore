@@ -11,14 +11,9 @@ Thumbs.db
 .idea/
 *.swp
 
-# Rust (uncomment if TTUI's core ends up in Rust)
-# /target/
+# Rust (TTUI's core language)
+/target/
 # Cargo.lock  # keep committed for binaries, ignore for libraries
-
-# Go (uncomment if TTUI's core ends up in Go)
-# /bin/
-# *.exe
-# *.test
 
 # Python tooling (scripts, code-review-graph, etc.)
 __pycache__/

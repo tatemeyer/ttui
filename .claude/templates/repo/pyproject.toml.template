@@ -1,5 +1,5 @@
 # Template pyproject.toml for Python-based tooling/scripts in this repo
-# (not necessarily TTUI's core language, which is still undecided).
+# (not TTUI's own core language, which is Rust — see root CLAUDE.md).
 # Copy to e.g. tooling/<script-name>/pyproject.toml and fill in.
 # Managed with uv — see docs/tooling/submodule-upgrade.md.
 
