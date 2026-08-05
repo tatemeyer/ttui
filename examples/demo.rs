@@ -1,7 +1,7 @@
 // examples/demo.rs
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ttui::app::{run, App};
-use ttui::buffer::Buffer;
+use ttui::buffer::LayerStack;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::widgets::{block::Block, list::List, table::Table, text::Text};
 
@@ -68,7 +68,7 @@ impl App for Demo {
         }
     }
 
-    fn view(&self, area: Rect, buf: &mut Buffer) {
+    fn view(&self, area: Rect, buf: &mut LayerStack) {
         let rows = Layout::new(
             Direction::Vertical,
             vec![Constraint::Fill(1), Constraint::Fixed(1)],
