@@ -75,7 +75,9 @@ impl Layout {
         if fill_weight_total > 0 {
             for &i in &fill_indices {
                 if let Constraint::Fill(w) = self.constraints[i] {
-                    sizes[i] = (remaining as u32 * w as u32 / fill_weight_total) as u16;
+                    sizes[i] = ((remaining as u32 * w as u32)
+                        .checked_div(fill_weight_total)
+                        .unwrap_or(0)) as u16;
                 }
             }
         }
