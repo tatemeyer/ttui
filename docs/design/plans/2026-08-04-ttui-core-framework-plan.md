@@ -84,8 +84,10 @@ crossterm = "0.27"
 
 - [ ] **Step 3: Append a Rust section to `.gitignore`**
 
-The repo's `.gitignore` already exists with OS/editor/Python-tooling/
-installer-backup sections — append to it, do not overwrite:
+The repo's `.gitignore` already exists with code-review-graph/OS/
+editor/Python-tooling/installer-backup sections — append to it, do not
+overwrite (the code-review-graph section in particular is
+installer-managed and must not be lost):
 
 ```
 # Rust

@@ -90,10 +90,18 @@ Two fixes, both structural (path/fact corrections, not new content):
 
 ## Decision: `.claude/settings.json.bak` cleanup
 
-Deleted. Confirmed untracked by git (`git ls-files` returns nothing for
-it — it already matches the `*.bak` pattern in the root `.gitignore`),
-so this is a plain filesystem delete with no commit required for the
-deletion itself; it simply stops existing in the working tree.
+Deleted where it actually exists. Confirmed untracked by git (`git
+ls-files` returns nothing for it — it already matches the `*.bak`
+pattern in the root `.gitignore`), so this is a plain filesystem
+delete with no commit required for the deletion itself.
+
+**Execution note (added post-implementation):** the file is untracked,
+and untracked files aren't inherited into a git worktree — so it never
+existed in the isolated worktree this plan was executed from, and
+nothing there could delete it. It still exists in whichever checkout
+originally had it. This is a manual follow-up (`rm
+.claude/settings.json.bak` from that checkout), not something this
+plan's execution could complete or verify.
 
 ## Decision: Core framework plan `.gitignore` fix
 
@@ -115,7 +123,9 @@ the end of the existing file rather than replacing it.
   claims the core language is undecided.
 - `.claude/skills/audit-graph-compliance/SKILL.md` references
   `docs/design/{specs,plans}/`, not `docs/superpowers/{specs,plans}/`.
-- `.claude/settings.json.bak` no longer exists.
+- `.claude/settings.json.bak` no longer exists — **not met by this
+  plan's execution** (untracked file, doesn't exist in the isolated
+  worktree; pending manual deletion in whichever checkout has it).
 - The core framework plan's Task 1 `.gitignore` step is `Modify`
   (append), not `Create` (overwrite).
 

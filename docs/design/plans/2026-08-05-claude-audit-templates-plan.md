@@ -285,8 +285,10 @@ Change Step 3's heading from "Create `.gitignore`" to "Append a Rust
 section to `.gitignore`" (keep the same `- [ ] **Step 3: ...**`
 checkbox format every other step in this document uses). Directly
 below the new heading, before the fenced block, add this sentence:
-"The repo's `.gitignore` already exists with OS/editor/Python-tooling/
-installer-backup sections — append to it, do not overwrite:"
+"The repo's `.gitignore` already exists with code-review-graph/OS/
+editor/Python-tooling/installer-backup sections — append to it, do not
+overwrite (the code-review-graph section in particular is
+installer-managed and must not be lost):"
 
 Then change the fenced block's content from just `/target` to:
 
