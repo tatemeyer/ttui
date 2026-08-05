@@ -47,6 +47,9 @@ impl<'a> Table<'a> {
     }
 
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
+        if area.height == 0 {
+            return;
+        }
         self.render_row(area, area.y, self.headers, Color::Reset, Color::Reset, buf);
         for (row_idx, row) in self
             .rows
@@ -106,5 +109,21 @@ mod tests {
         assert_eq!(buf.get(0, 0).bg, Color::Reset);
         assert_eq!(buf.get(0, 1).bg, Color::Reset);
         assert_eq!(buf.get(0, 2).bg, Color::White);
+    }
+
+    #[test]
+    fn does_not_panic_on_zero_height_rect() {
+        let headers = vec!["Name".to_string()];
+        let rows = vec![vec!["svc-a".to_string()], vec!["svc-b".to_string()]];
+        let mut buf = Buffer::new(10, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 0,
+        };
+
+        Table::new(&headers, &rows, 0, 5).render(area, &mut buf);
+        // Should return without panicking; buffer is untouched
     }
 }

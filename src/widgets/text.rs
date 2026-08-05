@@ -18,6 +18,9 @@ impl<'a> Text<'a> {
     }
 
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
         for (i, ch) in self.content.chars().take(area.width as usize).enumerate() {
             buf.set(
                 area.x + i as u16,
@@ -69,5 +72,33 @@ mod tests {
 
         assert_eq!(buf.get(0, 0).symbol, 'h');
         assert_eq!(buf.get(1, 0).symbol, 'e');
+    }
+
+    #[test]
+    fn does_not_panic_on_zero_height_rect() {
+        let mut buf = Buffer::new(5, 1);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 5,
+            height: 0,
+        };
+
+        Text::new("hello").render(area, &mut buf);
+        // Should return without panicking; buffer is untouched
+    }
+
+    #[test]
+    fn does_not_panic_on_zero_width_rect() {
+        let mut buf = Buffer::new(1, 5);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 5,
+        };
+
+        Text::new("hello").render(area, &mut buf);
+        // Should return without panicking; buffer is untouched
     }
 }
