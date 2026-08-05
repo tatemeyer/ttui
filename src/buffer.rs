@@ -96,6 +96,19 @@ impl LayerStack {
     }
 }
 
+impl std::ops::Deref for LayerStack {
+    type Target = Buffer;
+    fn deref(&self) -> &Buffer {
+        &self.layers[0]
+    }
+}
+
+impl std::ops::DerefMut for LayerStack {
+    fn deref_mut(&mut self) -> &mut Buffer {
+        &mut self.layers[0]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +176,19 @@ mod tests {
 
         assert_eq!(*stack.layer_mut(1).get(1, 1), cell);
         assert_eq!(*stack.layer_mut(0).get(1, 1), Cell::default());
+    }
+
+    #[test]
+    fn layer_stack_derefs_to_the_base_layer() {
+        let mut stack = LayerStack::new(3, 2);
+        let cell = Cell {
+            symbol: 'y',
+            fg: Color::Reset,
+            bg: Color::Red,
+        };
+        stack.set(0, 1, cell.clone()); // DerefMut -> base layer, no layer_mut(0) needed
+
+        assert_eq!(*stack.get(0, 1), cell); // Deref -> base layer
+        assert_eq!(*stack.layer_mut(0).get(0, 1), cell); // same cell via explicit index
     }
 }
