@@ -503,20 +503,26 @@ PR-required-with-zero-reviewers both active. (GitHub's GET response may
 also include a derived `contexts` array alongside `checks` for backward
 compatibility — that's fine, only `checks` was sent in the PUT.)
 
-- [ ] **Step 3: Confirm a direct push is now rejected**
+- [ ] **Step 3: Confirm protection is enforced**
 
-```bash
-git commit --allow-empty -m "test: verify branch protection blocks direct push"
-git push origin main
-```
+A literal push-rejection test (`git commit --allow-empty` + `git push
+origin main`, expecting rejection) **cannot pass on this repo**: the
+only available account is `tatemeyer`, the repo owner/admin, and
+`enforce_admins: false` (set deliberately above, as the spec's stated
+escape valve for exceptions) exempts admins from protection by design.
+There's no non-admin account on a solo repo to exercise the rejection
+path — don't run that test; it's structurally guaranteed to "succeed"
+(i.e. push through) regardless of whether protection is correctly
+configured, so a pass or fail there proves nothing.
 
-Expected: push is rejected (`protected branch hook declined` or
-similar). Then undo the test commit locally so it doesn't linger:
-
-```bash
-git reset --hard HEAD~1
-```
-
-This confirms protection is live without leaving a stray commit in
-history — from this point on, the core framework plan's first task
-lands via a PR, not a direct push.
+Instead, treat Step 2's config output as the verification: if GitHub
+accepted the PUT and echoes back the four `checks` entries and
+`required_approving_review_count: 0`, protection is live. If you do
+push as the admin (e.g. to confirm the bypass itself works as
+intended), GitHub's response includes a `Bypassed rule violations for
+refs/heads/main` remote message — that message is itself confirmation
+that a rule exists to bypass, i.e. positive evidence protection is
+active, not a sign it failed. If you do this, revert any resulting
+test commit with `git revert <sha> --no-edit` (never `git reset --hard`
+or a force-push — the commit is already on `origin/main` and public
+history shouldn't be rewritten) so history stays clean.
