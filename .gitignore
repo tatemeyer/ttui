@@ -21,3 +21,6 @@ __pycache__/
 # Rust
 /target
 
+# Rev B validation artifacts
+omnitrix_perf.log
+
