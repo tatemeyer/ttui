@@ -2,8 +2,8 @@
 
 Scoped to Python-based tooling in this repo (`code-review-graph`, and
 any future scripts scaffolded from
-`templates/repo/pyproject.toml.template`) — not TTUI's own core
-language, which is undecided.
+`.claude/templates/repo/pyproject.toml.template`) — not TTUI's own
+core language, which is Rust (see root `CLAUDE.md`).
 
 ## Standard procedure (uv-managed)
 

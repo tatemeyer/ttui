@@ -55,7 +55,7 @@ by input events, never a polling tick. Full detail:
 **Files:**
 - Create: `Cargo.toml`
 - Create: `src/lib.rs`
-- Create: `.gitignore` (Rust section: `/target`)
+- Modify: `.gitignore` (append Rust section: `/target`)
 - Create: `tests/README.md`
 
 **Interfaces:**
@@ -82,9 +82,15 @@ crossterm = "0.27"
 // Modules are added by later tasks as each one lands.
 ```
 
-- [ ] **Step 3: Create `.gitignore`**
+- [ ] **Step 3: Append a Rust section to `.gitignore`**
+
+The repo's `.gitignore` already exists with code-review-graph/OS/
+editor/Python-tooling/installer-backup sections — append to it, do not
+overwrite (the code-review-graph section in particular is
+installer-managed and must not be lost):
 
 ```
+# Rust
 /target
 ```
 
