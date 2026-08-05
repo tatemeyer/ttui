@@ -71,9 +71,17 @@ pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
     out
 }
 
+// Transparency rule: a cell is "transparent" (lets a lower layer show
+// through during compositing) iff it equals `Cell::default()`. An overlay
+// layer painting a plain space with default fg/bg does NOT occlude what's
+// beneath it — it must set a non-default fg or bg to actually cover the
+// layer below.
+#[derive(Clone, Debug)]
 pub struct LayerStack {
     width: u16,
     height: u16,
+    // Invariant: always has length >= 1; layers[0] is the base layer. This
+    // is what keeps Deref's `&self.layers[0]` from ever panicking.
     layers: Vec<Buffer>,
 }
 
@@ -91,10 +99,16 @@ impl LayerStack {
         self.layers.last_mut().unwrap()
     }
 
+    // `index` must already exist via a prior `push_layer()` call — there is
+    // no auto-grow; an out-of-range index panics (standard Vec indexing
+    // panic).
     pub fn layer_mut(&mut self, index: usize) -> &mut Buffer {
         &mut self.layers[index]
     }
 
+    // Depth-1 fast path: returns a clone of the base layer with no scan.
+    // For depth > 1: bottom-to-top scan where the last (topmost) non-default
+    // cell at each position wins (see transparency rule on `LayerStack`).
     pub fn composite(&self) -> Buffer {
         if self.layers.len() == 1 {
             return self.layers[0].clone();
@@ -258,5 +272,40 @@ mod tests {
         assert_eq!(*out.get(0, 0), c); // layer 2's 'c' overwrites layer 0's 'a'
         assert_eq!(*out.get(1, 0), b); // layer 1's 'b' survives (layer 2 is default here)
         assert_eq!(*out.get(2, 0), Cell::default()); // every layer default here
+    }
+
+    #[test]
+    fn cloning_a_layer_stack_preserves_all_layers_not_just_the_base() {
+        let mut stack = LayerStack::new(2, 1);
+        let base_cell = Cell {
+            symbol: 'a',
+            fg: Color::Reset,
+            bg: Color::Reset,
+        };
+        let top_cell = Cell {
+            symbol: 'b',
+            fg: Color::Blue,
+            bg: Color::Reset,
+        };
+        stack.set(0, 0, base_cell.clone()); // base layer via DerefMut
+        stack.push_layer().set(1, 0, top_cell.clone()); // layer 1 (top)
+        stack.push_layer(); // layer 2, left default so composite still needs layer 1
+
+        let mut cloned = stack.clone();
+
+        // If `LayerStack::clone` had autoderef-resolved to `Buffer::clone`
+        // (missing derive), `cloned` would be a `Buffer` and this wouldn't
+        // compile as a `LayerStack` method call; asserting on `layer_mut`
+        // and the layer count below only typechecks against a real
+        // `LayerStack` clone.
+        assert_eq!(cloned.layers.len(), 3);
+        assert_eq!(*cloned.layer_mut(0).get(0, 0), base_cell);
+        assert_eq!(*cloned.layer_mut(1).get(1, 0), top_cell);
+
+        // Composite must still see the top layer's cell, proving the clone
+        // retained every pushed layer rather than collapsing to the base.
+        let out = cloned.composite();
+        assert_eq!(*out.get(1, 0), top_cell);
+        assert_eq!(*out.get(0, 0), base_cell);
     }
 }
