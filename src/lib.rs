@@ -1,3 +1,4 @@
+pub mod app;
 pub mod buffer;
 pub mod layout;
 pub mod terminal;
