@@ -1,5 +1,6 @@
 pub mod app;
 pub mod buffer;
+pub mod easing;
 pub mod layout;
 pub mod terminal;
 pub mod theme;
