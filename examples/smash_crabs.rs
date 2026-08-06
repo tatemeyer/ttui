@@ -58,6 +58,7 @@ impl SmashCrabs {
             symbol: ' ',
             fg: self.theme.primary,
             bg: self.theme.background,
+            ..Default::default()
         };
         let layer = buf.layer_mut(BACKGROUND);
         for y in area.y..area.y + area.height {
@@ -94,6 +95,7 @@ impl SmashCrabs {
             symbol: '*',
             fg: Color::Black,
             bg: self.theme.accent,
+            ..Default::default()
         };
         let w = 7.min(area.width);
         let h = 3.min(area.height);

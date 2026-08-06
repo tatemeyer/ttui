@@ -2,7 +2,7 @@ use std::io::{stdout, Stdout, Write};
 use std::time::Duration;
 
 use crossterm::event::{self, Event};
-use crossterm::style::{Print, SetBackgroundColor, SetForegroundColor};
+use crossterm::style::{Attribute, Print, SetAttribute, SetBackgroundColor, SetForegroundColor};
 use crossterm::{cursor, execute, terminal};
 
 use crate::buffer::CellDiff;
@@ -25,13 +25,26 @@ impl Terminal {
 
     pub fn draw_diff(&mut self, diffs: &[CellDiff]) -> std::io::Result<()> {
         for d in diffs {
-            execute!(
-                self.out,
-                cursor::MoveTo(d.x, d.y),
-                SetForegroundColor(d.cell.fg),
-                SetBackgroundColor(d.cell.bg),
-                Print(d.cell.symbol),
-            )?;
+            if d.cell.style.bold {
+                execute!(
+                    self.out,
+                    cursor::MoveTo(d.x, d.y),
+                    SetAttribute(Attribute::Reset),
+                    SetAttribute(Attribute::Bold),
+                    SetForegroundColor(d.cell.fg),
+                    SetBackgroundColor(d.cell.bg),
+                    Print(d.cell.symbol),
+                )?;
+            } else {
+                execute!(
+                    self.out,
+                    cursor::MoveTo(d.x, d.y),
+                    SetAttribute(Attribute::Reset),
+                    SetForegroundColor(d.cell.fg),
+                    SetBackgroundColor(d.cell.bg),
+                    Print(d.cell.symbol),
+                )?;
+            }
         }
         self.out.flush()
     }

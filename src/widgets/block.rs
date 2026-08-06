@@ -38,6 +38,7 @@ impl<'a> Block<'a> {
             symbol: ' ',
             fg,
             bg,
+            ..Default::default()
         };
         for x in area.x..area.x + area.width {
             buf.set(
