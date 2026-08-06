@@ -8,7 +8,7 @@ use ttui::app::{run, App};
 use ttui::buffer::LayerStack;
 use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
-use ttui::widgets::{block::Block, list::List, text::Text};
+use ttui::widgets::{block::Block, dial::Dial, text::Text};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS
 
@@ -130,9 +130,9 @@ impl App for Omnitrix {
 
         match self.mode {
             AppMode::Faceplate => {
-                // Layout: list area (rows 0 to h-2), hint row (row h-1)
-                // Ensure no overlap: list shrunk by 1, hint at bottom with hardened height
-                let list_area = Rect {
+                // Layout: dial area (rows 0 to h-2), hint row (row h-1)
+                // Ensure no overlap: dial shrunk by 1, hint at bottom with hardened height
+                let dial_area = Rect {
                     x: inner.x,
                     y: inner.y,
                     width: inner.width,
@@ -145,7 +145,7 @@ impl App for Omnitrix {
                     height: inner.height.saturating_sub(1).min(1),
                 };
                 let names: Vec<String> = SAMPLES.iter().map(|s| s.to_string()).collect();
-                List::new(&names, self.selected).render(list_area, buf);
+                Dial::new(&names, self.selected).render(dial_area, buf);
                 Text::new("Tab/Shift+Tab cycle * Enter launch * q quit").render(hint_row, buf);
             }
             _ => {
