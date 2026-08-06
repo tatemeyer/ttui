@@ -2,6 +2,7 @@ pub trait AudioSink {
     fn play(&mut self, event_id: &str);
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct NullAudioSink;
 
 impl AudioSink for NullAudioSink {

@@ -80,9 +80,10 @@ pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
 
 // Transparency rule: a cell is "transparent" (lets a lower layer show
 // through during compositing) iff it equals `Cell::default()`. An overlay
-// layer painting a plain space with default fg/bg does NOT occlude what's
-// beneath it — it must set a non-default fg or bg to actually cover the
-// layer below.
+// layer painting a plain space with default fg/bg/style does NOT occlude
+// what's beneath it — it must set a non-default fg, bg, or style to
+// actually cover the layer below (e.g. a bolded blank cell is non-default
+// and DOES occlude, even though it renders identically to a blank).
 #[derive(Clone, Debug)]
 pub struct LayerStack {
     // Invariant: always has length >= 1; layers[0] is the base layer. This

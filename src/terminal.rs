@@ -25,26 +25,20 @@ impl Terminal {
 
     pub fn draw_diff(&mut self, diffs: &[CellDiff]) -> std::io::Result<()> {
         for d in diffs {
-            if d.cell.style.bold {
-                execute!(
-                    self.out,
-                    cursor::MoveTo(d.x, d.y),
-                    SetAttribute(Attribute::Reset),
-                    SetAttribute(Attribute::Bold),
-                    SetForegroundColor(d.cell.fg),
-                    SetBackgroundColor(d.cell.bg),
-                    Print(d.cell.symbol),
-                )?;
+            let attr = if d.cell.style.bold {
+                Attribute::Bold
             } else {
-                execute!(
-                    self.out,
-                    cursor::MoveTo(d.x, d.y),
-                    SetAttribute(Attribute::Reset),
-                    SetForegroundColor(d.cell.fg),
-                    SetBackgroundColor(d.cell.bg),
-                    Print(d.cell.symbol),
-                )?;
-            }
+                Attribute::Reset
+            };
+            execute!(
+                self.out,
+                cursor::MoveTo(d.x, d.y),
+                SetAttribute(Attribute::Reset),
+                SetAttribute(attr),
+                SetForegroundColor(d.cell.fg),
+                SetBackgroundColor(d.cell.bg),
+                Print(d.cell.symbol),
+            )?;
         }
         self.out.flush()
     }
@@ -60,6 +54,7 @@ impl Terminal {
 
 impl Drop for Terminal {
     fn drop(&mut self) {
+        let _ = execute!(self.out, SetAttribute(Attribute::Reset));
         let _ = terminal::disable_raw_mode();
         let _ = execute!(self.out, terminal::LeaveAlternateScreen, cursor::Show);
     }
@@ -68,6 +63,7 @@ impl Drop for Terminal {
 pub fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        let _ = execute!(stdout(), SetAttribute(Attribute::Reset));
         let _ = terminal::disable_raw_mode();
         let _ = execute!(stdout(), terminal::LeaveAlternateScreen, cursor::Show);
         default_hook(info);

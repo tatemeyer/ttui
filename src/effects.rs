@@ -6,8 +6,7 @@ pub fn shake(buf: &Buffer, dx: i16, dy: i16) -> Buffer {
         for x in 0..buf.width {
             let src_x = x as i32 - dx as i32;
             let src_y = y as i32 - dy as i32;
-            if src_x >= 0 && src_y >= 0 && (src_x as u16) < buf.width && (src_y as u16) < buf.height
-            {
+            if src_x >= 0 && src_y >= 0 && src_x < buf.width as i32 && src_y < buf.height as i32 {
                 out.set(x, y, buf.get(src_x as u16, src_y as u16).clone());
             }
         }
@@ -68,6 +67,7 @@ mod tests {
         let result = shake(&buf, 0, -1);
 
         assert_eq!(*result.get(0, 0), cell);
+        assert_eq!(*result.get(0, 1), Cell::default());
     }
 
     #[test]

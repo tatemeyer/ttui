@@ -2,6 +2,7 @@ use crate::buffer::{Buffer, Cell};
 use crossterm::style::Color;
 use std::time::Duration;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
     pub x: f32,
     pub y: f32,
@@ -19,7 +20,7 @@ impl Particle {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ParticleSystem {
     particles: Vec<Particle>,
 }
@@ -48,17 +49,16 @@ impl ParticleSystem {
             let x = p.x.round();
             let y = p.y.round();
             if x >= 0.0 && y >= 0.0 && (x as u16) < buf.width && (y as u16) < buf.height {
-                #[allow(clippy::needless_update)]
-                // Keep ..Default::default() even though it's a no-op today (all 3 fields are
-                // already set). A sibling task is concurrently adding a 4th `style` field to
-                // Cell; this syntax ensures the file compiles unchanged once that field lands.
-                let cell = Cell {
-                    symbol: p.symbol,
-                    fg: p.color,
-                    bg: Color::Reset,
-                    ..Default::default()
-                };
-                buf.set(x as u16, y as u16, cell);
+                buf.set(
+                    x as u16,
+                    y as u16,
+                    Cell {
+                        symbol: p.symbol,
+                        fg: p.color,
+                        bg: Color::Reset,
+                        ..Default::default()
+                    },
+                );
             }
         }
     }
@@ -130,6 +130,61 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn update_accumulates_position_across_multiple_calls() {
+        let mut ps = ParticleSystem::new();
+        let p = Particle {
+            x: 0.0,
+            y: 0.0,
+            vx: 2.0,
+            vy: 0.0,
+            symbol: '*',
+            color: Color::Red,
+            lifetime: Duration::from_secs(10),
+            age: Duration::ZERO,
+        };
+        ps.spawn(p);
+        ps.update(Duration::from_millis(500));
+        ps.update(Duration::from_millis(500));
+        // Two 500ms updates at vx=2.0 should accumulate to x = 2.0*0.5 + 2.0*0.5
+        // = 2.0, not stay at 1.0 (which a buggy `p.x = p.vx * dt` assignment
+        // instead of `p.x += p.vx * dt` accumulation would produce).
+        let mut buf = Buffer::new(10, 10);
+        ps.render(&mut buf);
+        assert_eq!(
+            *buf.get(2, 0),
+            Cell {
+                symbol: '*',
+                fg: Color::Red,
+                bg: Color::Reset,
+                ..Default::default()
+            }
+        );
+        assert_eq!(ps.len(), 1);
+    }
+
+    #[test]
+    fn update_accumulates_age_across_multiple_calls_until_expiry() {
+        let mut ps = ParticleSystem::new();
+        let p = Particle {
+            x: 0.0,
+            y: 0.0,
+            vx: 0.0,
+            vy: 0.0,
+            symbol: '*',
+            color: Color::Red,
+            lifetime: Duration::from_millis(150),
+            age: Duration::ZERO,
+        };
+        ps.spawn(p);
+        ps.update(Duration::from_millis(100));
+        assert_eq!(ps.len(), 1); // 100ms < 150ms lifetime, still alive
+        ps.update(Duration::from_millis(100));
+        // Total age = 200ms > 150ms lifetime — only correct if age accumulates
+        // across calls (100+100=200) rather than resetting each call.
+        assert_eq!(ps.len(), 0);
     }
 
     #[test]

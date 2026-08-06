@@ -207,6 +207,18 @@ impl AudioSink for NullAudioSink {
 audio at all — mirrors `tick_rate() -> Option<Duration> { None }`'s
 opt-in-with-a-free-default shape from Rev B.
 
+### LayerStack interaction caveat
+
+`effects::shake` and `ParticleSystem::render` both take `&Buffer`/`&mut
+Buffer`. Since `LayerStack: Deref<Target = Buffer>` (the base layer),
+passing a `&LayerStack`/`&mut LayerStack` to either compiles via deref
+coercion but operates on the base layer only — silently discarding any
+pushed layers rather than being a type error. Consumers (the Omnitrix/
+Smash Crabs/TARDIS example arcs) must be deliberate about this: call
+`shake`/`render` against a specific layer (`stack.layer_mut(N)`) or the
+composited result (`&stack.composite()`), not against the `LayerStack`
+itself, unless base-layer-only really is what's wanted.
+
 ## Testing
 
 All six are `coding`-tagged, TDD-mandatory, no exceptions apply (none

@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transition {
     duration: Duration,
     elapsed: Duration,
@@ -21,7 +22,7 @@ impl Transition {
         if self.duration.is_zero() {
             return 1.0;
         }
-        self.elapsed.as_secs_f32() / self.duration.as_secs_f32()
+        (self.elapsed.as_secs_f32() / self.duration.as_secs_f32()).clamp(0.0, 1.0)
     }
 
     pub fn is_complete(&self) -> bool {
@@ -45,6 +46,14 @@ mod tests {
         let mut transition = Transition::start(Duration::from_secs(1));
         transition.tick(Duration::from_millis(250));
         assert_eq!(transition.progress(), 0.25);
+    }
+
+    #[test]
+    fn tick_accumulates_across_multiple_calls() {
+        let mut transition = Transition::start(Duration::from_secs(1));
+        transition.tick(Duration::from_millis(250));
+        transition.tick(Duration::from_millis(250));
+        assert_eq!(transition.progress(), 0.5);
     }
 
     #[test]
