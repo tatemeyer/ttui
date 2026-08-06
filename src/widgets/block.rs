@@ -1,4 +1,4 @@
-use crate::buffer::{Buffer, Cell};
+use crate::buffer::{Buffer, Cell, CellStyle};
 use crate::layout::Rect;
 use crate::theme::{BorderSet, Theme};
 use crossterm::style::Color;
@@ -30,15 +30,15 @@ impl<'a> Block<'a> {
         if area.width < 2 || area.height < 2 {
             return area;
         }
-        let (border, fg, bg) = match self.theme {
-            Some(t) => (t.border, t.primary, t.background),
-            None => (BorderSet::default(), Color::Reset, Color::Reset),
+        let (border, fg, bg, border_bold) = match self.theme {
+            Some(t) => (t.border, t.primary, t.background, t.border_bold),
+            None => (BorderSet::default(), Color::Reset, Color::Reset, false),
         };
         let plain = || Cell {
             symbol: ' ',
             fg,
             bg,
-            ..Default::default()
+            style: CellStyle { bold: border_bold },
         };
         for x in area.x..area.x + area.width {
             buf.set(
@@ -120,6 +120,7 @@ impl<'a> Block<'a> {
                     area.y,
                     Cell {
                         symbol: ch,
+                        style: CellStyle::default(),
                         ..plain()
                     },
                 );
@@ -205,6 +206,7 @@ mod tests {
         assert_eq!(buf.get(0, 0).symbol, '+');
         assert_eq!(buf.get(0, 0).fg, Color::Reset);
         assert_eq!(buf.get(0, 0).bg, Color::Reset);
+        assert!(!buf.get(0, 0).style.bold);
     }
 
     #[test]
@@ -237,5 +239,67 @@ mod tests {
         assert_eq!(buf.get(0, 1).symbol, '#'); // vertical
         assert_eq!(buf.get(0, 0).fg, Color::Green);
         assert_eq!(buf.get(0, 0).bg, Color::Black);
+    }
+
+    #[test]
+    fn border_cells_are_bold_when_theme_border_bold_is_true() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+            border_bold: true,
+        };
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        assert!(buf.get(0, 0).style.bold); // corner
+        assert!(buf.get(1, 0).style.bold); // horizontal edge
+        assert!(buf.get(0, 1).style.bold); // vertical edge
+    }
+
+    #[test]
+    fn title_cells_are_not_bold_even_when_theme_border_bold_is_true() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+            border_bold: true,
+        };
+        let mut buf = Buffer::new(6, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 6,
+            height: 3,
+        };
+
+        Block::new()
+            .title("Hi")
+            .theme(&theme)
+            .render(area, &mut buf);
+
+        assert!(!buf.get(1, 0).style.bold); // 'H'
+        assert!(!buf.get(2, 0).style.bold); // 'i'
     }
 }
