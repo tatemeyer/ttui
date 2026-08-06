@@ -13,31 +13,32 @@ use ttui::widgets::{block::Block, list::List, text::Text};
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS
 
 #[derive(Clone, Copy, PartialEq)]
-enum DnaSample {
+enum AppMode {
+    Faceplate,
     Brainstorm,
     Fasttrack,
     Upgrade,
 }
 
-impl DnaSample {
-    const ALL: [DnaSample; 3] = [
-        DnaSample::Brainstorm,
-        DnaSample::Fasttrack,
-        DnaSample::Upgrade,
-    ];
+const SAMPLES: [&str; 3] = ["Brainstorm", "Fasttrack", "Upgrade"];
+
+impl AppMode {
+    fn from_selected(selected: usize) -> Self {
+        match selected {
+            0 => AppMode::Brainstorm,
+            1 => AppMode::Fasttrack,
+            _ => AppMode::Upgrade,
+        }
+    }
 
     fn name(&self) -> &'static str {
         match self {
-            DnaSample::Brainstorm => "Brainstorm",
-            DnaSample::Fasttrack => "Fasttrack",
-            DnaSample::Upgrade => "Upgrade",
+            AppMode::Faceplate => "Faceplate",
+            AppMode::Brainstorm => "Brainstorm",
+            AppMode::Fasttrack => "Fasttrack",
+            AppMode::Upgrade => "Upgrade",
         }
     }
-}
-
-enum Screen {
-    Faceplate,
-    Launched(DnaSample),
 }
 
 struct Omnitrix {
@@ -46,7 +47,7 @@ struct Omnitrix {
     last_tick_started: Instant,
     perf_log: std::fs::File,
     selected: usize,
-    screen: Screen,
+    mode: AppMode,
 }
 
 impl Omnitrix {
@@ -62,7 +63,7 @@ impl Omnitrix {
             last_tick_started: Instant::now(),
             perf_log,
             selected: 0,
-            screen: Screen::Faceplate,
+            mode: AppMode::Faceplate,
         }
     }
 
@@ -103,19 +104,18 @@ impl App for Omnitrix {
             self.quit = true;
             return;
         }
-        match self.screen {
-            Screen::Faceplate => match k.code {
-                KeyCode::Tab => self.selected = (self.selected + 1) % DnaSample::ALL.len(),
+        match self.mode {
+            AppMode::Faceplate => match k.code {
+                KeyCode::Tab => self.selected = (self.selected + 1) % SAMPLES.len(),
                 KeyCode::BackTab => {
-                    self.selected =
-                        (self.selected + DnaSample::ALL.len() - 1) % DnaSample::ALL.len()
+                    self.selected = (self.selected + SAMPLES.len() - 1) % SAMPLES.len()
                 }
-                KeyCode::Enter => self.screen = Screen::Launched(DnaSample::ALL[self.selected]),
+                KeyCode::Enter => self.mode = AppMode::from_selected(self.selected),
                 _ => {}
             },
-            Screen::Launched(_) => {
+            _ => {
                 if k.code == KeyCode::Esc {
-                    self.screen = Screen::Faceplate;
+                    self.mode = AppMode::Faceplate;
                 }
             }
         }
@@ -128,8 +128,8 @@ impl App for Omnitrix {
             .theme(&theme)
             .render(area, buf);
 
-        match &self.screen {
-            Screen::Faceplate => {
+        match self.mode {
+            AppMode::Faceplate => {
                 // Layout: list area (rows 0 to h-2), hint row (row h-1)
                 // Ensure no overlap: list shrunk by 1, hint at bottom with hardened height
                 let list_area = Rect {
@@ -144,14 +144,11 @@ impl App for Omnitrix {
                     width: inner.width,
                     height: inner.height.saturating_sub(1).min(1),
                 };
-                let names: Vec<String> = DnaSample::ALL
-                    .iter()
-                    .map(|s| s.name().to_string())
-                    .collect();
+                let names: Vec<String> = SAMPLES.iter().map(|s| s.to_string()).collect();
                 List::new(&names, self.selected).render(list_area, buf);
                 Text::new("Tab/Shift+Tab cycle * Enter launch * q quit").render(hint_row, buf);
             }
-            Screen::Launched(sample) => {
+            _ => {
                 // Layout: name row (row 0), placeholder rows (1 to h-2), hint row (row h-1)
                 // All heights hardened to degrade safely as inner.height shrinks
                 let name_row = Rect {
@@ -172,7 +169,7 @@ impl App for Omnitrix {
                     width: inner.width,
                     height: inner.height.saturating_sub(1).min(1),
                 };
-                Text::new(sample.name()).render(name_row, buf);
+                Text::new(self.mode.name()).render(name_row, buf);
                 Text::new("(not yet built)").render(placeholder_row, buf);
                 Text::new("Esc back * q quit").render(hint_row, buf);
             }
