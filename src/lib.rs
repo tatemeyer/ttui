@@ -1,4 +1,5 @@
 pub mod app;
+pub mod audio;
 pub mod buffer;
 pub mod easing;
 pub mod effects;
