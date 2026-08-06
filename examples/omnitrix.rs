@@ -55,7 +55,7 @@ impl Omnitrix {
                 vertical: '#',
                 corner: '+',
             },
-            border_bold: false,
+            border_bold: brightness > 0.6,
         }
     }
 }
