@@ -29,6 +29,7 @@ impl<'a> Text<'a> {
                     symbol: ch,
                     fg: self.fg,
                     bg: self.bg,
+                    ..Default::default()
                 },
             );
         }

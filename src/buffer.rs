@@ -1,10 +1,16 @@
 use crossterm::style::Color;
 
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub struct CellStyle {
+    pub bold: bool,
+}
+
 #[derive(Clone, PartialEq, Debug)]
 pub struct Cell {
     pub symbol: char,
     pub fg: Color,
     pub bg: Color,
+    pub style: CellStyle,
 }
 
 impl Default for Cell {
@@ -13,6 +19,7 @@ impl Default for Cell {
             symbol: ' ',
             fg: Color::Reset,
             bg: Color::Reset,
+            style: CellStyle::default(),
         }
     }
 }
@@ -73,9 +80,10 @@ pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
 
 // Transparency rule: a cell is "transparent" (lets a lower layer show
 // through during compositing) iff it equals `Cell::default()`. An overlay
-// layer painting a plain space with default fg/bg does NOT occlude what's
-// beneath it — it must set a non-default fg or bg to actually cover the
-// layer below.
+// layer painting a plain space with default fg/bg/style does NOT occlude
+// what's beneath it — it must set a non-default fg, bg, or style to
+// actually cover the layer below (e.g. a bolded blank cell is non-default
+// and DOES occlude, even though it renders identically to a blank).
 #[derive(Clone, Debug)]
 pub struct LayerStack {
     // Invariant: always has length >= 1; layers[0] is the base layer. This
@@ -161,6 +169,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn cell_style_default_bold_is_false() {
+        assert!(!CellStyle::default().bold);
+    }
+
+    #[test]
+    fn cell_default_style_equals_cell_style_default() {
+        assert_eq!(Cell::default().style, CellStyle::default());
+    }
+
+    #[test]
+    fn cells_identical_except_bold_are_unequal() {
+        let cell1 = Cell::default();
+        let mut cell2 = Cell::default();
+        cell2.style.bold = true;
+        assert_ne!(cell1, cell2);
+    }
+
+    #[test]
     fn new_buffer_is_filled_with_default_cells() {
         let buf = Buffer::new(3, 2);
         assert_eq!(buf.width, 3);
@@ -176,6 +202,7 @@ mod tests {
             symbol: 'x',
             fg: crossterm::style::Color::Red,
             bg: crossterm::style::Color::Reset,
+            ..Default::default()
         };
         buf.set(1, 1, cell.clone());
         assert_eq!(*buf.get(1, 1), cell);
@@ -189,6 +216,7 @@ mod tests {
             symbol: 'x',
             fg: Color::Reset,
             bg: Color::Reset,
+            ..Default::default()
         };
         next.set(1, 0, cell.clone());
 
@@ -218,6 +246,7 @@ mod tests {
             symbol: 'x',
             fg: Color::Red,
             bg: Color::Reset,
+            ..Default::default()
         };
         stack.push_layer().set(1, 1, cell.clone());
 
@@ -232,6 +261,7 @@ mod tests {
             symbol: 'y',
             fg: Color::Reset,
             bg: Color::Red,
+            ..Default::default()
         };
         stack.set(0, 1, cell.clone()); // DerefMut -> base layer, no layer_mut(0) needed
 
@@ -246,6 +276,7 @@ mod tests {
             symbol: 'z',
             fg: Color::Green,
             bg: Color::Reset,
+            ..Default::default()
         };
         stack.set(1, 0, cell.clone());
 
@@ -264,16 +295,19 @@ mod tests {
             symbol: 'a',
             fg: Color::Reset,
             bg: Color::Reset,
+            ..Default::default()
         };
         let b = Cell {
             symbol: 'b',
             fg: Color::Reset,
             bg: Color::Reset,
+            ..Default::default()
         };
         let c = Cell {
             symbol: 'c',
             fg: Color::Reset,
             bg: Color::Reset,
+            ..Default::default()
         };
 
         stack.set(0, 0, a.clone()); // base layer: 'a' at x=0
@@ -294,11 +328,13 @@ mod tests {
             symbol: 'a',
             fg: Color::Reset,
             bg: Color::Reset,
+            ..Default::default()
         };
         let top_cell = Cell {
             symbol: 'b',
             fg: Color::Blue,
             bg: Color::Reset,
+            ..Default::default()
         };
         stack.set(0, 0, base_cell.clone()); // base layer via DerefMut
         stack.push_layer().set(1, 0, top_cell.clone()); // layer 1 (top)
@@ -338,6 +374,7 @@ mod tests {
             symbol: 'q',
             fg: Color::Reset,
             bg: Color::Reset,
+            ..Default::default()
         };
         stack.push_layer().set(0, 0, cell.clone());
 

@@ -27,6 +27,7 @@ impl<'a> List<'a> {
                         symbol: ' ',
                         fg,
                         bg,
+                        ..Default::default()
                     },
                 );
             }
@@ -34,7 +35,12 @@ impl<'a> List<'a> {
                 buf.set(
                     area.x + i as u16,
                     area.y + row as u16,
-                    Cell { symbol: ch, fg, bg },
+                    Cell {
+                        symbol: ch,
+                        fg,
+                        bg,
+                        ..Default::default()
+                    },
                 );
             }
         }
