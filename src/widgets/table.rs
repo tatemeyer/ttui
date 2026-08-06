@@ -40,7 +40,16 @@ impl<'a> Table<'a> {
                     break;
                 }
                 let ch = cell.chars().nth(i as usize).unwrap_or(' ');
-                buf.set(x + i, y, Cell { symbol: ch, fg, bg });
+                buf.set(
+                    x + i,
+                    y,
+                    Cell {
+                        symbol: ch,
+                        fg,
+                        bg,
+                        ..Default::default()
+                    },
+                );
             }
             x += self.col_width;
         }
