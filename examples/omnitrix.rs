@@ -129,27 +129,47 @@ impl App for Omnitrix {
 
         match &self.screen {
             Screen::Faceplate => {
+                let list_area = Rect {
+                    x: inner.x,
+                    y: inner.y,
+                    width: inner.width,
+                    height: inner.height.saturating_sub(1),
+                };
+                let hint_row = Rect {
+                    x: inner.x,
+                    y: inner.y + inner.height.saturating_sub(1),
+                    width: inner.width,
+                    height: 1,
+                };
                 let names: Vec<String> = DnaSample::ALL
                     .iter()
                     .map(|s| s.name().to_string())
                     .collect();
-                List::new(&names, self.selected).render(inner, buf);
+                List::new(&names, self.selected).render(list_area, buf);
+                Text::new("Tab/Shift+Tab cycle * Enter launch * q quit").render(hint_row, buf);
             }
             Screen::Launched(sample) => {
                 let name_row = Rect {
                     x: inner.x,
                     y: inner.y,
                     width: inner.width,
-                    height: 1,
+                    height: inner.height.min(1),
                 };
                 let placeholder_row = Rect {
                     x: inner.x,
                     y: inner.y + 1,
                     width: inner.width,
-                    height: inner.height.saturating_sub(1),
+                    height: inner.height.saturating_sub(2),
+                };
+                let hint_row = Rect {
+                    x: inner.x,
+                    y: inner.y + inner.height.saturating_sub(1),
+                    width: inner.width,
+                    height: 1,
                 };
                 Text::new(sample.name()).render(name_row, buf);
                 Text::new("(not yet built)").render(placeholder_row, buf);
+                Text::new("Esc back * q quit").render(hint_row, buf);
             }
         }
     }
