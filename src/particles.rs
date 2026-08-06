@@ -127,6 +127,7 @@ mod tests {
                 symbol: '*',
                 fg: Color::Red,
                 bg: Color::Reset,
+                ..Default::default()
             }
         );
     }
@@ -192,6 +193,7 @@ mod tests {
                 symbol: 'X',
                 fg: Color::Blue,
                 bg: Color::Reset,
+                ..Default::default()
             }
         );
     }
