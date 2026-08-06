@@ -25,6 +25,7 @@ pub struct Theme {
     pub tertiary: Color,
     pub accent: Color,
     pub border: BorderSet,
+    pub border_bold: bool,
 }
 
 impl Default for Theme {
@@ -36,6 +37,7 @@ impl Default for Theme {
             tertiary: Color::Reset,
             accent: Color::Reset,
             border: BorderSet::default(),
+            border_bold: false,
         }
     }
 }
@@ -61,5 +63,10 @@ mod tests {
         assert_eq!(t.tertiary, Color::Reset);
         assert_eq!(t.accent, Color::Reset);
         assert_eq!(t.border, BorderSet::default());
+    }
+
+    #[test]
+    fn default_theme_border_bold_is_false() {
+        assert!(!Theme::default().border_bold);
     }
 }

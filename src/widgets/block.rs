@@ -220,6 +220,7 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
+            border_bold: false,
         };
         let mut buf = Buffer::new(4, 3);
         let area = Rect {
