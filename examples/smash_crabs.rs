@@ -32,6 +32,7 @@ fn arena_theme() -> Theme {
             corner: '+',
         },
         border_bold: false,
+        border_thick: false,
     }
 }
 

@@ -88,6 +88,7 @@ impl Omnitrix {
                 corner: '+',
             },
             border_bold: brightness > 0.6,
+            border_thick: false,
         }
     }
 }

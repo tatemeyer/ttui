@@ -223,6 +223,7 @@ mod tests {
                 corner: '*',
             },
             border_bold: false,
+            border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);
         let area = Rect {
@@ -255,6 +256,7 @@ mod tests {
                 corner: '*',
             },
             border_bold: true,
+            border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);
         let area = Rect {
@@ -285,6 +287,7 @@ mod tests {
                 corner: '*',
             },
             border_bold: true,
+            border_thick: false,
         };
         let mut buf = Buffer::new(6, 3);
         let area = Rect {

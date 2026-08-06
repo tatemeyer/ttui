@@ -26,6 +26,7 @@ pub struct Theme {
     pub accent: Color,
     pub border: BorderSet,
     pub border_bold: bool,
+    pub border_thick: bool,
 }
 
 impl Default for Theme {
@@ -38,6 +39,7 @@ impl Default for Theme {
             accent: Color::Reset,
             border: BorderSet::default(),
             border_bold: false,
+            border_thick: false,
         }
     }
 }
@@ -68,5 +70,10 @@ mod tests {
     #[test]
     fn default_theme_border_bold_is_false() {
         assert!(!Theme::default().border_bold);
+    }
+
+    #[test]
+    fn default_theme_border_thick_is_false() {
+        assert!(!Theme::default().border_thick);
     }
 }
