@@ -129,6 +129,8 @@ impl App for Omnitrix {
 
         match &self.screen {
             Screen::Faceplate => {
+                // Layout: list area (rows 0 to h-2), hint row (row h-1)
+                // Ensure no overlap: list shrunk by 1, hint at bottom with hardened height
                 let list_area = Rect {
                     x: inner.x,
                     y: inner.y,
@@ -139,7 +141,7 @@ impl App for Omnitrix {
                     x: inner.x,
                     y: inner.y + inner.height.saturating_sub(1),
                     width: inner.width,
-                    height: 1,
+                    height: inner.height.saturating_sub(1).min(1),
                 };
                 let names: Vec<String> = DnaSample::ALL
                     .iter()
@@ -149,6 +151,8 @@ impl App for Omnitrix {
                 Text::new("Tab/Shift+Tab cycle * Enter launch * q quit").render(hint_row, buf);
             }
             Screen::Launched(sample) => {
+                // Layout: name row (row 0), placeholder rows (1 to h-2), hint row (row h-1)
+                // All heights hardened to degrade safely as inner.height shrinks
                 let name_row = Rect {
                     x: inner.x,
                     y: inner.y,
@@ -165,7 +169,7 @@ impl App for Omnitrix {
                     x: inner.x,
                     y: inner.y + inner.height.saturating_sub(1),
                     width: inner.width,
-                    height: 1,
+                    height: inner.height.saturating_sub(1).min(1),
                 };
                 Text::new(sample.name()).render(name_row, buf);
                 Text::new("(not yet built)").render(placeholder_row, buf);
