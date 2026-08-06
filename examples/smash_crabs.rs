@@ -31,6 +31,7 @@ fn arena_theme() -> Theme {
             vertical: '|',
             corner: '+',
         },
+        border_bold: false,
     }
 }
 
