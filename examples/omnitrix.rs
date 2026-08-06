@@ -8,15 +8,45 @@ use ttui::app::{run, App};
 use ttui::buffer::LayerStack;
 use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
-use ttui::widgets::{block::Block, text::Text};
+use ttui::widgets::{block::Block, list::List, text::Text};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS
+
+#[derive(Clone, Copy, PartialEq)]
+enum DnaSample {
+    Brainstorm,
+    Fasttrack,
+    Upgrade,
+}
+
+impl DnaSample {
+    const ALL: [DnaSample; 3] = [
+        DnaSample::Brainstorm,
+        DnaSample::Fasttrack,
+        DnaSample::Upgrade,
+    ];
+
+    fn name(&self) -> &'static str {
+        match self {
+            DnaSample::Brainstorm => "Brainstorm",
+            DnaSample::Fasttrack => "Fasttrack",
+            DnaSample::Upgrade => "Upgrade",
+        }
+    }
+}
+
+enum Screen {
+    Faceplate,
+    Launched(DnaSample),
+}
 
 struct Omnitrix {
     pulse_phase: f32,
     quit: bool,
     last_tick_started: Instant,
     perf_log: std::fs::File,
+    selected: usize,
+    screen: Screen,
 }
 
 impl Omnitrix {
@@ -31,6 +61,8 @@ impl Omnitrix {
             quit: false,
             last_tick_started: Instant::now(),
             perf_log,
+            selected: 0,
+            screen: Screen::Faceplate,
         }
     }
 
@@ -68,6 +100,23 @@ impl App for Omnitrix {
         }
         if k.code == KeyCode::Char('q') {
             self.quit = true;
+            return;
+        }
+        match self.screen {
+            Screen::Faceplate => match k.code {
+                KeyCode::Tab => self.selected = (self.selected + 1) % DnaSample::ALL.len(),
+                KeyCode::BackTab => {
+                    self.selected =
+                        (self.selected + DnaSample::ALL.len() - 1) % DnaSample::ALL.len()
+                }
+                KeyCode::Enter => self.screen = Screen::Launched(DnaSample::ALL[self.selected]),
+                _ => {}
+            },
+            Screen::Launched(_) => {
+                if k.code == KeyCode::Esc {
+                    self.screen = Screen::Faceplate;
+                }
+            }
         }
     }
 
@@ -77,7 +126,56 @@ impl App for Omnitrix {
             .title("Omnitrix")
             .theme(&theme)
             .render(area, buf);
-        Text::new("The Omnitrix breathes... press q to quit").render(inner, buf);
+
+        match &self.screen {
+            Screen::Faceplate => {
+                // Layout: list area (rows 0 to h-2), hint row (row h-1)
+                // Ensure no overlap: list shrunk by 1, hint at bottom with hardened height
+                let list_area = Rect {
+                    x: inner.x,
+                    y: inner.y,
+                    width: inner.width,
+                    height: inner.height.saturating_sub(1),
+                };
+                let hint_row = Rect {
+                    x: inner.x,
+                    y: inner.y + inner.height.saturating_sub(1),
+                    width: inner.width,
+                    height: inner.height.saturating_sub(1).min(1),
+                };
+                let names: Vec<String> = DnaSample::ALL
+                    .iter()
+                    .map(|s| s.name().to_string())
+                    .collect();
+                List::new(&names, self.selected).render(list_area, buf);
+                Text::new("Tab/Shift+Tab cycle * Enter launch * q quit").render(hint_row, buf);
+            }
+            Screen::Launched(sample) => {
+                // Layout: name row (row 0), placeholder rows (1 to h-2), hint row (row h-1)
+                // All heights hardened to degrade safely as inner.height shrinks
+                let name_row = Rect {
+                    x: inner.x,
+                    y: inner.y,
+                    width: inner.width,
+                    height: inner.height.min(1),
+                };
+                let placeholder_row = Rect {
+                    x: inner.x,
+                    y: inner.y + 1,
+                    width: inner.width,
+                    height: inner.height.saturating_sub(2),
+                };
+                let hint_row = Rect {
+                    x: inner.x,
+                    y: inner.y + inner.height.saturating_sub(1),
+                    width: inner.width,
+                    height: inner.height.saturating_sub(1).min(1),
+                };
+                Text::new(sample.name()).render(name_row, buf);
+                Text::new("(not yet built)").render(placeholder_row, buf);
+                Text::new("Esc back * q quit").render(hint_row, buf);
+            }
+        }
     }
 
     fn should_quit(&self) -> bool {
