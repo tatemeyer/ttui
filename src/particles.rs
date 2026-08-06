@@ -51,6 +51,10 @@ impl ParticleSystem {
                 buf.set(
                     x as u16,
                     y as u16,
+                    #[allow(clippy::needless_update)]
+                    // Keep ..Default::default() even though it's a no-op today (all 3 fields are
+                    // already set). A sibling task is concurrently adding a 4th `style` field to
+                    // Cell; this syntax ensures the file compiles unchanged once that field lands.
                     Cell {
                         symbol: p.symbol,
                         fg: p.color,
