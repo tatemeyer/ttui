@@ -154,6 +154,10 @@ mutually exclusive by nature, with no fourth caller in sight.
 
 ## Deferred (documented, not designed): buffer layering
 
+**Update (2026-08-05):** this has since been designed and shipped — see
+`2026-08-05-buffer-layering-compositing-design.md`. The rest of this
+section is preserved as the original historical record.
+
 Smash Crabs wants three explicit, z-ordered buffers (background/UI/
 effects) composited before diffing; TARDIS wants a single decaying
 "Glitch Buffer" overlaid on the primary buffer. Neither is designed in
@@ -227,7 +231,8 @@ working example.
 ## Explicitly deferred / open questions for future revisions
 
 - Buffer layering/compositing for Smash Crabs (see "Deferred" above) —
-  not designed, direction recorded only.
+  not designed, direction recorded only — since designed and
+  implemented, see `2026-08-05-buffer-layering-compositing-design.md`.
 - Camera/viewport abstraction for TARDIS (see "Deferred" above) — not
   designed, direction recorded only; per-cell rotation flagged as
   likely permanently out of scope.

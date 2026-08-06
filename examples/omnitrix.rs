@@ -5,7 +5,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::time::{Duration, Instant};
 use ttui::app::{run, App};
-use ttui::buffer::Buffer;
+use ttui::buffer::LayerStack;
 use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
 use ttui::widgets::{block::Block, text::Text};
@@ -70,7 +70,7 @@ impl App for Omnitrix {
         }
     }
 
-    fn view(&self, area: Rect, buf: &mut Buffer) {
+    fn view(&self, area: Rect, buf: &mut LayerStack) {
         let theme = self.theme();
         let inner = Block::new()
             .title("Omnitrix")
