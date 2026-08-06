@@ -3,6 +3,7 @@ pub mod buffer;
 pub mod easing;
 pub mod effects;
 pub mod layout;
+pub mod particles;
 pub mod terminal;
 pub mod theme;
 pub mod widgets;
