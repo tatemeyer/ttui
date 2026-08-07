@@ -3,7 +3,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::{run, App};
-use ttui::buffer::{Buffer, Cell, LayerStack};
+use ttui::buffer::{Buffer, Cell, CellStyle, LayerStack};
 use ttui::easing;
 use ttui::effects;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
@@ -25,6 +25,7 @@ const CURSOR_SYMBOL: char = 'C';
 const SHAKE_TICKS: u8 = 6; // matches FLASH_TICKS's ~200ms feel
 const DAMAGE_TWEEN_MS: u64 = 250;
 const HIT_DAMAGE: u16 = 17;
+const VS_TRANSITION_MS: u64 = 700;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Screen {
@@ -70,6 +71,7 @@ struct SmashCrabs {
     screen: Screen,
     selected: usize,
     cursor_tween: Option<(f32, Transition)>,
+    transitioning_to: Option<(Screen, Transition)>,
     p2_damage: u16,
     damage_tween: Option<(f32, Transition)>,
     flash_ticks_remaining: u8,
@@ -86,6 +88,7 @@ impl SmashCrabs {
             screen: Screen::Hub,
             selected: 0,
             cursor_tween: None,
+            transitioning_to: None,
             p2_damage: 0,
             damage_tween: None,
             flash_ticks_remaining: 0,
@@ -289,6 +292,95 @@ impl SmashCrabs {
             blit(&final_buf, area, buf.layer_mut(index));
         }
     }
+
+    fn render_destination_preview(&self, screen: Screen, area: Rect) -> Buffer {
+        let mut buf = Buffer::new(area.width, area.height);
+        let local = Rect {
+            x: 0,
+            y: 0,
+            width: area.width,
+            height: area.height,
+        };
+        match screen {
+            Screen::Versus => {
+                let background = self.paint_background(local);
+                blit(&background, local, &mut buf);
+                let ui = self.paint_ui(local);
+                blit(&ui, local, &mut buf);
+            }
+            Screen::TargetSmash | Screen::StageHazards => {
+                let mut stack = LayerStack::new(area.width, area.height);
+                self.render_placeholder(screen, local, &mut stack);
+                blit(&stack, local, &mut buf);
+            }
+            Screen::Hub => {
+                let mut stack = LayerStack::new(area.width, area.height);
+                self.render_hub(local, &mut stack);
+                blit(&stack, local, &mut buf);
+            }
+        }
+        buf
+    }
+
+    fn render_transition(&self, destination: Screen, area: Rect, progress: f32, buf: &mut Buffer) {
+        if progress < 0.4 {
+            for y in 0..area.height {
+                for x in 0..area.width {
+                    buf.set(
+                        area.x + x,
+                        area.y + y,
+                        Cell {
+                            symbol: ' ',
+                            fg: Color::Reset,
+                            bg: Color::Black,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            let label = "VS";
+            let lx = area.x + area.width.saturating_sub(label.len() as u16) / 2;
+            let ly = area.y + area.height / 2;
+            for (i, ch) in label.chars().enumerate() {
+                buf.set(
+                    lx + i as u16,
+                    ly,
+                    Cell {
+                        symbol: ch,
+                        fg: Color::White,
+                        bg: Color::Black,
+                        style: CellStyle { bold: true },
+                    },
+                );
+            }
+            return;
+        }
+
+        let wipe = (progress - 0.4) / 0.6;
+        let content = self.render_destination_preview(destination, area);
+        let cx = area.width as f32 / 2.0;
+        let cy = area.height as f32 / 2.0;
+        let max_radius = ((cx / 2.0).powi(2) + cy.powi(2)).sqrt();
+        let radius = wipe * max_radius;
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let dx = (x as f32 - cx) / 2.0;
+                let dy = y as f32 - cy;
+                let dist = (dx * dx + dy * dy).sqrt();
+                let cell = if dist <= radius {
+                    content.get(x, y).clone()
+                } else {
+                    Cell {
+                        symbol: ' ',
+                        fg: Color::Reset,
+                        bg: Color::Black,
+                        ..Default::default()
+                    }
+                };
+                buf.set(area.x + x, area.y + y, cell);
+            }
+        }
+    }
 }
 
 fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
@@ -307,6 +399,9 @@ impl App for SmashCrabs {
         }
         if k.code == KeyCode::Char('q') {
             self.quit = true;
+            return;
+        }
+        if self.transitioning_to.is_some() {
             return;
         }
         match self.screen {
@@ -329,7 +424,16 @@ impl App for SmashCrabs {
                 }
                 KeyCode::Enter => {
                     if self.cursor_tween.is_none() {
-                        self.screen = screen_for_selected(self.selected);
+                        let destination = screen_for_selected(self.selected);
+                        self.transitioning_to = Some((
+                            destination,
+                            Transition::start(Duration::from_millis(VS_TRANSITION_MS)),
+                        ));
+                        self.p2_damage = 0;
+                        self.damage_tween = None;
+                        self.flash_ticks_remaining = 0;
+                        self.shake_ticks_remaining = 0;
+                        self.particles = ParticleSystem::new();
                     }
                 }
                 _ => {}
@@ -370,6 +474,10 @@ impl App for SmashCrabs {
     }
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
+        if let Some((destination, transition)) = &self.transitioning_to {
+            self.render_transition(*destination, area, transition.progress(), buf);
+            return;
+        }
         match self.screen {
             Screen::Hub => self.render_hub(area, buf),
             Screen::Versus => {
@@ -417,6 +525,14 @@ impl App for SmashCrabs {
         }
 
         self.particles.update(elapsed);
+
+        if let Some((destination, t)) = &mut self.transitioning_to {
+            t.tick(elapsed);
+            if t.is_complete() {
+                self.screen = *destination;
+                self.transitioning_to = None;
+            }
+        }
     }
 }
 
