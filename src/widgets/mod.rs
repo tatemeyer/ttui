@@ -1,3 +1,4 @@
+pub mod analog_toggle;
 pub mod block;
 pub mod damage_meter;
 pub mod dial;
