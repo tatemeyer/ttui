@@ -114,6 +114,15 @@ const PSYCHIC_THINKING_MS: u64 = 800;
 const PSYCHIC_REVEAL_MS: u64 = 800;
 const PSYCHIC_GLITCH_EVERY: u32 = 3;
 const PSYCHIC_GLITCH_DURATION_MS: u64 = 600;
+const TIMELINE: [&str; 5] = [
+    "Draft proposal",
+    "Review PR",
+    "Deploy hotfix",
+    "Write docs",
+    "Plan sprint",
+];
+const TEMPORAL_SHIFT_MS: u64 = 400;
+const CLOUD_GLYPHS: [char; 4] = ['?', '~', '·', '#'];
 const PAPER_COLOR: Color = Color::Rgb {
     r: 230,
     g: 225,
@@ -180,6 +189,8 @@ struct Tardis {
     psychic_send_count: u32,
     psychic_pending: Option<(bool, Transition)>,
     psychic_reveal: Option<Transition>,
+    present_index: usize,
+    temporal_shift: Option<Transition>,
     quit: bool,
 }
 
@@ -203,6 +214,8 @@ impl Tardis {
             psychic_send_count: 0,
             psychic_pending: None,
             psychic_reveal: None,
+            present_index: 2,
+            temporal_shift: None,
             quit: false,
         };
         tardis.audio.play("boot");
@@ -289,36 +302,6 @@ impl Tardis {
             height: area.height.saturating_sub(1).min(1),
         };
         Text::new("Left/Right rotate * Enter select * q quit").render(hint_row, buf);
-    }
-
-    fn render_placeholder(&self, screen: Screen, area: Rect, buf: &mut LayerStack) {
-        let name = match screen {
-            Screen::PsychicPaper => "Psychic Paper",
-            Screen::StarCharts => "Star Charts",
-            Screen::ArtronEnergy => "Artron Energy",
-            Screen::Hub => "",
-        };
-        let name_row = Rect {
-            x: area.x,
-            y: area.y,
-            width: area.width,
-            height: area.height.min(1),
-        };
-        let placeholder_row = Rect {
-            x: area.x,
-            y: area.y + 1,
-            width: area.width,
-            height: area.height.saturating_sub(2),
-        };
-        let hint_row = Rect {
-            x: area.x,
-            y: area.y + area.height.saturating_sub(1),
-            width: area.width,
-            height: area.height.saturating_sub(1).min(1),
-        };
-        Text::new(name).render(name_row, buf);
-        Text::new("(not yet built)").render(placeholder_row, buf);
-        Text::new("Esc back * q quit").render(hint_row, buf);
     }
 
     fn render_artron_energy(&self, area: Rect, buf: &mut LayerStack) {
@@ -441,6 +424,94 @@ impl Tardis {
         );
     }
 
+    fn render_star_charts(&self, area: Rect, buf: &mut LayerStack) {
+        if let Some(t) = &self.temporal_shift {
+            if t.progress() < 0.3 {
+                for y in 0..area.height {
+                    for x in 0..area.width {
+                        buf.set(
+                            area.x + x,
+                            area.y + y,
+                            Cell {
+                                symbol: ' ',
+                                fg: Color::Reset,
+                                bg: self.theme.accent,
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
+                return;
+            }
+        }
+
+        for (index, name) in TIMELINE.iter().enumerate() {
+            let diff = (index + TIMELINE.len() - self.present_index) % TIMELINE.len();
+            let row = index as u16;
+            if row >= area.height {
+                continue;
+            }
+            if diff == 0 {
+                let pulse = ((self.tick_count as f32 * 0.1).sin() + 1.0) / 2.0;
+                Roundel::new(pulse, self.theme.primary).render(
+                    Rect {
+                        x: area.x,
+                        y: area.y + row,
+                        width: 1,
+                        height: 1,
+                    },
+                    buf,
+                );
+                let name_area = Rect {
+                    x: area.x + 2,
+                    y: area.y + row,
+                    width: area.width.saturating_sub(2),
+                    height: 1,
+                };
+                Text::new(name).render(name_area, buf);
+            } else if diff == 3 || diff == 4 {
+                let line = format!("◆ {name}");
+                for (i, ch) in line.chars().take(area.width as usize).enumerate() {
+                    buf.set(
+                        area.x + i as u16,
+                        area.y + row,
+                        Cell {
+                            symbol: ch,
+                            fg: self.theme.accent,
+                            bg: Color::Reset,
+                            ..Default::default()
+                        },
+                    );
+                }
+            } else {
+                for col in 0..12u16.min(area.width) {
+                    let h = (col as u64).wrapping_mul(374_761_393)
+                        ^ (row as u64).wrapping_mul(668_265_263)
+                        ^ self.tick_count.wrapping_mul(2_246_822_519);
+                    let glyph = CLOUD_GLYPHS[(h % 4) as usize];
+                    buf.set(
+                        area.x + col,
+                        area.y + row,
+                        Cell {
+                            symbol: glyph,
+                            fg: self.theme.secondary,
+                            bg: Color::Reset,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+        }
+
+        let hint_row = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width,
+            height: area.height.saturating_sub(1).min(1),
+        };
+        Text::new("Enter shift * Esc back * q quit").render(hint_row, buf);
+    }
+
     fn render_destination_preview(&self, screen: Screen, area: Rect) -> Buffer {
         let local = Rect {
             x: 0,
@@ -452,7 +523,7 @@ impl Tardis {
         match screen {
             Screen::ArtronEnergy => self.render_artron_energy(local, &mut stack),
             Screen::PsychicPaper => self.render_psychic_paper(local, &mut stack),
-            Screen::StarCharts => self.render_placeholder(screen, local, &mut stack),
+            Screen::StarCharts => self.render_star_charts(local, &mut stack),
             Screen::Hub => self.render_hub(local, &mut stack),
         }
         let mut out = Buffer::new(area.width, area.height);
@@ -807,8 +878,17 @@ impl App for Tardis {
                 }
             }
             Screen::StarCharts => {
-                if k.code == KeyCode::Esc {
-                    self.screen = Screen::Hub;
+                if self.temporal_shift.is_some() {
+                    return;
+                }
+                match k.code {
+                    KeyCode::Enter | KeyCode::Char(' ') => {
+                        self.present_index = (self.present_index + 1) % TIMELINE.len();
+                        self.temporal_shift =
+                            Some(Transition::start(Duration::from_millis(TEMPORAL_SHIFT_MS)));
+                    }
+                    KeyCode::Esc => self.screen = Screen::Hub,
+                    _ => {}
                 }
             }
         }
@@ -827,7 +907,7 @@ impl App for Tardis {
             Screen::Hub => self.render_hub(area, buf),
             Screen::ArtronEnergy => self.render_artron_energy(area, buf),
             Screen::PsychicPaper => self.render_psychic_paper(area, buf),
-            Screen::StarCharts => self.render_placeholder(self.screen, area, buf),
+            Screen::StarCharts => self.render_star_charts(area, buf),
         }
     }
 
@@ -890,6 +970,13 @@ impl App for Tardis {
             t.tick(elapsed);
             if t.is_complete() {
                 self.psychic_reveal = None;
+            }
+        }
+
+        if let Some(t) = &mut self.temporal_shift {
+            t.tick(elapsed);
+            if t.is_complete() {
+                self.temporal_shift = None;
             }
         }
 
