@@ -6,10 +6,14 @@ use ttui::app::{run, App};
 use ttui::buffer::{Buffer, LayerStack};
 use ttui::camera::{self, Camera};
 use ttui::easing;
+use ttui::glitch::GlitchBuffer;
 use ttui::layout::Rect;
+use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::{BorderSet, Theme};
 use ttui::transition::Transition;
-use ttui::widgets::{roundel::Roundel, text::Text, time_rotor::TimeRotor};
+use ttui::widgets::{
+    analog_toggle::AnalogToggle, roundel::Roundel, text::Text, time_rotor::TimeRotor,
+};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
 const FACE_COUNT: usize = 6;
@@ -23,6 +27,14 @@ const FACE_NAMES: [&str; 6] = [
 ];
 const ROTATE_TWEEN_MS: u64 = 200;
 const DIM_FACTORS: [f32; 4] = [0.0, 0.35, 0.65, 0.85];
+const ENERGY_GAIN_PER_HIT: f32 = 12.0;
+const ENERGY_VENT_AMOUNT: f32 = 35.0;
+const ENERGY_DECAY_PER_SEC: f32 = 4.0;
+const VENT_FLASH_MS: u64 = 300;
+const VENTING_THRESHOLD: f32 = 80.0;
+const LAG_THRESHOLD: f32 = 90.0;
+const GLITCH_DURATION_MS: u64 = 500;
+const LAGGING_TICK_INTERVAL: Duration = Duration::from_millis(66);
 
 fn tardis_theme() -> Theme {
     Theme {
@@ -84,6 +96,10 @@ struct Tardis {
     screen: Screen,
     selected_face: usize,
     face_tween: Option<(f32, Transition)>,
+    energy: f32,
+    vent_flash: Option<Transition>,
+    glitch: GlitchBuffer,
+    particles: ParticleSystem,
     tick_count: u64,
     quit: bool,
 }
@@ -95,6 +111,10 @@ impl Tardis {
             screen: Screen::Hub,
             selected_face: 0,
             face_tween: None,
+            energy: 0.0,
+            vent_flash: None,
+            glitch: GlitchBuffer::new(),
+            particles: ParticleSystem::new(),
             tick_count: 0,
             quit: false,
         }
@@ -108,7 +128,11 @@ impl Tardis {
     }
 
     fn time_rotor_speed(&self) -> f32 {
-        1.0
+        1.0 + self.energy / 50.0
+    }
+
+    fn is_lagging(&self) -> bool {
+        self.energy >= LAG_THRESHOLD
     }
 
     fn render_face_content(&self, face: usize, area: Rect, buf: &mut Buffer) {
@@ -207,6 +231,61 @@ impl Tardis {
         Text::new("(not yet built)").render(placeholder_row, buf);
         Text::new("Esc back * q quit").render(hint_row, buf);
     }
+
+    fn render_artron_energy(&self, area: Rect, buf: &mut LayerStack) {
+        let name_row = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: area.height.min(1),
+        };
+        Text::new("Artron Energy").render(name_row, buf);
+
+        for i in 0..3u16 {
+            let seg_intensity = ((self.energy - i as f32 * 33.0) / 33.0).clamp(0.0, 1.0);
+            let rx = area.x + 4 + i * 4;
+            let ry = area.y + 2;
+            Roundel::new(seg_intensity, self.theme.tertiary).render(
+                Rect {
+                    x: rx,
+                    y: ry,
+                    width: 1,
+                    height: 1,
+                },
+                buf,
+            );
+        }
+
+        let toggle_row = Rect {
+            x: area.x,
+            y: area.y + 4,
+            width: area.width.min(10),
+            height: 1,
+        };
+        AnalogToggle::new(self.vent_flash.is_some()).render(toggle_row, buf);
+
+        let rotor_area = Rect {
+            x: area.x,
+            y: area.y + 6,
+            width: area.width,
+            height: area.height.saturating_sub(8),
+        };
+        TimeRotor::new(self.time_rotor_speed()).render(rotor_area, self.tick_count, buf);
+
+        if self.glitch.is_active() {
+            self.glitch.render(area, Color::Red, self.tick_count, buf);
+        }
+
+        self.particles.render(buf);
+
+        let hint_row = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width,
+            height: area.height.saturating_sub(1).min(1),
+        };
+        Text::new("Space channel * v vent * Esc back * q quit").render(hint_row, buf);
+    }
 }
 
 fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
@@ -254,7 +333,33 @@ impl App for Tardis {
                 }
                 _ => {}
             },
-            _ => {
+            Screen::ArtronEnergy => match k.code {
+                KeyCode::Esc => self.screen = Screen::Hub,
+                KeyCode::Char(' ') => {
+                    self.energy += ENERGY_GAIN_PER_HIT;
+                    if self.energy >= VENTING_THRESHOLD {
+                        for i in 0..8 {
+                            let angle = i as f32 * std::f32::consts::TAU / 8.0;
+                            self.particles.spawn(Particle {
+                                x: 10.0,
+                                y: 4.0,
+                                vx: angle.cos() * 10.0,
+                                vy: angle.sin() * 5.0,
+                                symbol: '*',
+                                color: Color::Red,
+                                lifetime: Duration::from_millis(500),
+                                age: Duration::ZERO,
+                            });
+                        }
+                    }
+                }
+                KeyCode::Char('v') => {
+                    self.energy = (self.energy - ENERGY_VENT_AMOUNT).max(0.0);
+                    self.vent_flash = Some(Transition::start(Duration::from_millis(VENT_FLASH_MS)));
+                }
+                _ => {}
+            },
+            Screen::PsychicPaper | Screen::StarCharts => {
                 if k.code == KeyCode::Esc {
                     self.screen = Screen::Hub;
                 }
@@ -265,7 +370,8 @@ impl App for Tardis {
     fn view(&self, area: Rect, buf: &mut LayerStack) {
         match self.screen {
             Screen::Hub => self.render_hub(area, buf),
-            Screen::PsychicPaper | Screen::StarCharts | Screen::ArtronEnergy => {
+            Screen::ArtronEnergy => self.render_artron_energy(area, buf),
+            Screen::PsychicPaper | Screen::StarCharts => {
                 self.render_placeholder(self.screen, area, buf)
             }
         }
@@ -276,7 +382,11 @@ impl App for Tardis {
     }
 
     fn tick_rate(&self) -> Option<Duration> {
-        Some(TICK_INTERVAL)
+        if self.is_lagging() {
+            Some(LAGGING_TICK_INTERVAL)
+        } else {
+            Some(TICK_INTERVAL)
+        }
     }
 
     fn on_tick(&mut self, elapsed: Duration) {
@@ -287,6 +397,23 @@ impl App for Tardis {
                 self.face_tween = None;
             }
         }
+
+        self.energy = (self.energy - ENERGY_DECAY_PER_SEC * elapsed.as_secs_f32()).max(0.0);
+
+        if self.is_lagging() {
+            self.glitch
+                .trigger(Duration::from_millis(GLITCH_DURATION_MS));
+        }
+        self.glitch.tick(elapsed);
+
+        if let Some(t) = &mut self.vent_flash {
+            t.tick(elapsed);
+            if t.is_complete() {
+                self.vent_flash = None;
+            }
+        }
+
+        self.particles.update(elapsed);
     }
 }
 
