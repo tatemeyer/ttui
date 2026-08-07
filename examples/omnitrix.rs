@@ -33,15 +33,6 @@ impl AppMode {
             _ => AppMode::Upgrade,
         }
     }
-
-    fn name(&self) -> &'static str {
-        match self {
-            AppMode::Faceplate => "Faceplate",
-            AppMode::Brainstorm => "Brainstorm",
-            AppMode::Fasttrack => "Fasttrack",
-            AppMode::Upgrade => "Upgrade",
-        }
-    }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -60,6 +51,10 @@ const PREVIEW_REVEAL_MS: u64 = 400;
 const LOCK_ON_MS: u64 = 900;
 const COMPLETE_FLASH_MS: u64 = 300;
 const RING_POINTS: usize = 8;
+const UPGRADE_LOAD_GAIN: f32 = 15.0;
+const UPGRADE_LOAD_DECAY_PER_SEC: f32 = 3.0;
+const OVERLOAD_THRESHOLD: f32 = 90.0;
+const CIRCUIT_NODE_COUNT: u16 = 6;
 
 struct Omnitrix {
     pulse_phase: f32,
@@ -78,6 +73,7 @@ struct Omnitrix {
     target_selected: usize,
     lock_on: Option<(usize, Transition)>,
     complete_flash: Option<Transition>,
+    load: f32,
 }
 
 impl Omnitrix {
@@ -108,6 +104,7 @@ impl Omnitrix {
             target_selected: 0,
             lock_on: None,
             complete_flash: None,
+            load: 0.0,
         }
     }
 
@@ -116,11 +113,17 @@ impl Omnitrix {
         // bright green, matching the Omnitrix vision doc's "Recharge
         // Pulse" description.
         let brightness = (self.pulse_phase.sin() + 1.0) / 2.0;
-        let primary = Color::Rgb {
+        let mut primary = Color::Rgb {
             r: 0,
             g: (120.0 + brightness * 135.0) as u8,
             b: (32.0 + brightness * 33.0) as u8,
         };
+        if self.mode == AppMode::Upgrade
+            && self.load >= OVERLOAD_THRESHOLD
+            && self.tick_count.is_multiple_of(2)
+        {
+            primary = Color::Red;
+        }
         Theme {
             background: Color::Black,
             primary,
@@ -284,28 +287,45 @@ impl Omnitrix {
                 Text::new("Tab cycle * Enter lock-on * Esc back * q quit")
                     .render(hint_row, &mut buf);
             }
-            _ => {
-                let name_row = Rect {
+            AppMode::Upgrade => {
+                let cpu_label = Rect {
                     x: local.x,
                     y: local.y,
                     width: local.width,
-                    height: local.height.min(1),
+                    height: 1,
                 };
-                let placeholder_row = Rect {
+                Text::new("CPU").render(cpu_label, &mut buf);
+                let cpu_row = Rect {
                     x: local.x,
                     y: local.y + 1,
                     width: local.width,
-                    height: local.height.saturating_sub(2),
+                    height: 1,
                 };
+                self.render_circuit(cpu_row, self.load, &mut buf);
+
+                let ram_value = (self.load * 0.6 + 10.0).min(100.0);
+                let ram_label = Rect {
+                    x: local.x,
+                    y: local.y + 3,
+                    width: local.width,
+                    height: 1,
+                };
+                Text::new("RAM").render(ram_label, &mut buf);
+                let ram_row = Rect {
+                    x: local.x,
+                    y: local.y + 4,
+                    width: local.width,
+                    height: 1,
+                };
+                self.render_circuit(ram_row, ram_value, &mut buf);
+
                 let hint_row = Rect {
                     x: local.x,
                     y: local.y + local.height.saturating_sub(1),
                     width: local.width,
                     height: local.height.saturating_sub(1).min(1),
                 };
-                Text::new(mode.name()).render(name_row, &mut buf);
-                Text::new("(not yet built)").render(placeholder_row, &mut buf);
-                Text::new("Esc back * q quit").render(hint_row, &mut buf);
+                Text::new("Space overload * Esc back * q quit").render(hint_row, &mut buf);
             }
         }
         buf
@@ -352,6 +372,49 @@ impl Omnitrix {
                         ..Default::default()
                     },
                 );
+            }
+        }
+    }
+
+    fn render_circuit(&self, area: Rect, value: f32, buf: &mut Buffer) {
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
+        let lit = ((value.min(100.0) / 100.0) * CIRCUIT_NODE_COUNT as f32) as u16;
+        let theme = self.theme();
+        let mut x: u16 = 0;
+        for i in 0..CIRCUIT_NODE_COUNT {
+            if x >= area.width {
+                break;
+            }
+            let (symbol, color) = if i < lit {
+                ('●', theme.primary)
+            } else {
+                ('○', theme.secondary)
+            };
+            buf.set(
+                area.x + x,
+                area.y,
+                Cell {
+                    symbol,
+                    fg: color,
+                    bg: Color::Reset,
+                    ..Default::default()
+                },
+            );
+            x += 1;
+            if i + 1 < CIRCUIT_NODE_COUNT && x < area.width {
+                buf.set(
+                    area.x + x,
+                    area.y,
+                    Cell {
+                        symbol: '─',
+                        fg: theme.secondary,
+                        bg: Color::Reset,
+                        ..Default::default()
+                    },
+                );
+                x += 1;
             }
         }
     }
@@ -562,11 +625,11 @@ impl App for Omnitrix {
                     _ => {}
                 }
             }
-            _ => {
-                if k.code == KeyCode::Esc {
-                    self.switch_mode(AppMode::Faceplate);
-                }
-            }
+            AppMode::Upgrade => match k.code {
+                KeyCode::Char(' ') => self.load += UPGRADE_LOAD_GAIN,
+                KeyCode::Esc => self.switch_mode(AppMode::Faceplate),
+                _ => {}
+            },
         }
     }
 
@@ -661,6 +724,8 @@ impl App for Omnitrix {
                 self.complete_flash = None;
             }
         }
+
+        self.load = (self.load - UPGRADE_LOAD_DECAY_PER_SEC * elapsed.as_secs_f32()).max(0.0);
     }
 }
 
