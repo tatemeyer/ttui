@@ -2,12 +2,21 @@
 
 This directory holds:
 
-- `specs/` — approved design documents, one per major design decision or
-  subsystem, produced by the `superpowers:brainstorming` skill. Filename
-  convention: `YYYY-MM-DD-<topic>-design.md`.
-- `plans/` — implementation plans derived from specs, structured as
+- `specs/<arc>/` — approved design documents, one per major design
+  decision or subsystem, produced by the `superpowers:brainstorming`
+  skill. Filename convention: `specs/<arc>/YYYY-MM-DD-<topic>-design.md`.
+- `plans/<arc>/` — implementation plans derived from specs, structured as
   **Arcs → Slices → Tasks** (below), produced by the
-  `superpowers:writing-plans` skill.
+  `superpowers:writing-plans` skill. Same `<arc>` bucketing as `specs/`.
+
+## Arcs
+
+- `core/` — framework internals, tooling, process, and anything not
+  scoped to one example app.
+- `omnitrix/`, `tardis/`, `smash-crabs/` — one bucket per example app.
+- A new bucket is added here the first time a genuinely new Arc starts
+  (e.g. a fourth example app) — this list, not the file count inside
+  each bucket, is what stays small as the docs tree grows.
 
 ## Arc / Slice / Task structure
 
