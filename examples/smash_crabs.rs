@@ -1,8 +1,10 @@
 // examples/smash_crabs.rs
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
+use rodio::Source;
 use std::time::Duration;
 use ttui::app::{run, App};
+use ttui::audio::AudioSink;
 use ttui::buffer::{Buffer, Cell, CellStyle, LayerStack};
 use ttui::easing;
 use ttui::effects;
@@ -66,6 +68,35 @@ fn arena_theme() -> Theme {
     }
 }
 
+struct RodioAudioSink {
+    sink: Option<rodio::stream::MixerDeviceSink>,
+}
+
+impl RodioAudioSink {
+    fn new() -> Self {
+        match rodio::stream::DeviceSinkBuilder::open_default_sink() {
+            Ok(sink) => RodioAudioSink { sink: Some(sink) },
+            Err(_) => RodioAudioSink { sink: None },
+        }
+    }
+}
+
+impl AudioSink for RodioAudioSink {
+    fn play(&mut self, event_id: &str) {
+        let Some(sink) = &self.sink else { return };
+        let freq: f32 = match event_id {
+            "cursor" => 440.0,
+            "select" => 660.0,
+            "hit" => 220.0,
+            _ => return,
+        };
+        let source = rodio::source::SineWave::new(freq)
+            .take_duration(Duration::from_millis(120))
+            .amplify(0.2);
+        sink.mixer().add(source);
+    }
+}
+
 struct SmashCrabs {
     theme: Theme,
     screen: Screen,
@@ -78,6 +109,7 @@ struct SmashCrabs {
     shake_ticks_remaining: u8,
     particles: ParticleSystem,
     tick_count: u64,
+    audio: RodioAudioSink,
     quit: bool,
 }
 
@@ -95,6 +127,7 @@ impl SmashCrabs {
             shake_ticks_remaining: 0,
             particles: ParticleSystem::new(),
             tick_count: 0,
+            audio: RodioAudioSink::new(),
             quit: false,
         }
     }
@@ -413,6 +446,7 @@ impl App for SmashCrabs {
                         from,
                         Transition::start(Duration::from_millis(CURSOR_TWEEN_MS)),
                     ));
+                    self.audio.play("cursor");
                 }
                 KeyCode::Right => {
                     let from = self.displayed_cursor_index();
@@ -421,6 +455,7 @@ impl App for SmashCrabs {
                         from,
                         Transition::start(Duration::from_millis(CURSOR_TWEEN_MS)),
                     ));
+                    self.audio.play("cursor");
                 }
                 KeyCode::Enter => {
                     if self.cursor_tween.is_none() {
@@ -434,6 +469,7 @@ impl App for SmashCrabs {
                         self.flash_ticks_remaining = 0;
                         self.shake_ticks_remaining = 0;
                         self.particles = ParticleSystem::new();
+                        self.audio.play("select");
                     }
                 }
                 _ => {}
@@ -463,6 +499,7 @@ impl App for SmashCrabs {
                             age: Duration::ZERO,
                         });
                     }
+                    self.audio.play("hit");
                 }
             }
             Screen::TargetSmash | Screen::StageHazards => {
