@@ -1,8 +1,10 @@
 // examples/tardis.rs
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
+use rodio::Source;
 use std::time::Duration;
 use ttui::app::{run, App};
+use ttui::audio::AudioSink;
 use ttui::buffer::{Buffer, Cell, LayerStack};
 use ttui::camera::{self, Camera};
 use ttui::easing;
@@ -97,6 +99,42 @@ fn hex_distance(a: usize, b: usize) -> usize {
     diff.min(FACE_COUNT - diff)
 }
 
+struct RodioAudioSink {
+    sink: Option<rodio::stream::MixerDeviceSink>,
+}
+
+impl RodioAudioSink {
+    fn new() -> Self {
+        match rodio::stream::DeviceSinkBuilder::open_default_sink() {
+            Ok(sink) => {
+                let hum = rodio::source::SineWave::new(80.0)
+                    .take_duration(Duration::from_secs(2))
+                    .amplify(0.05)
+                    .repeat_infinite();
+                sink.mixer().add(hum);
+                RodioAudioSink { sink: Some(sink) }
+            }
+            Err(_) => RodioAudioSink { sink: None },
+        }
+    }
+}
+
+impl AudioSink for RodioAudioSink {
+    fn play(&mut self, event_id: &str) {
+        let Some(sink) = &self.sink else { return };
+        let freq: f32 = match event_id {
+            "boot" => 100.0,
+            "flight" => 300.0,
+            "vent" => 500.0,
+            _ => return,
+        };
+        let source = rodio::source::SineWave::new(freq)
+            .take_duration(Duration::from_millis(200))
+            .amplify(0.15);
+        sink.mixer().add(source);
+    }
+}
+
 struct Tardis {
     theme: Theme,
     screen: Screen,
@@ -109,12 +147,13 @@ struct Tardis {
     transitioning_to: Option<(Screen, Transition)>,
     booting: Option<Transition>,
     tick_count: u64,
+    audio: RodioAudioSink,
     quit: bool,
 }
 
 impl Tardis {
     fn new() -> Self {
-        Tardis {
+        let mut tardis = Tardis {
             theme: tardis_theme(),
             screen: Screen::Hub,
             selected_face: 0,
@@ -126,8 +165,11 @@ impl Tardis {
             transitioning_to: None,
             booting: Some(Transition::start(Duration::from_millis(BOOT_MS))),
             tick_count: 0,
+            audio: RodioAudioSink::new(),
             quit: false,
-        }
+        };
+        tardis.audio.play("boot");
+        tardis
     }
 
     fn displayed_face_index(&self) -> f32 {
@@ -558,6 +600,7 @@ impl App for Tardis {
                                 dest,
                                 Transition::start(Duration::from_millis(FLIGHT_TRANSITION_MS)),
                             ));
+                            self.audio.play("flight");
                         }
                     }
                 }
@@ -586,6 +629,7 @@ impl App for Tardis {
                 KeyCode::Char('v') => {
                     self.energy = (self.energy - ENERGY_VENT_AMOUNT).max(0.0);
                     self.vent_flash = Some(Transition::start(Duration::from_millis(VENT_FLASH_MS)));
+                    self.audio.play("vent");
                 }
                 _ => {}
             },
