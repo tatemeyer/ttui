@@ -6,6 +6,8 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 use ttui::app::{run, App};
 use ttui::buffer::{Buffer, Cell, LayerStack};
+use ttui::camera;
+use ttui::easing;
 use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
 use ttui::transition::Transition;
@@ -55,6 +57,9 @@ const UPGRADE_LOAD_GAIN: f32 = 15.0;
 const UPGRADE_LOAD_DECAY_PER_SEC: f32 = 3.0;
 const OVERLOAD_THRESHOLD: f32 = 90.0;
 const CIRCUIT_NODE_COUNT: u16 = 6;
+const BOOT_MS: u64 = 2500;
+
+const HOURGLASS: [&str; 5] = ["┌───┐", " \\ / ", "  X  ", " / \\ ", "└───┘"];
 
 struct Omnitrix {
     pulse_phase: f32,
@@ -74,6 +79,7 @@ struct Omnitrix {
     lock_on: Option<(usize, Transition)>,
     complete_flash: Option<Transition>,
     load: f32,
+    booting: Option<Transition>,
 }
 
 impl Omnitrix {
@@ -105,6 +111,7 @@ impl Omnitrix {
             lock_on: None,
             complete_flash: None,
             load: 0.0,
+            booting: Some(Transition::start(Duration::from_millis(BOOT_MS))),
         }
     }
 
@@ -376,6 +383,100 @@ impl Omnitrix {
         }
     }
 
+    fn render_boot(&self, area: Rect, progress: f32, buf: &mut LayerStack) {
+        for y in 0..area.height {
+            for x in 0..area.width {
+                buf.set(
+                    area.x + x,
+                    area.y + y,
+                    Cell {
+                        symbol: ' ',
+                        fg: Color::Reset,
+                        bg: Color::Black,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        if progress < 0.4 {
+            let factor = (1.0 - progress / 0.4).clamp(0.0, 1.0);
+            let mut scratch = Buffer::new(5, 5);
+            let theme = self.theme();
+            for (row, line) in HOURGLASS.iter().enumerate() {
+                for (col, ch) in line.chars().enumerate() {
+                    scratch.set(
+                        col as u16,
+                        row as u16,
+                        Cell {
+                            symbol: ch,
+                            fg: theme.primary,
+                            bg: Color::Reset,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            let dimmed = camera::dim(&scratch, factor);
+            let x0 = area.x + (area.width.saturating_sub(5)) / 2;
+            let y0 = area.y + (area.height.saturating_sub(5)) / 2;
+            blit(
+                &dimmed,
+                Rect {
+                    x: x0,
+                    y: y0,
+                    width: 5,
+                    height: 5,
+                },
+                buf,
+            );
+            return;
+        }
+
+        if progress < 0.55 {
+            for y in 0..area.height {
+                for x in 0..area.width {
+                    buf.set(
+                        area.x + x,
+                        area.y + y,
+                        Cell {
+                            symbol: ' ',
+                            fg: Color::Reset,
+                            bg: Color::Rgb {
+                                r: 0,
+                                g: 255,
+                                b: 65,
+                            },
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            return;
+        }
+
+        let trace_progress = ((progress - 0.55) / 0.45).clamp(0.0, 1.0);
+        let scale = easing::ease_out(0.2, 1.0, trace_progress);
+        let w = (((area.width as f32) * scale) as u16)
+            .max(2)
+            .min(area.width);
+        let h = (((area.height as f32) * scale) as u16)
+            .max(2)
+            .min(area.height);
+        let x = area.x + (area.width.saturating_sub(w)) / 2;
+        let y = area.y + (area.height.saturating_sub(h)) / 2;
+        let theme = self.theme();
+        Block::new().title("Omnitrix").theme(&theme).render(
+            Rect {
+                x,
+                y,
+                width: w,
+                height: h,
+            },
+            buf,
+        );
+    }
+
     fn render_circuit(&self, area: Rect, value: f32, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
@@ -557,6 +658,9 @@ impl App for Omnitrix {
             self.quit = true;
             return;
         }
+        if self.booting.is_some() {
+            return;
+        }
         if self.transitioning_from.is_some() {
             return;
         }
@@ -634,6 +738,10 @@ impl App for Omnitrix {
     }
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
+        if let Some(t) = &self.booting {
+            self.render_boot(area, t.progress(), buf);
+            return;
+        }
         let theme = self.theme();
         let inner = Block::new()
             .title("Omnitrix")
@@ -726,6 +834,13 @@ impl App for Omnitrix {
         }
 
         self.load = (self.load - UPGRADE_LOAD_DECAY_PER_SEC * elapsed.as_secs_f32()).max(0.0);
+
+        if let Some(t) = &mut self.booting {
+            t.tick(elapsed);
+            if t.is_complete() {
+                self.booting = None;
+            }
+        }
     }
 }
 
