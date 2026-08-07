@@ -3,9 +3,10 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::{run, App};
-use ttui::buffer::{Buffer, LayerStack};
+use ttui::buffer::{Buffer, Cell, LayerStack};
 use ttui::camera::{self, Camera};
 use ttui::easing;
+use ttui::effects;
 use ttui::glitch::GlitchBuffer;
 use ttui::layout::Rect;
 use ttui::particles::{Particle, ParticleSystem};
@@ -35,6 +36,7 @@ const VENTING_THRESHOLD: f32 = 80.0;
 const LAG_THRESHOLD: f32 = 90.0;
 const GLITCH_DURATION_MS: u64 = 500;
 const LAGGING_TICK_INTERVAL: Duration = Duration::from_millis(66);
+const FLIGHT_TRANSITION_MS: u64 = 900;
 
 fn tardis_theme() -> Theme {
     Theme {
@@ -100,6 +102,7 @@ struct Tardis {
     vent_flash: Option<Transition>,
     glitch: GlitchBuffer,
     particles: ParticleSystem,
+    transitioning_to: Option<(Screen, Transition)>,
     tick_count: u64,
     quit: bool,
 }
@@ -115,6 +118,7 @@ impl Tardis {
             vent_flash: None,
             glitch: GlitchBuffer::new(),
             particles: ParticleSystem::new(),
+            transitioning_to: None,
             tick_count: 0,
             quit: false,
         }
@@ -286,6 +290,101 @@ impl Tardis {
         };
         Text::new("Space channel * v vent * Esc back * q quit").render(hint_row, buf);
     }
+
+    fn render_destination_preview(&self, screen: Screen, area: Rect) -> Buffer {
+        let local = Rect {
+            x: 0,
+            y: 0,
+            width: area.width,
+            height: area.height,
+        };
+        let mut stack = LayerStack::new(area.width, area.height);
+        match screen {
+            Screen::ArtronEnergy => self.render_artron_energy(local, &mut stack),
+            Screen::PsychicPaper | Screen::StarCharts => {
+                self.render_placeholder(screen, local, &mut stack)
+            }
+            Screen::Hub => self.render_hub(local, &mut stack),
+        }
+        let mut out = Buffer::new(area.width, area.height);
+        blit(&stack, local, &mut out);
+        out
+    }
+
+    fn render_transition(&self, destination: Screen, area: Rect, progress: f32, buf: &mut Buffer) {
+        if progress < 0.3 {
+            let local = Rect {
+                x: 0,
+                y: 0,
+                width: area.width,
+                height: area.height,
+            };
+            let mut stack = LayerStack::new(area.width, area.height);
+            self.render_hub(local, &mut stack);
+            let magnitude: i16 = 1 + (progress / 0.3 * 2.0) as i16;
+            let dx = if self.tick_count.is_multiple_of(2) {
+                magnitude
+            } else {
+                -magnitude
+            };
+            let dy = if (self.tick_count / 2).is_multiple_of(2) {
+                magnitude
+            } else {
+                -magnitude
+            };
+            let shaken = effects::shake(&stack, dx, dy);
+            blit(&shaken, area, buf);
+            return;
+        }
+
+        if progress < 0.85 {
+            for y in 0..area.height {
+                for x in 0..area.width {
+                    buf.set(
+                        area.x + x,
+                        area.y + y,
+                        Cell {
+                            symbol: ' ',
+                            fg: Color::Reset,
+                            bg: Color::Rgb { r: 5, g: 0, b: 15 },
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            let void_progress = ((progress - 0.3) / 0.4).clamp(0.0, 1.0);
+            let count = (void_progress * 20.0) as usize;
+            let cx = area.width as f32 / 2.0;
+            let cy = area.height as f32 / 2.0;
+            let max_dist = cx.max(cy);
+            for i in 0..count {
+                let angle = i as f32 * std::f32::consts::TAU / 20.0;
+                let dist = void_progress * max_dist;
+                let x = (cx + angle.cos() * dist).round();
+                let y = (cy + angle.sin() * dist * 0.5).round();
+                if x >= 0.0 && y >= 0.0 && (x as u16) < area.width && (y as u16) < area.height {
+                    buf.set(
+                        area.x + x as u16,
+                        area.y + y as u16,
+                        Cell {
+                            symbol: '-',
+                            fg: Color::Rgb {
+                                r: 0,
+                                g: 255,
+                                b: 255,
+                            },
+                            bg: Color::Reset,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            return;
+        }
+
+        let content = self.render_destination_preview(destination, area);
+        blit(&content, area, buf);
+    }
 }
 
 fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
@@ -304,6 +403,9 @@ impl App for Tardis {
         }
         if k.code == KeyCode::Char('q') {
             self.quit = true;
+            return;
+        }
+        if self.transitioning_to.is_some() {
             return;
         }
         match self.screen {
@@ -327,7 +429,10 @@ impl App for Tardis {
                 KeyCode::Enter => {
                     if self.face_tween.is_none() {
                         if let Some(dest) = screen_for_face(self.selected_face) {
-                            self.screen = dest;
+                            self.transitioning_to = Some((
+                                dest,
+                                Transition::start(Duration::from_millis(FLIGHT_TRANSITION_MS)),
+                            ));
                         }
                     }
                 }
@@ -368,6 +473,10 @@ impl App for Tardis {
     }
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
+        if let Some((destination, transition)) = &self.transitioning_to {
+            self.render_transition(*destination, area, transition.progress(), buf);
+            return;
+        }
         match self.screen {
             Screen::Hub => self.render_hub(area, buf),
             Screen::ArtronEnergy => self.render_artron_energy(area, buf),
@@ -414,6 +523,14 @@ impl App for Tardis {
         }
 
         self.particles.update(elapsed);
+
+        if let Some((destination, t)) = &mut self.transitioning_to {
+            t.tick(elapsed);
+            if t.is_complete() {
+                self.screen = *destination;
+                self.transitioning_to = None;
+            }
+        }
     }
 }
 
