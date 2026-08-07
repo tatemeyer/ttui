@@ -1,17 +1,25 @@
+//! Linear/eased interpolation and progress helpers — the building
+//! blocks every `Transition`-driven animation in this codebase uses.
+
 use crossterm::style::Color;
 use std::time::Duration;
 
+/// Linear interpolation from `start` to `end`, `t` clamped to `0..1`.
 pub fn lerp(start: f32, end: f32, t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     start + (end - start) * t
 }
 
+/// Interpolation from `start` to `end` that starts fast and eases
+/// into `end`, `t` clamped to `0..1`.
 pub fn ease_out(start: f32, end: f32, t: f32) -> f32 {
     let t = t.clamp(0.0, 1.0);
     let eased = 1.0 - (1.0 - t) * (1.0 - t);
     lerp(start, end, eased)
 }
 
+/// `elapsed / duration`, clamped to `0..1`; a zero `duration` is
+/// always complete.
 pub fn progress(elapsed: Duration, duration: Duration) -> f32 {
     if duration.is_zero() {
         return 1.0;
@@ -19,6 +27,8 @@ pub fn progress(elapsed: Duration, duration: Duration) -> f32 {
     (elapsed.as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0)
 }
 
+/// Rgb-only color lerp from `from` to `to`, `t` clamped to `0..1`;
+/// falls back to `to` for any non-Rgb color.
 pub fn lerp_color(from: Color, to: Color, t: f32) -> Color {
     match (from, to) {
         (

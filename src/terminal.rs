@@ -1,3 +1,6 @@
+//! Raw-mode terminal setup/teardown: entering the alternate screen,
+//! diff-based redraws, input polling, and panic-safe cleanup.
+
 use std::io::{stdout, Stdout, Write};
 use std::time::Duration;
 
@@ -7,11 +10,15 @@ use crossterm::{cursor, execute, terminal};
 
 use crate::buffer::CellDiff;
 
+/// A raw-mode, alternate-screen terminal handle. Restores normal
+/// terminal state automatically on drop.
 pub struct Terminal {
     out: Stdout,
 }
 
 impl Terminal {
+    /// Enables raw mode, enters the alternate screen, and hides the
+    /// cursor.
     pub fn new() -> std::io::Result<Self> {
         terminal::enable_raw_mode()?;
         let mut out = stdout();
@@ -19,10 +26,12 @@ impl Terminal {
         Ok(Terminal { out })
     }
 
+    /// Current terminal size in cells, `(width, height)`.
     pub fn size(&self) -> std::io::Result<(u16, u16)> {
         terminal::size()
     }
 
+    /// Writes only the given changed cells to the terminal.
     pub fn draw_diff(&mut self, diffs: &[CellDiff]) -> std::io::Result<()> {
         for d in diffs {
             let attr = if d.cell.style.bold {
@@ -43,6 +52,7 @@ impl Terminal {
         self.out.flush()
     }
 
+    /// Polls for one input event, up to `timeout`; `None` on timeout.
     pub fn next_event(&self, timeout: Duration) -> std::io::Result<Option<Event>> {
         if event::poll(timeout)? {
             Ok(Some(event::read()?))
@@ -60,6 +70,8 @@ impl Drop for Terminal {
     }
 }
 
+/// Wraps the default panic hook so a panic mid-raw-mode still restores
+/// normal terminal state before printing the panic message.
 pub fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {

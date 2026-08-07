@@ -1,5 +1,9 @@
+//! Screen-shake and other whole-buffer visual effects.
+
 use crate::buffer::Buffer;
 
+/// Offsets every cell in `buf` by `(dx, dy)`, leaving cells shifted
+/// off-edge blank — a one-frame screen-shake displacement.
 pub fn shake(buf: &Buffer, dx: i16, dy: i16) -> Buffer {
     let mut out = Buffer::new(buf.width, buf.height);
     for y in 0..buf.height {

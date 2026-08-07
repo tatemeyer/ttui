@@ -1,25 +1,45 @@
+//! `Rect`/`Constraint`-based area splitting, in the same spirit as
+//! ratatui's `Layout` — divides one area into ordered sub-areas.
+
+/// A rectangular region in cell coordinates.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rect {
+    /// Left edge.
     pub x: u16,
+    /// Top edge.
     pub y: u16,
+    /// Width in cells.
     pub width: u16,
+    /// Height in cells.
     pub height: u16,
 }
 
+/// Axis a `Layout` splits its area along.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Direction {
+    /// Split left-to-right.
     Horizontal,
+    /// Split top-to-bottom.
     Vertical,
 }
 
+/// How much space one child of a `Layout` split should take.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Constraint {
+    /// Exactly this many cells.
     Fixed(u16),
+    /// This percentage of the split's total size.
     Percentage(u16),
+    /// At least this many cells (currently treated as exactly this
+    /// many — no growth beyond it).
     Min(u16),
+    /// Share of whatever space remains after fixed/percentage/min
+    /// constraints, proportional to this weight.
     Fill(u16),
 }
 
+/// Splits one `Rect` into ordered sub-`Rect`s along a `Direction`,
+/// per a list of `Constraint`s.
 pub struct Layout {
     direction: Direction,
     constraints: Vec<Constraint>,
@@ -28,6 +48,8 @@ pub struct Layout {
 }
 
 impl Layout {
+    /// Creates a layout splitting along `direction` per `constraints`,
+    /// with no margin or spacing.
     pub fn new(direction: Direction, constraints: Vec<Constraint>) -> Self {
         Layout {
             direction,
@@ -37,16 +59,20 @@ impl Layout {
         }
     }
 
+    /// Sets a uniform margin (in cells) inset from the split area's
+    /// edges before dividing it.
     pub fn margin(mut self, m: u16) -> Self {
         self.margin = m;
         self
     }
 
+    /// Sets the gap (in cells) inserted between adjacent children.
     pub fn spacing(mut self, s: u16) -> Self {
         self.spacing = s;
         self
     }
 
+    /// Divides `area` into one `Rect` per constraint, in order.
     pub fn split(&self, area: Rect) -> Vec<Rect> {
         let area = Rect {
             x: area.x + self.margin,

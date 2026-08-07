@@ -1,18 +1,29 @@
+//! Deterministic camera viewport and brightness scaling — used for
+//! panning/zooming a rendered buffer and for boot-sequence fades.
+
 use crate::buffer::{Buffer, Cell};
 use crossterm::style::Color;
 
+/// A 2D viewport position and zoom level over a source `Buffer`.
 pub struct Camera {
+    /// Source-buffer x position the viewport starts at.
     pub x: f32,
+    /// Source-buffer y position the viewport starts at.
     pub y: f32,
+    /// Zoom factor — 1.0 is 1:1, 2.0 duplicates each source cell
+    /// across a 2x2 output block.
     pub zoom: f32,
 }
 
 impl Camera {
+    /// Creates a camera at `(x, y)` with the given `zoom`.
     pub fn new(x: f32, y: f32, zoom: f32) -> Self {
         Camera { x, y, zoom }
     }
 }
 
+/// Crops and resamples `source` into a `width`x`height` buffer as
+/// seen through `camera` — duplicates cells when `camera.zoom > 1.0`.
 pub fn viewport(source: &Buffer, camera: &Camera, width: u16, height: u16) -> Buffer {
     let mut out = Buffer::new(width, height);
     for y in 0..height {
@@ -31,6 +42,8 @@ pub fn viewport(source: &Buffer, camera: &Camera, width: u16, height: u16) -> Bu
     out
 }
 
+/// Scales every Rgb cell's color toward black by `factor` (0 = no
+/// change, 1 = fully black). Non-Rgb colors are left unchanged.
 pub fn dim(buf: &Buffer, factor: f32) -> Buffer {
     let factor = factor.clamp(0.0, 1.0);
     let mut out = Buffer::new(buf.width, buf.height);

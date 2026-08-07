@@ -1,3 +1,6 @@
+//! Decaying noise overlay for glitch/corruption effects — shared
+//! across screens that render mutually-exclusive glitch states.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crate::transition::Transition;
@@ -6,19 +9,24 @@ use std::time::Duration;
 
 const GLYPHS: [char; 4] = ['░', '▒', '▓', '█'];
 
+/// A decaying block-glyph noise overlay for glitch/corruption effects
+/// — trigger it, tick it each frame, render it while active.
 pub struct GlitchBuffer {
     transition: Option<Transition>,
 }
 
 impl GlitchBuffer {
+    /// Creates an inactive `GlitchBuffer`.
     pub fn new() -> Self {
         GlitchBuffer { transition: None }
     }
 
+    /// Starts (or restarts) the glitch, decaying over `duration`.
     pub fn trigger(&mut self, duration: Duration) {
         self.transition = Some(Transition::start(duration));
     }
 
+    /// Advances the decay by `elapsed`; deactivates once complete.
     pub fn tick(&mut self, elapsed: Duration) {
         if let Some(t) = &mut self.transition {
             t.tick(elapsed);
@@ -28,10 +36,13 @@ impl GlitchBuffer {
         }
     }
 
+    /// Whether the glitch is currently decaying (i.e. should render).
     pub fn is_active(&self) -> bool {
         self.transition.is_some()
     }
 
+    /// Overlays deterministic noise glyphs in `color` across `area`,
+    /// density scaling with remaining intensity. A no-op when inactive.
     pub fn render(&self, area: Rect, color: Color, tick_count: u64, buf: &mut Buffer) {
         let Some(t) = &self.transition else { return };
         let intensity = 1.0 - t.progress();

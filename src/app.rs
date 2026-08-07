@@ -1,21 +1,35 @@
+//! Terminal event loop: polls input, dispatches to an `App`, and
+//! redraws only the cells that changed since the last frame.
+
 use crate::buffer::{diff, Buffer, LayerStack};
 use crate::layout::Rect;
 use crate::terminal::{install_panic_hook, Terminal};
 use crossterm::event::Event;
 use std::time::Duration;
 
+/// An interactive terminal app: reacts to input, renders into a
+/// `LayerStack`, and optionally ticks on a fixed interval.
 pub trait App {
+    /// Handle one input event, mutating app state.
     fn update(&mut self, event: &Event);
+    /// Render current state into `buf` for the given terminal `area`.
     fn view(&self, area: Rect, buf: &mut LayerStack);
+    /// Whether `run` should exit its loop after this update.
     fn should_quit(&self) -> bool;
 
+    /// Poll timeout used as this app's animation tick rate — `None`
+    /// (the default) means the app never ticks on its own.
     fn tick_rate(&self) -> Option<Duration> {
         None
     }
 
+    /// Called once per tick when `tick_rate` is `Some`, with the real
+    /// elapsed time since the previous tick or input event.
     fn on_tick(&mut self, _elapsed: Duration) {}
 }
 
+/// Runs `app`'s event loop until it requests to quit: enables raw
+/// mode, polls for input/ticks, and diff-redraws the terminal.
 pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
     install_panic_hook();
     let mut term = Terminal::new()?;
