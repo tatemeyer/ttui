@@ -40,6 +40,12 @@ const TS_IMPACT_GLYPH: char = '💥';
 const KO_HOLD_MS: u64 = 600;
 const TS_FADE_MS: u64 = 400;
 
+const RAM_STRESS_AMOUNT: f32 = 22.0;
+const RAM_DECAY_PER_SEC: f32 = 6.0;
+const RAM_THRESHOLD: f32 = 90.0;
+const BOBOMB_FLASH_TICKS: u64 = 6;
+const BOBOMB_ART: [&str; 5] = ["  .  ", " /   ", "( o )", "(o o)", " \\_/ "];
+
 enum TsPhase {
     Impact(Transition),
     Fade(Transition),
@@ -129,6 +135,7 @@ struct SmashCrabs {
     ts_smashed: [bool; 5],
     ts_selected: usize,
     ts_smashing: Option<(usize, TsPhase)>,
+    sh_ram: f32,
     quit: bool,
 }
 
@@ -150,6 +157,7 @@ impl SmashCrabs {
             ts_smashed: [false; 5],
             ts_selected: 0,
             ts_smashing: None,
+            sh_ram: 20.0,
             quit: false,
         }
     }
@@ -211,36 +219,6 @@ impl SmashCrabs {
             height: inner.height.saturating_sub(1).min(1),
         };
         Text::new("Left/Right move * Enter select * q quit").render(hint_row, buf);
-    }
-
-    fn render_placeholder(&self, screen: Screen, area: Rect, buf: &mut LayerStack) {
-        let inner = SmashBorder::new().render(area, &self.theme, buf);
-        let name = match screen {
-            Screen::TargetSmash => "Target Smash",
-            Screen::StageHazards => "Stage Hazards",
-            _ => "",
-        };
-        let name_row = Rect {
-            x: inner.x,
-            y: inner.y,
-            width: inner.width,
-            height: inner.height.min(1),
-        };
-        let placeholder_row = Rect {
-            x: inner.x,
-            y: inner.y + 1,
-            width: inner.width,
-            height: inner.height.saturating_sub(2),
-        };
-        let hint_row = Rect {
-            x: inner.x,
-            y: inner.y + inner.height.saturating_sub(1),
-            width: inner.width,
-            height: inner.height.saturating_sub(1).min(1),
-        };
-        Text::new(name).render(name_row, buf);
-        Text::new("(not yet built)").render(placeholder_row, buf);
-        Text::new("Esc back * q quit").render(hint_row, buf);
     }
 
     fn displayed_p2_damage(&self) -> f32 {
@@ -459,6 +437,96 @@ impl SmashCrabs {
         }
     }
 
+    fn sh_cpu(&self) -> f32 {
+        50.0 + 15.0 * (self.tick_count as f32 * 0.03).sin()
+    }
+
+    fn render_stage_hazards(&self, area: Rect, buf: &mut LayerStack) {
+        let inner = SmashBorder::new().render(area, &self.theme, buf);
+        let rows = Layout::new(
+            Direction::Vertical,
+            vec![Constraint::Fixed(1), Constraint::Fixed(1)],
+        )
+        .split(inner);
+
+        Text::new("CPU").render(
+            Rect {
+                x: rows[0].x,
+                y: rows[0].y,
+                width: 4.min(rows[0].width),
+                height: 1,
+            },
+            buf,
+        );
+        DamageMeter::new(self.sh_cpu().round() as u16).render(
+            Rect {
+                x: rows[0].x + 4,
+                y: rows[0].y,
+                width: rows[0].width.saturating_sub(4),
+                height: 1,
+            },
+            buf,
+        );
+        Text::new("RAM").render(
+            Rect {
+                x: rows[1].x,
+                y: rows[1].y,
+                width: 4.min(rows[1].width),
+                height: 1,
+            },
+            buf,
+        );
+        DamageMeter::new(self.sh_ram.round() as u16).render(
+            Rect {
+                x: rows[1].x + 4,
+                y: rows[1].y,
+                width: rows[1].width.saturating_sub(4),
+                height: 1,
+            },
+            buf,
+        );
+
+        if self.sh_ram >= RAM_THRESHOLD {
+            let flashing_on = (self.tick_count / BOBOMB_FLASH_TICKS).is_multiple_of(2);
+            let color = if flashing_on {
+                Color::Red
+            } else {
+                self.theme.background
+            };
+            let art_width = BOBOMB_ART[0].chars().count() as u16;
+            let art_x = area.x + area.width.saturating_sub(art_width + 1);
+            for (row, line) in BOBOMB_ART.iter().enumerate() {
+                let y = area.y + 1 + row as u16;
+                if y >= area.y + area.height {
+                    break;
+                }
+                for (col, ch) in line.chars().enumerate() {
+                    let x = art_x + col as u16;
+                    if x < area.x + area.width {
+                        buf.set(
+                            x,
+                            y,
+                            Cell {
+                                symbol: ch,
+                                fg: color,
+                                bg: Color::Reset,
+                                ..Default::default()
+                            },
+                        );
+                    }
+                }
+            }
+        }
+
+        let hint_row = Rect {
+            x: inner.x,
+            y: inner.y + inner.height.saturating_sub(1),
+            width: inner.width,
+            height: inner.height.saturating_sub(1).min(1),
+        };
+        Text::new("Space stress RAM * Esc back * q quit").render(hint_row, buf);
+    }
+
     fn render_destination_preview(&self, screen: Screen, area: Rect) -> Buffer {
         let mut buf = Buffer::new(area.width, area.height);
         let local = Rect {
@@ -482,7 +550,7 @@ impl SmashCrabs {
             }
             Screen::StageHazards => {
                 let mut stack = LayerStack::new(area.width, area.height);
-                self.render_placeholder(screen, local, &mut stack);
+                self.render_stage_hazards(local, &mut stack);
                 blit(&stack, local, &mut buf);
             }
             Screen::Hub => {
@@ -691,11 +759,13 @@ impl App for SmashCrabs {
                     _ => {}
                 }
             }
-            Screen::StageHazards => {
-                if k.code == KeyCode::Esc {
-                    self.screen = Screen::Hub;
+            Screen::StageHazards => match k.code {
+                KeyCode::Char(' ') => {
+                    self.sh_ram = (self.sh_ram + RAM_STRESS_AMOUNT).min(100.0);
                 }
-            }
+                KeyCode::Esc => self.screen = Screen::Hub,
+                _ => {}
+            },
         }
     }
 
@@ -716,7 +786,7 @@ impl App for SmashCrabs {
                 buf.push_layer(); // index 2: EFFECTS
                 self.render_target_smash(area, buf);
             }
-            Screen::StageHazards => self.render_placeholder(self.screen, area, buf),
+            Screen::StageHazards => self.render_stage_hazards(area, buf),
         }
     }
 
@@ -754,6 +824,8 @@ impl App for SmashCrabs {
         }
 
         self.particles.update(elapsed);
+
+        self.sh_ram = (self.sh_ram - RAM_DECAY_PER_SEC * elapsed.as_secs_f32()).max(0.0);
 
         if let Some((real_index, phase)) = &mut self.ts_smashing {
             let real_index = *real_index;
