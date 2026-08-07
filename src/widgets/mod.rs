@@ -3,5 +3,6 @@ pub mod damage_meter;
 pub mod dial;
 pub mod list;
 pub mod scuttle_cursor;
+pub mod smash_border;
 pub mod table;
 pub mod text;
