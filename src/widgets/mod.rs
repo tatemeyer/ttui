@@ -1,4 +1,5 @@
 pub mod block;
+pub mod damage_meter;
 pub mod dial;
 pub mod list;
 pub mod scuttle_cursor;
