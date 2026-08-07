@@ -4,6 +4,7 @@ pub mod buffer;
 pub mod camera;
 pub mod easing;
 pub mod effects;
+pub mod glitch;
 pub mod layout;
 pub mod particles;
 pub mod terminal;
