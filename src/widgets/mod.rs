@@ -8,3 +8,4 @@ pub mod scuttle_cursor;
 pub mod smash_border;
 pub mod table;
 pub mod text;
+pub mod time_rotor;
