@@ -29,6 +29,22 @@ const DAMAGE_TWEEN_MS: u64 = 250;
 const HIT_DAMAGE: u16 = 17;
 const VS_TRANSITION_MS: u64 = 700;
 
+const TS_TARGETS: [&str; 5] = [
+    "Refactor auth module",
+    "Fix flaky test",
+    "Write release notes",
+    "Review PR #42",
+    "Update dependencies",
+];
+const TS_IMPACT_GLYPH: char = '💥';
+const KO_HOLD_MS: u64 = 600;
+const TS_FADE_MS: u64 = 400;
+
+enum TsPhase {
+    Impact(Transition),
+    Fade(Transition),
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Screen {
     Hub,
@@ -110,6 +126,9 @@ struct SmashCrabs {
     particles: ParticleSystem,
     tick_count: u64,
     audio: RodioAudioSink,
+    ts_smashed: [bool; 5],
+    ts_selected: usize,
+    ts_smashing: Option<(usize, TsPhase)>,
     quit: bool,
 }
 
@@ -128,6 +147,9 @@ impl SmashCrabs {
             particles: ParticleSystem::new(),
             tick_count: 0,
             audio: RodioAudioSink::new(),
+            ts_smashed: [false; 5],
+            ts_selected: 0,
+            ts_smashing: None,
             quit: false,
         }
     }
@@ -326,6 +348,117 @@ impl SmashCrabs {
         }
     }
 
+    fn ts_visible(&self) -> Vec<usize> {
+        (0..TS_TARGETS.len())
+            .filter(|&i| !self.ts_smashed[i])
+            .collect()
+    }
+
+    fn ts_smashing_is_impact(&self) -> bool {
+        matches!(&self.ts_smashing, Some((_, TsPhase::Impact(_))))
+    }
+
+    fn paint_ts_ui(&self, area: Rect) -> Buffer {
+        let mut buf = Buffer::new(area.width, area.height);
+        let local = Rect {
+            x: 0,
+            y: 0,
+            width: area.width,
+            height: area.height,
+        };
+        let inner = SmashBorder::new().render(local, &self.theme, &mut buf);
+        let visible = self.ts_visible();
+        if visible.is_empty() {
+            render_row(&mut buf, inner, "ALL TARGETS DOWN", self.theme.tertiary);
+        } else {
+            for (row, &real_index) in visible.iter().enumerate() {
+                let y = inner.y + row as u16;
+                if y >= inner.y + inner.height {
+                    break;
+                }
+                let fg = match &self.ts_smashing {
+                    Some((i, TsPhase::Fade(t))) if *i == real_index => {
+                        easing::lerp_color(self.theme.tertiary, self.theme.background, t.progress())
+                    }
+                    _ if row == self.ts_selected => self.theme.accent,
+                    _ => self.theme.tertiary,
+                };
+                let row_area = Rect {
+                    x: inner.x,
+                    y,
+                    width: inner.width,
+                    height: 1,
+                };
+                render_row(&mut buf, row_area, TS_TARGETS[real_index], fg);
+            }
+        }
+        let hint_row = Rect {
+            x: inner.x,
+            y: inner.y + inner.height.saturating_sub(1),
+            width: inner.width,
+            height: inner.height.saturating_sub(1).min(1),
+        };
+        Text::new("Up/Down move * Enter smash * Esc back * q quit").render(hint_row, &mut buf);
+        buf
+    }
+
+    fn paint_ts_effects(&self, area: Rect) -> Buffer {
+        let mut buf = Buffer::new(area.width, area.height);
+        if self.ts_smashing_is_impact() {
+            let cx = area.width / 2;
+            let cy = area.height / 2;
+            for offset in [-4i32, 0, 4] {
+                let x = cx as i32 + offset;
+                if x >= 0 && (x as u16) < area.width && cy > 0 {
+                    buf.set(
+                        x as u16,
+                        cy - 1,
+                        Cell {
+                            symbol: TS_IMPACT_GLYPH,
+                            fg: self.theme.accent,
+                            bg: Color::Reset,
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+            let ko_x = cx.saturating_sub(1);
+            for (i, ch) in "KO".chars().enumerate() {
+                let x = ko_x + i as u16;
+                if x < area.width && cy + 1 < area.height {
+                    buf.set(
+                        x,
+                        cy + 1,
+                        Cell {
+                            symbol: ch,
+                            fg: self.theme.tertiary,
+                            bg: self.theme.primary,
+                            style: CellStyle { bold: true },
+                        },
+                    );
+                }
+            }
+        }
+        buf
+    }
+
+    fn render_target_smash(&self, area: Rect, buf: &mut LayerStack) {
+        let (dx, dy) = self.shake_offset();
+        let layers: [(usize, Buffer); 3] = [
+            (BACKGROUND, self.paint_background(area)),
+            (UI, self.paint_ts_ui(area)),
+            (EFFECTS, self.paint_ts_effects(area)),
+        ];
+        for (index, scratch) in layers {
+            let final_buf = if dx != 0 || dy != 0 {
+                effects::shake(&scratch, dx, dy)
+            } else {
+                scratch
+            };
+            blit(&final_buf, area, buf.layer_mut(index));
+        }
+    }
+
     fn render_destination_preview(&self, screen: Screen, area: Rect) -> Buffer {
         let mut buf = Buffer::new(area.width, area.height);
         let local = Rect {
@@ -341,7 +474,13 @@ impl SmashCrabs {
                 let ui = self.paint_ui(local);
                 blit(&ui, local, &mut buf);
             }
-            Screen::TargetSmash | Screen::StageHazards => {
+            Screen::TargetSmash => {
+                let background = self.paint_background(local);
+                blit(&background, local, &mut buf);
+                let ui = self.paint_ts_ui(local);
+                blit(&ui, local, &mut buf);
+            }
+            Screen::StageHazards => {
                 let mut stack = LayerStack::new(area.width, area.height);
                 self.render_placeholder(screen, local, &mut stack);
                 blit(&stack, local, &mut buf);
@@ -424,6 +563,24 @@ fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
     }
 }
 
+fn render_row(buf: &mut Buffer, area: Rect, text: &str, fg: Color) {
+    if area.height == 0 {
+        return;
+    }
+    for (i, ch) in text.chars().take(area.width as usize).enumerate() {
+        buf.set(
+            area.x + i as u16,
+            area.y,
+            Cell {
+                symbol: ch,
+                fg,
+                bg: Color::Reset,
+                ..Default::default()
+            },
+        );
+    }
+}
+
 impl App for SmashCrabs {
     fn update(&mut self, event: &Event) {
         let Event::Key(k) = event else { return };
@@ -502,7 +659,39 @@ impl App for SmashCrabs {
                     self.audio.play("hit");
                 }
             }
-            Screen::TargetSmash | Screen::StageHazards => {
+            Screen::TargetSmash => {
+                if self.ts_smashing.is_some() {
+                    return;
+                }
+                let visible = self.ts_visible();
+                match k.code {
+                    KeyCode::Up => {
+                        if !visible.is_empty() {
+                            self.ts_selected =
+                                (self.ts_selected + visible.len() - 1) % visible.len();
+                        }
+                    }
+                    KeyCode::Down => {
+                        if !visible.is_empty() {
+                            self.ts_selected = (self.ts_selected + 1) % visible.len();
+                        }
+                    }
+                    KeyCode::Enter | KeyCode::Char(' ') => {
+                        if let Some(&real_index) = visible.get(self.ts_selected) {
+                            self.shake_ticks_remaining = SHAKE_TICKS;
+                            self.ts_smashing = Some((
+                                real_index,
+                                TsPhase::Impact(Transition::start(Duration::from_millis(
+                                    KO_HOLD_MS,
+                                ))),
+                            ));
+                        }
+                    }
+                    KeyCode::Esc => self.screen = Screen::Hub,
+                    _ => {}
+                }
+            }
+            Screen::StageHazards => {
                 if k.code == KeyCode::Esc {
                     self.screen = Screen::Hub;
                 }
@@ -522,9 +711,12 @@ impl App for SmashCrabs {
                 buf.push_layer(); // index 2: EFFECTS
                 self.render_versus(area, buf);
             }
-            Screen::TargetSmash | Screen::StageHazards => {
-                self.render_placeholder(self.screen, area, buf)
+            Screen::TargetSmash => {
+                buf.push_layer(); // index 1: UI
+                buf.push_layer(); // index 2: EFFECTS
+                self.render_target_smash(area, buf);
             }
+            Screen::StageHazards => self.render_placeholder(self.screen, area, buf),
         }
     }
 
@@ -562,6 +754,34 @@ impl App for SmashCrabs {
         }
 
         self.particles.update(elapsed);
+
+        if let Some((real_index, phase)) = &mut self.ts_smashing {
+            let real_index = *real_index;
+            match phase {
+                TsPhase::Impact(t) => {
+                    t.tick(elapsed);
+                    if t.is_complete() {
+                        *phase =
+                            TsPhase::Fade(Transition::start(Duration::from_millis(TS_FADE_MS)));
+                    }
+                }
+                TsPhase::Fade(t) => {
+                    t.tick(elapsed);
+                    if t.is_complete() {
+                        self.ts_smashed[real_index] = true;
+                        self.ts_smashing = None;
+                    }
+                }
+            }
+        }
+        if self.ts_smashing.is_none() {
+            let visible_len = self.ts_visible().len();
+            if visible_len == 0 {
+                self.ts_selected = 0;
+            } else if self.ts_selected >= visible_len {
+                self.ts_selected = visible_len - 1;
+            }
+        }
 
         if let Some((destination, t)) = &mut self.transitioning_to {
             t.tick(elapsed);
