@@ -1,6 +1,7 @@
 pub mod app;
 pub mod audio;
 pub mod buffer;
+pub mod camera;
 pub mod easing;
 pub mod effects;
 pub mod layout;
