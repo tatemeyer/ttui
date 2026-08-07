@@ -3,13 +3,15 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::{run, App};
-use ttui::buffer::{Cell, LayerStack};
+use ttui::buffer::{Buffer, Cell, LayerStack};
 use ttui::easing;
+use ttui::effects;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
+use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::{BorderSet, Theme};
 use ttui::transition::Transition;
 use ttui::widgets::{
-    block::Block, scuttle_cursor::ScuttleCursor, smash_border::SmashBorder, text::Text,
+    damage_meter::DamageMeter, scuttle_cursor::ScuttleCursor, smash_border::SmashBorder, text::Text,
 };
 
 const BACKGROUND: usize = 0;
@@ -20,6 +22,9 @@ const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS, matches o
 const FLASH_TICKS: u8 = 6; // ~200ms flash at 33ms/tick
 const CURSOR_TWEEN_MS: u64 = 150;
 const CURSOR_SYMBOL: char = 'C';
+const SHAKE_TICKS: u8 = 6; // matches FLASH_TICKS's ~200ms feel
+const DAMAGE_TWEEN_MS: u64 = 250;
+const HIT_DAMAGE: u16 = 17;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Screen {
@@ -65,9 +70,12 @@ struct SmashCrabs {
     screen: Screen,
     selected: usize,
     cursor_tween: Option<(f32, Transition)>,
-    p1_hp: u8,
-    p2_hp: u8,
+    p2_damage: u16,
+    damage_tween: Option<(f32, Transition)>,
     flash_ticks_remaining: u8,
+    shake_ticks_remaining: u8,
+    particles: ParticleSystem,
+    tick_count: u64,
     quit: bool,
 }
 
@@ -78,9 +86,12 @@ impl SmashCrabs {
             screen: Screen::Hub,
             selected: 0,
             cursor_tween: None,
-            p1_hp: 100,
-            p2_hp: 100,
+            p2_damage: 0,
+            damage_tween: None,
             flash_ticks_remaining: 0,
+            shake_ticks_remaining: 0,
+            particles: ParticleSystem::new(),
+            tick_count: 0,
             quit: false,
         }
     }
@@ -128,7 +139,13 @@ impl SmashCrabs {
             Text::new(FIGHTERS[i]).render(name_row, buf);
         }
         let (cx, cy) = self.cursor_position(inner);
-        ScuttleCursor::new(CURSOR_SYMBOL).render(cx, cy, self.cursor_tween.is_some(), 0, buf);
+        ScuttleCursor::new(CURSOR_SYMBOL).render(
+            cx,
+            cy,
+            self.cursor_tween.is_some(),
+            self.tick_count,
+            buf,
+        );
         let hint_row = Rect {
             x: inner.x,
             y: inner.y + inner.height.saturating_sub(1),
@@ -168,59 +185,116 @@ impl SmashCrabs {
         Text::new("Esc back * q quit").render(hint_row, buf);
     }
 
-    fn paint_background(&self, area: Rect, buf: &mut LayerStack) {
+    fn displayed_p2_damage(&self) -> f32 {
+        match &self.damage_tween {
+            Some((from, t)) => easing::ease_out(*from, self.p2_damage as f32, t.progress()),
+            None => self.p2_damage as f32,
+        }
+    }
+
+    fn shake_offset(&self) -> (i16, i16) {
+        if self.shake_ticks_remaining == 0 {
+            return (0, 0);
+        }
+        let magnitude = (((self.shake_ticks_remaining as i16) + 1) / 2).min(2);
+        let dx = if self.shake_ticks_remaining.is_multiple_of(2) {
+            magnitude
+        } else {
+            -magnitude
+        };
+        let dy = if (self.shake_ticks_remaining / 2).is_multiple_of(2) {
+            magnitude
+        } else {
+            -magnitude
+        };
+        (dx, dy)
+    }
+
+    fn paint_background(&self, area: Rect) -> Buffer {
+        let mut buf = Buffer::new(area.width, area.height);
         let cell = Cell {
             symbol: ' ',
             fg: self.theme.primary,
             bg: self.theme.background,
             ..Default::default()
         };
-        let layer = buf.layer_mut(BACKGROUND);
-        for y in area.y..area.y + area.height {
-            for x in area.x..area.x + area.width {
-                layer.set(x, y, cell.clone());
+        for y in 0..area.height {
+            for x in 0..area.width {
+                buf.set(x, y, cell.clone());
             }
         }
+        buf
     }
 
-    fn paint_ui(&self, area: Rect, buf: &mut LayerStack) {
-        let panel = Layout::new(Direction::Vertical, vec![Constraint::Fixed(4)]).split(area)[0];
+    fn paint_ui(&self, area: Rect) -> Buffer {
+        let mut buf = Buffer::new(area.width, area.height);
+        let local = Rect {
+            x: 0,
+            y: 0,
+            width: area.width,
+            height: area.height,
+        };
+        let panel = Layout::new(Direction::Vertical, vec![Constraint::Fixed(8)]).split(local)[0];
         let panel = Rect {
-            width: panel.width.min(20),
+            width: panel.width.min(24),
             ..panel
         };
-        let inner = Block::new()
-            .title("Fighters")
-            .theme(&self.theme)
-            .render(panel, buf.layer_mut(UI));
+        let inner = SmashBorder::new().render(panel, &self.theme, &mut buf);
         let rows = Layout::new(
             Direction::Vertical,
             vec![Constraint::Fixed(1), Constraint::Fixed(1)],
         )
         .split(inner);
-        Text::new(&format!("P1: {} HP", self.p1_hp)).render(rows[0], buf.layer_mut(UI));
-        Text::new(&format!("P2: {} HP", self.p2_hp)).render(rows[1], buf.layer_mut(UI));
+        DamageMeter::new(0).render(rows[0], &mut buf);
+        DamageMeter::new(self.displayed_p2_damage().round() as u16).render(rows[1], &mut buf);
+        buf
     }
 
-    fn paint_effects(&self, area: Rect, buf: &mut LayerStack) {
-        if self.flash_ticks_remaining == 0 {
-            return;
-        }
-        let flash = Cell {
-            symbol: '*',
-            fg: Color::Black,
-            bg: self.theme.accent,
-            ..Default::default()
-        };
-        let w = 7.min(area.width);
-        let h = 3.min(area.height);
-        let x0 = area.x + (area.width.saturating_sub(w)) / 2;
-        let y0 = area.y + (area.height.saturating_sub(h)) / 2;
-        let layer = buf.layer_mut(EFFECTS);
-        for y in y0..y0 + h {
-            for x in x0..x0 + w {
-                layer.set(x, y, flash.clone());
+    fn paint_effects(&self, area: Rect) -> Buffer {
+        let mut buf = Buffer::new(area.width, area.height);
+        if self.flash_ticks_remaining > 0 {
+            let flash = Cell {
+                symbol: '*',
+                fg: Color::Black,
+                bg: self.theme.accent,
+                ..Default::default()
+            };
+            let w = 7.min(area.width);
+            let h = 3.min(area.height);
+            let x0 = (area.width.saturating_sub(w)) / 2;
+            let y0 = (area.height.saturating_sub(h)) / 2;
+            for y in y0..y0 + h {
+                for x in x0..x0 + w {
+                    buf.set(x, y, flash.clone());
+                }
             }
+        }
+        self.particles.render(&mut buf);
+        buf
+    }
+
+    fn render_versus(&self, area: Rect, buf: &mut LayerStack) {
+        let (dx, dy) = self.shake_offset();
+        let layers: [(usize, Buffer); 3] = [
+            (BACKGROUND, self.paint_background(area)),
+            (UI, self.paint_ui(area)),
+            (EFFECTS, self.paint_effects(area)),
+        ];
+        for (index, scratch) in layers {
+            let final_buf = if dx != 0 || dy != 0 {
+                effects::shake(&scratch, dx, dy)
+            } else {
+                scratch
+            };
+            blit(&final_buf, area, buf.layer_mut(index));
+        }
+    }
+}
+
+fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
+    for y in 0..scratch.height {
+        for x in 0..scratch.width {
+            buf.set(area.x + x, area.y + y, scratch.get(x, y).clone());
         }
     }
 }
@@ -265,7 +339,26 @@ impl App for SmashCrabs {
                     self.screen = Screen::Hub;
                 } else if k.code == KeyCode::Char(' ') {
                     self.flash_ticks_remaining = FLASH_TICKS;
-                    self.p2_hp = self.p2_hp.saturating_sub(10);
+                    self.shake_ticks_remaining = SHAKE_TICKS;
+                    let from = self.displayed_p2_damage();
+                    self.p2_damage += HIT_DAMAGE;
+                    self.damage_tween = Some((
+                        from,
+                        Transition::start(Duration::from_millis(DAMAGE_TWEEN_MS)),
+                    ));
+                    for i in 0..8 {
+                        let angle = i as f32 * std::f32::consts::TAU / 8.0;
+                        self.particles.spawn(Particle {
+                            x: 10.0,
+                            y: 4.0,
+                            vx: angle.cos() * 8.0,
+                            vy: angle.sin() * 4.0,
+                            symbol: '*',
+                            color: self.theme.accent,
+                            lifetime: Duration::from_millis(400),
+                            age: Duration::ZERO,
+                        });
+                    }
                 }
             }
             Screen::TargetSmash | Screen::StageHazards => {
@@ -282,9 +375,7 @@ impl App for SmashCrabs {
             Screen::Versus => {
                 buf.push_layer(); // index 1: UI
                 buf.push_layer(); // index 2: EFFECTS
-                self.paint_background(area, buf);
-                self.paint_ui(area, buf);
-                self.paint_effects(area, buf);
+                self.render_versus(area, buf);
             }
             Screen::TargetSmash | Screen::StageHazards => {
                 self.render_placeholder(self.screen, area, buf)
@@ -311,6 +402,21 @@ impl App for SmashCrabs {
                 self.cursor_tween = None;
             }
         }
+
+        self.tick_count += 1;
+
+        if let Some((_, t)) = &mut self.damage_tween {
+            t.tick(elapsed);
+            if t.is_complete() {
+                self.damage_tween = None;
+            }
+        }
+
+        if self.shake_ticks_remaining > 0 {
+            self.shake_ticks_remaining -= 1;
+        }
+
+        self.particles.update(elapsed);
     }
 }
 
