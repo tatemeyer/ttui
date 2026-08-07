@@ -1,17 +1,24 @@
+//! Braille-glyph rotating speed indicator — a vertical column of
+//! glyphs whose pattern advances with `tick_count` at a given speed.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 
+/// A vertical rotating-speed indicator rendered as braille glyphs.
 pub struct TimeRotor {
     speed: f32,
 }
 
 impl TimeRotor {
+    /// Creates a rotor at `speed` (floored at `0.1` so it never fully
+    /// stops).
     pub fn new(speed: f32) -> Self {
         TimeRotor {
             speed: speed.max(0.1),
         }
     }
 
+    /// Renders one braille glyph per row, centered in `area`.
     pub fn render(&self, area: Rect, tick_count: u64, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;

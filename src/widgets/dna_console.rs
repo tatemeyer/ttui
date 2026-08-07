@@ -1,7 +1,12 @@
+//! Alternating two-color text row with a trailing cursor glyph, for a
+//! console/typewriter feel.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+/// A text row whose characters alternate between two colors, with a
+/// trailing `▌` cursor.
 pub struct DNAConsole<'a> {
     content: &'a str,
     primary: Color,
@@ -9,6 +14,8 @@ pub struct DNAConsole<'a> {
 }
 
 impl<'a> DNAConsole<'a> {
+    /// Creates a console row over `content`, alternating `primary`/
+    /// `secondary` per character.
     pub fn new(content: &'a str, primary: Color, secondary: Color) -> Self {
         DNAConsole {
             content,
@@ -17,6 +24,7 @@ impl<'a> DNAConsole<'a> {
         }
     }
 
+    /// Renders the alternating-color text plus trailing cursor.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 {
             return;

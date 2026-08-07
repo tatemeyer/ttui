@@ -1,13 +1,19 @@
+//! Pulsing circular decoration glyph — a single-cell status/ambient
+//! indicator whose brightness the owning app drives per frame.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+/// A single glyph whose brightness/fill reflects `intensity`.
 pub struct Roundel {
     intensity: f32,
     color: Color,
 }
 
 impl Roundel {
+    /// Creates a roundel at `intensity` (clamped to `0.0..=1.0`) in
+    /// `color`.
     pub fn new(intensity: f32, color: Color) -> Self {
         Roundel {
             intensity: intensity.clamp(0.0, 1.0),
@@ -15,6 +21,7 @@ impl Roundel {
         }
     }
 
+    /// Renders the glyph at `area`'s top-left cell.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;

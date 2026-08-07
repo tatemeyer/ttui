@@ -1,17 +1,23 @@
+//! Segmented circular progress ring.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+/// A horizontal segmented progress bar filled to `percent` in
+/// `color`.
 pub struct EnergyCore {
     percent: u16,
     color: Color,
 }
 
 impl EnergyCore {
+    /// Creates a bar filled to `percent` (0-100) in `color`.
     pub fn new(percent: u16, color: Color) -> Self {
         EnergyCore { percent, color }
     }
 
+    /// Renders the filled/empty segments across `area`'s width.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;

@@ -1,16 +1,23 @@
+//! Percent display that shifts white/yellow/red as it climbs toward
+//! (and past) 100%.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+/// A "N%" text readout whose color escalates white → yellow → red as
+/// `percent` climbs.
 pub struct DamageMeter {
     percent: u16,
 }
 
 impl DamageMeter {
+    /// Creates a meter showing `percent` (uncapped — can exceed 100).
     pub fn new(percent: u16) -> Self {
         DamageMeter { percent }
     }
 
+    /// Renders the percent text left-aligned in `area`.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;

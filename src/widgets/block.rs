@@ -1,14 +1,20 @@
+//! Bordered container, with an optional outward second border ring
+//! for a "glow" look when `Theme.border_thick` is set.
+
 use crate::buffer::{Buffer, Cell, CellStyle};
 use crate::layout::Rect;
 use crate::theme::{BorderSet, Theme};
 use crossterm::style::Color;
 
+/// A bordered box with an optional title, drawn with a `Theme` or
+/// plain default styling.
 pub struct Block<'a> {
     title: Option<&'a str>,
     theme: Option<&'a Theme>,
 }
 
 impl<'a> Block<'a> {
+    /// Creates an untitled, unthemed block.
     pub fn new() -> Self {
         Block {
             title: None,
@@ -16,16 +22,20 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Sets the title shown on the top border.
     pub fn title(mut self, t: &'a str) -> Self {
         self.title = Some(t);
         self
     }
 
+    /// Sets the theme controlling border glyphs/color/thickness.
     pub fn theme(mut self, theme: &'a Theme) -> Self {
         self.theme = Some(theme);
         self
     }
 
+    /// Draws the border (and title, if set) and returns the inner
+    /// content area.
     pub fn render(&self, area: Rect, buf: &mut Buffer) -> Rect {
         if area.width < 2 || area.height < 2 {
             return area;

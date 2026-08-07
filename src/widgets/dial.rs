@@ -1,17 +1,23 @@
+//! Circular item-select dial: items placed evenly around an ellipse,
+//! the selected one highlighted.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+/// A ring of selectable items arranged around an ellipse.
 pub struct Dial<'a> {
     items: &'a [String],
     selected: usize,
 }
 
 impl<'a> Dial<'a> {
+    /// Creates a dial over `items`, highlighting the one at `selected`.
     pub fn new(items: &'a [String], selected: usize) -> Self {
         Dial { items, selected }
     }
 
+    /// Renders every item around the dial, centered in `area`.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         let n = self.items.len();
         if n == 0 || area.width == 0 || area.height == 0 {

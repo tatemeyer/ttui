@@ -1,15 +1,23 @@
+//! Three-ring beveled border, drawn inward (unlike `Block`'s outward
+//! second ring) for a chunky, plastic-toy look.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crate::theme::Theme;
 use crossterm::style::Color;
 
+/// A three-concentric-ring beveled border, each ring in a different
+/// `Theme` color.
 pub struct SmashBorder;
 
 impl SmashBorder {
+    /// Creates a `SmashBorder`.
     pub fn new() -> Self {
         SmashBorder
     }
 
+    /// Draws all three rings inward from `area` and returns the
+    /// shrunk inner content area.
     pub fn render(&self, area: Rect, theme: &Theme, buf: &mut Buffer) -> Rect {
         let rings: [(char, char, char, Color); 3] = [
             ('#', '#', '#', theme.accent),

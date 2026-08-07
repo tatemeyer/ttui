@@ -1,14 +1,22 @@
+//! A jerky, two-frame navigation cursor: shifts left/right by one
+//! cell on alternate ticks instead of gliding smoothly.
+
 use crate::buffer::{Buffer, Cell};
 
+/// A single-glyph cursor that jerks left/right by one cell on
+/// alternate ticks while `moving`.
 pub struct ScuttleCursor {
     symbol: char,
 }
 
 impl ScuttleCursor {
+    /// Creates a cursor rendered as `symbol`.
     pub fn new(symbol: char) -> Self {
         ScuttleCursor { symbol }
     }
 
+    /// Renders the cursor near `(x, y)`, jerking one cell per tick
+    /// while `moving` is true.
     pub fn render(&self, x: f32, y: f32, moving: bool, tick_count: u64, buf: &mut Buffer) {
         let jerk: i32 = if moving {
             if tick_count.is_multiple_of(2) {

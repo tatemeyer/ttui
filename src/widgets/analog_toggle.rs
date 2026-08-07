@@ -1,15 +1,20 @@
+//! Two-position analog toggle switch, rendered as a bracketed slash.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 
+/// A two-position switch, on (`[ / ]`) or off (`[ \ ]`).
 pub struct AnalogToggle {
     on: bool,
 }
 
 impl AnalogToggle {
+    /// Creates a toggle in the given state.
     pub fn new(on: bool) -> Self {
         AnalogToggle { on }
     }
 
+    /// Renders the toggle glyphs starting at `area`'s top-left.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         let text = if self.on { "[ / ]" } else { "[ \\ ]" };
         for (i, ch) in text.chars().take(area.width as usize).enumerate() {
