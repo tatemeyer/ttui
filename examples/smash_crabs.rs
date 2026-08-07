@@ -6,6 +6,7 @@ use std::time::Duration;
 use ttui::app::{run, App};
 use ttui::audio::AudioSink;
 use ttui::buffer::{Buffer, Cell, CellStyle, LayerStack};
+use ttui::camera;
 use ttui::easing;
 use ttui::effects;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
@@ -45,6 +46,27 @@ const RAM_DECAY_PER_SEC: f32 = 6.0;
 const RAM_THRESHOLD: f32 = 90.0;
 const BOBOMB_FLASH_TICKS: u64 = 6;
 const BOBOMB_ART: [&str; 5] = ["  .  ", " /   ", "( o )", "(o o)", " \\_/ "];
+
+const BOOT_FLASH_MS: u64 = 200;
+const BOOT_CLAW_MS: u64 = 800;
+const BOOT_TITLE_MS: u64 = 600;
+const BOOT_FLARE_MS: u64 = 500;
+const BOOT_TOTAL_MS: u64 = BOOT_FLASH_MS + BOOT_CLAW_MS + BOOT_TITLE_MS + BOOT_FLARE_MS;
+const BOOT_TITLE: &str = "S U P E R S M A S H C L A W S";
+const CLAW_OPEN: [&str; 5] = [
+    " \\           / ",
+    "  \\         /  ",
+    "   (         )  ",
+    "    \\       /   ",
+    "     \\_____/    ",
+];
+const CLAW_CLOSED: [&str; 5] = [
+    "   \\       /    ",
+    "    \\     /     ",
+    "     (   )      ",
+    "      \\ /       ",
+    "       X        ",
+];
 
 enum TsPhase {
     Impact(Transition),
@@ -110,6 +132,7 @@ impl AudioSink for RodioAudioSink {
             "cursor" => 440.0,
             "select" => 660.0,
             "hit" => 220.0,
+            "snap" => 110.0,
             _ => return,
         };
         let source = rodio::source::SineWave::new(freq)
@@ -136,6 +159,8 @@ struct SmashCrabs {
     ts_selected: usize,
     ts_smashing: Option<(usize, TsPhase)>,
     sh_ram: f32,
+    booting: Option<Transition>,
+    boot_snap_played: bool,
     quit: bool,
 }
 
@@ -158,6 +183,8 @@ impl SmashCrabs {
             ts_selected: 0,
             ts_smashing: None,
             sh_ram: 20.0,
+            booting: Some(Transition::start(Duration::from_millis(BOOT_TOTAL_MS))),
+            boot_snap_played: false,
             quit: false,
         }
     }
@@ -527,6 +554,84 @@ impl SmashCrabs {
         Text::new("Space stress RAM * Esc back * q quit").render(hint_row, buf);
     }
 
+    fn render_boot(&self, area: Rect, progress: f32, buf: &mut LayerStack) {
+        let t1 = BOOT_FLASH_MS as f32 / BOOT_TOTAL_MS as f32;
+        let t2 = (BOOT_FLASH_MS + BOOT_CLAW_MS) as f32 / BOOT_TOTAL_MS as f32;
+        let t3 = (BOOT_FLASH_MS + BOOT_CLAW_MS + BOOT_TITLE_MS) as f32 / BOOT_TOTAL_MS as f32;
+        let local = Rect {
+            x: 0,
+            y: 0,
+            width: area.width,
+            height: area.height,
+        };
+
+        if progress < t1 {
+            let sub = progress / t1;
+            let mut white = Buffer::new(area.width, area.height);
+            let cell = Cell {
+                symbol: ' ',
+                fg: Color::Reset,
+                bg: Color::White,
+                ..Default::default()
+            };
+            for y in 0..area.height {
+                for x in 0..area.width {
+                    white.set(x, y, cell.clone());
+                }
+            }
+            let dimmed = camera::dim(&white, sub);
+            blit(&dimmed, area, buf);
+            return;
+        }
+
+        if progress < t2 {
+            let sub = (progress - t1) / (t2 - t1);
+            let art: &[&str] = if sub < 0.5 { &CLAW_OPEN } else { &CLAW_CLOSED };
+            render_centered_art(buf, area, art, self.theme.tertiary);
+            return;
+        }
+
+        if progress < t3 {
+            let sub = (progress - t2) / (t3 - t2);
+            render_centered_art(buf, area, &CLAW_CLOSED, self.theme.tertiary);
+            render_boot_title(buf, area, sub, self.theme.accent);
+            return;
+        }
+
+        let sub = ((progress - t3) / (1.0 - t3)).clamp(0.0, 1.0);
+        let hub_content = self.render_destination_preview(Screen::Hub, area);
+        let mut logo = Buffer::new(area.width, area.height);
+        render_centered_art(&mut logo, local, &CLAW_CLOSED, self.theme.tertiary);
+        render_boot_title(&mut logo, local, 1.0, self.theme.accent);
+
+        let flare_x = -3.0 + sub * (area.width as f32 + 6.0);
+        for y in 0..area.height {
+            for x in 0..area.width {
+                let fx = x as f32;
+                let cell = if (fx - flare_x).abs() <= 1.5 {
+                    let h = (x as u64).wrapping_mul(374_761_393)
+                        ^ self.tick_count.wrapping_mul(2_246_822_519);
+                    let fg = if h.is_multiple_of(2) {
+                        self.theme.accent
+                    } else {
+                        self.theme.tertiary
+                    };
+                    Cell {
+                        symbol: '|',
+                        fg,
+                        bg: Color::Reset,
+                        ..Default::default()
+                    }
+                } else if fx < flare_x {
+                    hub_content.get(x, y).clone()
+                } else {
+                    logo.get(x, y).clone()
+                };
+                buf.set(area.x + x, area.y + y, cell);
+            }
+        }
+    }
+
     fn render_destination_preview(&self, screen: Screen, area: Rect) -> Buffer {
         let mut buf = Buffer::new(area.width, area.height);
         let local = Rect {
@@ -649,6 +754,78 @@ fn render_row(buf: &mut Buffer, area: Rect, text: &str, fg: Color) {
     }
 }
 
+fn render_centered_art(buf: &mut Buffer, area: Rect, art: &[&str], fg: Color) {
+    let art_height = art.len() as u16;
+    let art_width = art
+        .iter()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(0) as u16;
+    let y0 = area.height.saturating_sub(art_height) / 3;
+    let x0 = area.width.saturating_sub(art_width) / 2;
+    for (row, line) in art.iter().enumerate() {
+        let y = y0 + row as u16;
+        if y >= area.height {
+            break;
+        }
+        for (col, ch) in line.chars().enumerate() {
+            if ch == ' ' {
+                continue;
+            }
+            let x = x0 + col as u16;
+            if x < area.width {
+                buf.set(
+                    area.x + x,
+                    area.y + y,
+                    Cell {
+                        symbol: ch,
+                        fg,
+                        bg: Color::Reset,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+    }
+}
+
+fn render_boot_title(buf: &mut Buffer, area: Rect, sub: f32, fg: Color) {
+    let chars: Vec<char> = BOOT_TITLE.chars().collect();
+    let half = chars.len() / 2;
+    let total_width = chars.len() as u16;
+    let start_x = area.width.saturating_sub(total_width) / 2;
+    let y = area.height * 2 / 3;
+    if y >= area.height {
+        return;
+    }
+    for (i, &ch) in chars.iter().enumerate() {
+        if ch == ' ' {
+            continue;
+        }
+        let final_x = (start_x + i as u16) as f32;
+        let x = if i < half {
+            let from_x = -((half - i) as f32) - 2.0;
+            easing::ease_out(from_x, final_x, sub)
+        } else {
+            let from_x = area.width as f32 + (i - half) as f32 + 2.0;
+            easing::ease_out(from_x, final_x, sub)
+        };
+        let x = x.round();
+        if x >= 0.0 && (x as u16) < area.width {
+            buf.set(
+                area.x + x as u16,
+                area.y + y,
+                Cell {
+                    symbol: ch,
+                    fg,
+                    bg: Color::Reset,
+                    ..Default::default()
+                },
+            );
+        }
+    }
+}
+
 impl App for SmashCrabs {
     fn update(&mut self, event: &Event) {
         let Event::Key(k) = event else { return };
@@ -659,7 +836,7 @@ impl App for SmashCrabs {
             self.quit = true;
             return;
         }
-        if self.transitioning_to.is_some() {
+        if self.transitioning_to.is_some() || self.booting.is_some() {
             return;
         }
         match self.screen {
@@ -770,6 +947,10 @@ impl App for SmashCrabs {
     }
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
+        if let Some(t) = &self.booting {
+            self.render_boot(area, t.progress(), buf);
+            return;
+        }
         if let Some((destination, transition)) = &self.transitioning_to {
             self.render_transition(*destination, area, transition.progress(), buf);
             return;
@@ -799,6 +980,23 @@ impl App for SmashCrabs {
     }
 
     fn on_tick(&mut self, elapsed: Duration) {
+        if let Some(t) = &mut self.booting {
+            t.tick(elapsed);
+            let progress = t.progress();
+            let t1 = BOOT_FLASH_MS as f32 / BOOT_TOTAL_MS as f32;
+            let t2 = (BOOT_FLASH_MS + BOOT_CLAW_MS) as f32 / BOOT_TOTAL_MS as f32;
+            if !self.boot_snap_played && progress >= t1 {
+                let claw_sub = ((progress - t1) / (t2 - t1)).clamp(0.0, 1.0);
+                if claw_sub >= 0.5 {
+                    self.boot_snap_played = true;
+                    self.audio.play("snap");
+                }
+            }
+            if t.is_complete() {
+                self.booting = None;
+            }
+        }
+
         if self.flash_ticks_remaining > 0 {
             self.flash_ticks_remaining -= 1;
         }
