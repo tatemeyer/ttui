@@ -99,6 +99,32 @@ fn hex_distance(a: usize, b: usize) -> usize {
     diff.min(FACE_COUNT - diff)
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum RelaySpeaker {
+    User,
+    Agent,
+}
+
+const PSYCHIC_PROMPTS: [&str; 3] = [
+    "Status of the away team",
+    "Translate this inscription",
+    "Locate the temporal anomaly",
+];
+const PSYCHIC_THINKING_MS: u64 = 800;
+const PSYCHIC_REVEAL_MS: u64 = 800;
+const PSYCHIC_GLITCH_EVERY: u32 = 3;
+const PSYCHIC_GLITCH_DURATION_MS: u64 = 600;
+const PAPER_COLOR: Color = Color::Rgb {
+    r: 230,
+    g: 225,
+    b: 210,
+};
+const INK_COLOR: Color = Color::Rgb {
+    r: 20,
+    g: 20,
+    b: 40,
+};
+
 struct RodioAudioSink {
     sink: Option<rodio::stream::MixerDeviceSink>,
 }
@@ -126,6 +152,7 @@ impl AudioSink for RodioAudioSink {
             "boot" => 100.0,
             "flight" => 300.0,
             "vent" => 500.0,
+            "glitch" => 700.0,
             _ => return,
         };
         let source = rodio::source::SineWave::new(freq)
@@ -148,6 +175,11 @@ struct Tardis {
     booting: Option<Transition>,
     tick_count: u64,
     audio: RodioAudioSink,
+    psychic_log: Vec<(RelaySpeaker, String)>,
+    psychic_prompt_index: usize,
+    psychic_send_count: u32,
+    psychic_pending: Option<(bool, Transition)>,
+    psychic_reveal: Option<Transition>,
     quit: bool,
 }
 
@@ -166,6 +198,11 @@ impl Tardis {
             booting: Some(Transition::start(Duration::from_millis(BOOT_MS))),
             tick_count: 0,
             audio: RodioAudioSink::new(),
+            psychic_log: Vec::new(),
+            psychic_prompt_index: 0,
+            psychic_send_count: 0,
+            psychic_pending: None,
+            psychic_reveal: None,
             quit: false,
         };
         tardis.audio.play("boot");
@@ -339,6 +376,71 @@ impl Tardis {
         Text::new("Space channel * v vent * Esc back * q quit").render(hint_row, buf);
     }
 
+    fn render_psychic_paper(&self, area: Rect, buf: &mut LayerStack) {
+        for y in 0..area.height {
+            for x in 0..area.width {
+                buf.set(
+                    area.x + x,
+                    area.y + y,
+                    Cell {
+                        symbol: ' ',
+                        fg: Color::Reset,
+                        bg: PAPER_COLOR,
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+
+        let start = self.psychic_log.len().saturating_sub(5);
+        let last_index = self.psychic_log.len().saturating_sub(1);
+        for (i, (speaker, text)) in self.psychic_log[start..].iter().enumerate() {
+            let absolute_index = start + i;
+            let prefix = match speaker {
+                RelaySpeaker::User => "You: ",
+                RelaySpeaker::Agent => "Relay: ",
+            };
+            let is_latest_agent = *speaker == RelaySpeaker::Agent
+                && !self.psychic_log.is_empty()
+                && absolute_index == last_index;
+            let fg = if is_latest_agent {
+                match &self.psychic_reveal {
+                    Some(t) => lerp_color(PAPER_COLOR, INK_COLOR, t.progress()),
+                    None => INK_COLOR,
+                }
+            } else {
+                INK_COLOR
+            };
+            render_ink_row(buf, area, i as u16, &format!("{prefix}{text}"), fg);
+
+            if is_latest_agent && self.glitch.is_active() && (i as u16) < area.height {
+                let glitch_row = Rect {
+                    x: area.x,
+                    y: area.y + i as u16,
+                    width: area.width,
+                    height: 1,
+                };
+                self.glitch
+                    .render(glitch_row, Color::Red, self.tick_count, buf);
+            }
+        }
+
+        render_ink_row(
+            buf,
+            area,
+            area.height.saturating_sub(2),
+            PSYCHIC_PROMPTS[self.psychic_prompt_index],
+            INK_COLOR,
+        );
+        render_ink_row(
+            buf,
+            area,
+            area.height.saturating_sub(1),
+            "Tab cycle * Enter send * Esc back * q quit",
+            INK_COLOR,
+        );
+    }
+
     fn render_destination_preview(&self, screen: Screen, area: Rect) -> Buffer {
         let local = Rect {
             x: 0,
@@ -349,9 +451,8 @@ impl Tardis {
         let mut stack = LayerStack::new(area.width, area.height);
         match screen {
             Screen::ArtronEnergy => self.render_artron_energy(local, &mut stack),
-            Screen::PsychicPaper | Screen::StarCharts => {
-                self.render_placeholder(screen, local, &mut stack)
-            }
+            Screen::PsychicPaper => self.render_psychic_paper(local, &mut stack),
+            Screen::StarCharts => self.render_placeholder(screen, local, &mut stack),
             Screen::Hub => self.render_hub(local, &mut stack),
         }
         let mut out = Buffer::new(area.width, area.height);
@@ -551,6 +652,47 @@ impl Tardis {
     }
 }
 
+fn lerp_color(from: Color, to: Color, t: f32) -> Color {
+    let t = t.clamp(0.0, 1.0);
+    match (from, to) {
+        (
+            Color::Rgb {
+                r: r1,
+                g: g1,
+                b: b1,
+            },
+            Color::Rgb {
+                r: r2,
+                g: g2,
+                b: b2,
+            },
+        ) => Color::Rgb {
+            r: (r1 as f32 + (r2 as f32 - r1 as f32) * t) as u8,
+            g: (g1 as f32 + (g2 as f32 - g1 as f32) * t) as u8,
+            b: (b1 as f32 + (b2 as f32 - b1 as f32) * t) as u8,
+        },
+        _ => to,
+    }
+}
+
+fn render_ink_row(buf: &mut LayerStack, area: Rect, y: u16, text: &str, fg: Color) {
+    if y >= area.height {
+        return;
+    }
+    for (i, ch) in text.chars().take(area.width as usize).enumerate() {
+        buf.set(
+            area.x + i as u16,
+            area.y + y,
+            Cell {
+                symbol: ch,
+                fg,
+                bg: PAPER_COLOR,
+                ..Default::default()
+            },
+        );
+    }
+}
+
 fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
     for y in 0..scratch.height {
         for x in 0..scratch.width {
@@ -633,7 +775,38 @@ impl App for Tardis {
                 }
                 _ => {}
             },
-            Screen::PsychicPaper | Screen::StarCharts => {
+            Screen::PsychicPaper => {
+                if self.psychic_pending.is_some() {
+                    return;
+                }
+                match k.code {
+                    KeyCode::Tab => {
+                        self.psychic_prompt_index =
+                            (self.psychic_prompt_index + 1) % PSYCHIC_PROMPTS.len();
+                    }
+                    KeyCode::BackTab => {
+                        self.psychic_prompt_index =
+                            (self.psychic_prompt_index + PSYCHIC_PROMPTS.len() - 1)
+                                % PSYCHIC_PROMPTS.len();
+                    }
+                    KeyCode::Enter | KeyCode::Char(' ') => {
+                        self.psychic_log.push((
+                            RelaySpeaker::User,
+                            PSYCHIC_PROMPTS[self.psychic_prompt_index].to_string(),
+                        ));
+                        self.psychic_send_count += 1;
+                        let will_glitch =
+                            self.psychic_send_count.is_multiple_of(PSYCHIC_GLITCH_EVERY);
+                        self.psychic_pending = Some((
+                            will_glitch,
+                            Transition::start(Duration::from_millis(PSYCHIC_THINKING_MS)),
+                        ));
+                    }
+                    KeyCode::Esc => self.screen = Screen::Hub,
+                    _ => {}
+                }
+            }
+            Screen::StarCharts => {
                 if k.code == KeyCode::Esc {
                     self.screen = Screen::Hub;
                 }
@@ -653,9 +826,8 @@ impl App for Tardis {
         match self.screen {
             Screen::Hub => self.render_hub(area, buf),
             Screen::ArtronEnergy => self.render_artron_energy(area, buf),
-            Screen::PsychicPaper | Screen::StarCharts => {
-                self.render_placeholder(self.screen, area, buf)
-            }
+            Screen::PsychicPaper => self.render_psychic_paper(area, buf),
+            Screen::StarCharts => self.render_placeholder(self.screen, area, buf),
         }
     }
 
@@ -692,6 +864,32 @@ impl App for Tardis {
             t.tick(elapsed);
             if t.is_complete() {
                 self.vent_flash = None;
+            }
+        }
+
+        if let Some((will_glitch, t)) = &mut self.psychic_pending {
+            t.tick(elapsed);
+            if t.is_complete() {
+                if *will_glitch {
+                    self.psychic_log
+                        .push((RelaySpeaker::Agent, "...signal lost...".to_string()));
+                    self.glitch
+                        .trigger(Duration::from_millis(PSYCHIC_GLITCH_DURATION_MS));
+                    self.audio.play("glitch");
+                } else {
+                    let prompt = PSYCHIC_PROMPTS[self.psychic_prompt_index];
+                    self.psychic_log
+                        .push((RelaySpeaker::Agent, format!("{prompt} — relay confirmed.")));
+                    self.psychic_reveal =
+                        Some(Transition::start(Duration::from_millis(PSYCHIC_REVEAL_MS)));
+                }
+                self.psychic_pending = None;
+            }
+        }
+        if let Some(t) = &mut self.psychic_reveal {
+            t.tick(elapsed);
+            if t.is_complete() {
+                self.psychic_reveal = None;
             }
         }
 
