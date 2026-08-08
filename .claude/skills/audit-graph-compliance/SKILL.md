@@ -39,14 +39,31 @@ For the current branch's Arc:
 
 ### 3. Worktree hygiene
 
-1. From the same `git worktree list` enumeration, run `git branch
-   --merged main` and cross-reference: any worktree whose branch
-   appears in that list is **fully merged** — report as **removable**
-   (safe to `git worktree remove` and delete the branch, since its
-   work already landed on `main`).
-2. For worktree branches not merged into `main`, check commits ahead
-   of `main` via `git rev-list --count main..<branch>`. A branch with
-   `0` commits ahead and no activity in the last 24 hours (reusing the
+1. From the same `git worktree list` enumeration, determine which
+   worktree branches have already landed on `main`. A branch counts as
+   **fully merged** if *either* of these holds:
+   - it appears in `git branch --merged origin/main` (catches
+     fast-forward and merge-commit merges via commit ancestry), **or**
+   - `gh pr list --state merged --head <branch>` returns a merged PR
+     for it.
+   The second check is **required, not optional**: this repo
+   squash-merges PRs (per `git-github-standards.md`), and a squash
+   merge rewrites a branch's commits into one new commit on `main`, so
+   the branch's own commits are never ancestors of `main` and
+   `git branch --merged` will silently omit it. Concrete proof:
+   `worktree-issue-41-omnitrix-glow-border` and
+   `worktree-issue-42-omnitrix-faceplate` were squash-merged via PRs
+   #85 and #86 but do **not** appear in
+   `git branch --merged origin/main`. Because squash is the repo
+   default, treat `gh pr list --state merged --head <branch>` as the
+   authoritative signal and ancestry as the fallback. Any branch
+   meeting *either* condition is **removable** — safe to
+   `git worktree remove` and delete the branch, since its work already
+   landed on `main`.
+2. For worktree branches merged by *neither* check above, check commits
+   ahead
+   of `main` via `git rev-list --count origin/main..<branch>`. A branch
+   with `0` commits ahead and no activity in the last 24 hours (reusing the
    Branch Freshness check's timestamp) is likely an **abandoned
    session artifact** — report as a candidate for removal, distinct
    from "stale" (which still has unshipped work) since there's nothing
