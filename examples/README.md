@@ -15,5 +15,15 @@ against a specific vision doc (`TTUI-Ideas/vision/UI/`). Run with
   (Versus Mode, Target Smash, Stage Hazards) and a Smash-Bros-style
   intro splash. Built from
   `TTUI-Ideas/vision/UI/idea-2-SuperSmashCrabs.md`.
+- **`launcher`** — a cross-app "portal nexus" that presents the three
+  apps above as bootable portals and switches between whole apps: each
+  launches through its own boot + signature transition, `F12` (or an
+  app's own `q`) returns to the nexus, and the nexus's `q` quits. Built
+  from `docs/design/specs/launcher/2026-08-08-cross-app-launcher-design.md`.
 - **`demo`** — the original core-framework smoke-test example, predates
   the vision-doc apps above. Retirement tracked in issue #83.
+
+Each themed app's `App` type lives in `examples/<app>/<app>.rs` and is
+reused by `launcher` via `#[path]`; `examples/<app>/main.rs` is a thin
+standalone entry, so `cargo run --example <app>` still runs each app on
+its own.

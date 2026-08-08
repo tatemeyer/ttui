@@ -1,9 +1,7 @@
 // examples/omnitrix/omnitrix.rs — Omnitrix App (reused by the launcher)
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use ttui::app::App;
 use ttui::buffer::{Buffer, Cell, LayerStack};
 use ttui::camera;
@@ -75,8 +73,6 @@ const HOURGLASS: [&str; 5] = ["┌───┐", " \\ / ", "  X  ", " / \\ ", "�
 pub(crate) struct Omnitrix {
     pulse_phase: f32,
     quit: bool,
-    last_tick_started: Instant,
-    perf_log: std::fs::File,
     selected: usize,
     mode: AppMode,
     transitioning_from: Option<(AppMode, Transition)>,
@@ -95,16 +91,9 @@ pub(crate) struct Omnitrix {
 
 impl Omnitrix {
     pub(crate) fn new() -> Self {
-        let perf_log = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open("omnitrix_perf.log")
-            .expect("failed to open omnitrix_perf.log");
         Omnitrix {
             pulse_phase: 0.0,
             quit: false,
-            last_tick_started: Instant::now(),
-            perf_log,
             selected: 0,
             mode: AppMode::Faceplate,
             transitioning_from: None,
@@ -433,23 +422,6 @@ impl App for Omnitrix {
     }
 
     fn on_tick(&mut self, elapsed: Duration) {
-        // Measures wall-clock time since the previous tick STARTED,
-        // which includes this loop iteration's poll wait plus the
-        // PREVIOUS iteration's full render+flush. If Terminal::draw_diff's
-        // per-cell execute! pattern (the Rev B spec's open performance
-        // risk) is expensive, this value will consistently exceed
-        // TICK_INTERVAL by more than the previous frame's render cost
-        // should account for. This is a deliberately simple, core-code-free
-        // way to get real numbers for a prototype, not a permanent
-        // profiling mechanism.
-        let now = Instant::now();
-        let since_last_tick = now.duration_since(self.last_tick_started);
-        self.last_tick_started = now;
-        let _ = writeln!(
-            self.perf_log,
-            "nominal_tick={elapsed:?} actual_time_since_last_tick_start={since_last_tick:?}"
-        );
-
         let pulse_rate = if self.mode == AppMode::Brainstorm && self.thinking.is_some() {
             3.0
         } else {
