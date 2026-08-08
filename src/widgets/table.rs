@@ -1,7 +1,11 @@
+//! Header-row-plus-data-rows table with fixed-width columns.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+/// A table with a header row and selectable data rows, fixed-width
+/// columns.
 pub struct Table<'a> {
     headers: &'a [String],
     rows: &'a [Vec<String>],
@@ -10,6 +14,8 @@ pub struct Table<'a> {
 }
 
 impl<'a> Table<'a> {
+    /// Creates a table over `headers`/`rows`, highlighting the data
+    /// row at `selected`, each column `col_width` cells wide.
     pub fn new(
         headers: &'a [String],
         rows: &'a [Vec<String>],
@@ -55,6 +61,7 @@ impl<'a> Table<'a> {
         }
     }
 
+    /// Renders the header row followed by data rows, top to bottom.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.height == 0 {
             return;

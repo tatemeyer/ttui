@@ -1,7 +1,10 @@
+//! Single-line plain text, left-aligned and truncated to fit.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+/// A single line of text with default (terminal) fg/bg color.
 pub struct Text<'a> {
     content: &'a str,
     fg: Color,
@@ -9,6 +12,7 @@ pub struct Text<'a> {
 }
 
 impl<'a> Text<'a> {
+    /// Creates a text row over `content` with default styling.
     pub fn new(content: &'a str) -> Self {
         Text {
             content,
@@ -17,6 +21,7 @@ impl<'a> Text<'a> {
         }
     }
 
+    /// Renders the text left-aligned, truncated to `area`'s width.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;

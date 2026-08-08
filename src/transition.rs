@@ -1,5 +1,11 @@
+//! Time-driven progress tracking for animations — apps own a
+//! `Transition` per animated value, `tick` it each frame, and read
+//! `progress()`/`is_complete()` to drive rendering.
+
 use std::time::Duration;
 
+/// Tracks elapsed time against a fixed duration, exposing progress as
+/// `0.0..=1.0`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transition {
     duration: Duration,
@@ -7,6 +13,7 @@ pub struct Transition {
 }
 
 impl Transition {
+    /// Starts a transition that completes after `duration`.
     pub fn start(duration: Duration) -> Self {
         Transition {
             duration,
@@ -14,10 +21,13 @@ impl Transition {
         }
     }
 
+    /// Advances elapsed time by `elapsed`, clamped to `duration`.
     pub fn tick(&mut self, elapsed: Duration) {
         self.elapsed = (self.elapsed + elapsed).min(self.duration);
     }
 
+    /// Elapsed / duration, clamped to `0.0..=1.0`. A zero-duration
+    /// transition is always `1.0`.
     pub fn progress(&self) -> f32 {
         if self.duration.is_zero() {
             return 1.0;
@@ -25,6 +35,7 @@ impl Transition {
         (self.elapsed.as_secs_f32() / self.duration.as_secs_f32()).clamp(0.0, 1.0)
     }
 
+    /// Whether elapsed time has reached `duration`.
     pub fn is_complete(&self) -> bool {
         self.elapsed >= self.duration
     }

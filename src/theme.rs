@@ -1,9 +1,17 @@
+//! App color palette and border glyph set — passed explicitly to
+//! `Block`/`SmashBorder`; other widgets take plain color params
+//! instead of a whole `Theme`.
+
 use crossterm::style::Color;
 
+/// The glyphs a bordered widget draws its edges/corners with.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BorderSet {
+    /// Top/bottom edge glyph.
     pub horizontal: char,
+    /// Left/right edge glyph.
     pub vertical: char,
+    /// Corner glyph.
     pub corner: char,
 }
 
@@ -17,15 +25,26 @@ impl Default for BorderSet {
     }
 }
 
+/// An app's color palette and border style, passed to `Block`/
+/// `SmashBorder` renders.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Theme {
+    /// Base background color.
     pub background: Color,
+    /// Main accent/brand color.
     pub primary: Color,
+    /// Secondary accent color.
     pub secondary: Color,
+    /// Tertiary accent color.
     pub tertiary: Color,
+    /// Highlight/selection color.
     pub accent: Color,
+    /// Border glyph set.
     pub border: BorderSet,
+    /// Whether borders render bold.
     pub border_bold: bool,
+    /// Whether `Block` draws an outward second border ring.
+    pub border_thick: bool,
 }
 
 impl Default for Theme {
@@ -38,6 +57,7 @@ impl Default for Theme {
             accent: Color::Reset,
             border: BorderSet::default(),
             border_bold: false,
+            border_thick: false,
         }
     }
 }
@@ -68,5 +88,10 @@ mod tests {
     #[test]
     fn default_theme_border_bold_is_false() {
         assert!(!Theme::default().border_bold);
+    }
+
+    #[test]
+    fn default_theme_border_thick_is_false() {
+        assert!(!Theme::default().border_thick);
     }
 }

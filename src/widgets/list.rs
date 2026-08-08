@@ -1,17 +1,22 @@
+//! Scrollable selectable list, one item per row.
+
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+/// A vertical list of items with one highlighted selection.
 pub struct List<'a> {
     items: &'a [String],
     selected: usize,
 }
 
 impl<'a> List<'a> {
+    /// Creates a list over `items`, highlighting the one at `selected`.
     pub fn new(items: &'a [String], selected: usize) -> Self {
         List { items, selected }
     }
 
+    /// Renders up to `area.height` items as rows, top to bottom.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         for (row, item) in self.items.iter().take(area.height as usize).enumerate() {
             let (fg, bg) = if row == self.selected {

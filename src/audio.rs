@@ -1,7 +1,16 @@
+//! Optional sound-effect playback hook — apps depend on `AudioSink`
+//! rather than a concrete audio backend so they stay testable/silent
+//! by default.
+
+/// Plays a named sound-effect event; implementations pick the backend
+/// (or do nothing, like `NullAudioSink`).
 pub trait AudioSink {
+    /// Trigger the sound effect associated with `event_id`.
     fn play(&mut self, event_id: &str);
 }
 
+/// An `AudioSink` that discards every event — the default for apps
+/// that don't need real audio.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct NullAudioSink;
 

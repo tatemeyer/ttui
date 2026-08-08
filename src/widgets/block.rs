@@ -1,14 +1,20 @@
+//! Bordered container, with an optional outward second border ring
+//! for a "glow" look when `Theme.border_thick` is set.
+
 use crate::buffer::{Buffer, Cell, CellStyle};
 use crate::layout::Rect;
 use crate::theme::{BorderSet, Theme};
 use crossterm::style::Color;
 
+/// A bordered box with an optional title, drawn with a `Theme` or
+/// plain default styling.
 pub struct Block<'a> {
     title: Option<&'a str>,
     theme: Option<&'a Theme>,
 }
 
 impl<'a> Block<'a> {
+    /// Creates an untitled, unthemed block.
     pub fn new() -> Self {
         Block {
             title: None,
@@ -16,23 +22,39 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Sets the title shown on the top border.
     pub fn title(mut self, t: &'a str) -> Self {
         self.title = Some(t);
         self
     }
 
+    /// Sets the theme controlling border glyphs/color/thickness.
     pub fn theme(mut self, theme: &'a Theme) -> Self {
         self.theme = Some(theme);
         self
     }
 
+    /// Draws the border (and title, if set) and returns the inner
+    /// content area.
     pub fn render(&self, area: Rect, buf: &mut Buffer) -> Rect {
         if area.width < 2 || area.height < 2 {
             return area;
         }
-        let (border, fg, bg, border_bold) = match self.theme {
-            Some(t) => (t.border, t.primary, t.background, t.border_bold),
-            None => (BorderSet::default(), Color::Reset, Color::Reset, false),
+        let (border, fg, bg, border_bold, border_thick) = match self.theme {
+            Some(t) => (
+                t.border,
+                t.primary,
+                t.background,
+                t.border_bold,
+                t.border_thick,
+            ),
+            None => (
+                BorderSet::default(),
+                Color::Reset,
+                Color::Reset,
+                false,
+                false,
+            ),
         };
         let plain = || Cell {
             symbol: ' ',
@@ -40,74 +62,97 @@ impl<'a> Block<'a> {
             bg,
             style: CellStyle { bold: border_bold },
         };
-        for x in area.x..area.x + area.width {
+
+        let draw_ring = |ring_area: Rect, buf: &mut Buffer| {
+            for x in ring_area.x..ring_area.x + ring_area.width {
+                buf.set(
+                    x,
+                    ring_area.y,
+                    Cell {
+                        symbol: border.horizontal,
+                        ..plain()
+                    },
+                );
+                buf.set(
+                    x,
+                    ring_area.y + ring_area.height - 1,
+                    Cell {
+                        symbol: border.horizontal,
+                        ..plain()
+                    },
+                );
+            }
+            for y in ring_area.y..ring_area.y + ring_area.height {
+                buf.set(
+                    ring_area.x,
+                    y,
+                    Cell {
+                        symbol: border.vertical,
+                        ..plain()
+                    },
+                );
+                buf.set(
+                    ring_area.x + ring_area.width - 1,
+                    y,
+                    Cell {
+                        symbol: border.vertical,
+                        ..plain()
+                    },
+                );
+            }
             buf.set(
-                x,
-                area.y,
+                ring_area.x,
+                ring_area.y,
                 Cell {
-                    symbol: border.horizontal,
+                    symbol: border.corner,
                     ..plain()
                 },
             );
             buf.set(
-                x,
-                area.y + area.height - 1,
+                ring_area.x + ring_area.width - 1,
+                ring_area.y,
                 Cell {
-                    symbol: border.horizontal,
+                    symbol: border.corner,
                     ..plain()
                 },
             );
+            buf.set(
+                ring_area.x,
+                ring_area.y + ring_area.height - 1,
+                Cell {
+                    symbol: border.corner,
+                    ..plain()
+                },
+            );
+            buf.set(
+                ring_area.x + ring_area.width - 1,
+                ring_area.y + ring_area.height - 1,
+                Cell {
+                    symbol: border.corner,
+                    ..plain()
+                },
+            );
+        };
+
+        draw_ring(area, buf);
+
+        if border_thick {
+            let outer_x = area.x.saturating_sub(1);
+            let outer_y = area.y.saturating_sub(1);
+            let outer_w = (area.width + 2).min(buf.width.saturating_sub(outer_x));
+            let outer_h = (area.height + 2).min(buf.height.saturating_sub(outer_y));
+            if outer_w >= 2 && outer_h >= 2 {
+                draw_ring(
+                    Rect {
+                        x: outer_x,
+                        y: outer_y,
+                        width: outer_w,
+                        height: outer_h,
+                    },
+                    buf,
+                );
+            }
         }
-        for y in area.y..area.y + area.height {
-            buf.set(
-                area.x,
-                y,
-                Cell {
-                    symbol: border.vertical,
-                    ..plain()
-                },
-            );
-            buf.set(
-                area.x + area.width - 1,
-                y,
-                Cell {
-                    symbol: border.vertical,
-                    ..plain()
-                },
-            );
-        }
-        buf.set(
-            area.x,
-            area.y,
-            Cell {
-                symbol: border.corner,
-                ..plain()
-            },
-        );
-        buf.set(
-            area.x + area.width - 1,
-            area.y,
-            Cell {
-                symbol: border.corner,
-                ..plain()
-            },
-        );
-        buf.set(
-            area.x,
-            area.y + area.height - 1,
-            Cell {
-                symbol: border.corner,
-                ..plain()
-            },
-        );
-        buf.set(
-            area.x + area.width - 1,
-            area.y + area.height - 1,
-            Cell {
-                symbol: border.corner,
-                ..plain()
-            },
-        );
 
         if let Some(title) = self.title {
             for (i, ch) in title
@@ -223,6 +268,7 @@ mod tests {
                 corner: '*',
             },
             border_bold: false,
+            border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);
         let area = Rect {
@@ -255,6 +301,7 @@ mod tests {
                 corner: '*',
             },
             border_bold: true,
+            border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);
         let area = Rect {
@@ -272,6 +319,83 @@ mod tests {
     }
 
     #[test]
+    fn thick_border_draws_a_second_ring_one_cell_outward() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+            border_bold: false,
+            border_thick: true,
+        };
+        let mut buf = Buffer::new(6, 5);
+        let area = Rect {
+            x: 1,
+            y: 1,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        assert_eq!(buf.get(0, 0).symbol, '*'); // outer corner
+        assert_eq!(buf.get(1, 0).symbol, '='); // outer top edge
+        assert_eq!(buf.get(0, 1).symbol, '#'); // outer left edge
+        assert_eq!(buf.get(0, 0).fg, Color::Green);
+        assert_eq!(buf.get(0, 0).bg, Color::Black);
+    }
+
+    #[test]
+    fn thin_border_leaves_the_outward_ring_untouched() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+            border_bold: false,
+            border_thick: false,
+        };
+        let mut buf = Buffer::new(6, 5);
+        let area = Rect {
+            x: 1,
+            y: 1,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        assert_eq!(*buf.get(0, 0), Cell::default());
+    }
+
+    #[test]
+    fn theme_less_border_leaves_the_outward_ring_untouched() {
+        let mut buf = Buffer::new(6, 5);
+        let area = Rect {
+            x: 1,
+            y: 1,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().render(area, &mut buf);
+
+        assert_eq!(*buf.get(0, 0), Cell::default());
+    }
+
+    #[test]
     fn title_cells_are_not_bold_even_when_theme_border_bold_is_true() {
         let theme = Theme {
             background: Color::Black,
@@ -285,6 +409,7 @@ mod tests {
                 corner: '*',
             },
             border_bold: true,
+            border_thick: false,
         };
         let mut buf = Buffer::new(6, 3);
         let area = Rect {

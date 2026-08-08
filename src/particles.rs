@@ -1,39 +1,58 @@
+//! A simple particle system for bursts and impacts — one straight-line
+//! velocity per particle, no gravity or collision.
+
 use crate::buffer::{Buffer, Cell};
 use crossterm::style::Color;
 use std::time::Duration;
 
+/// One glyph moving in a straight line with a finite lifetime.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Particle {
+    /// Current x position (cells).
     pub x: f32,
+    /// Current y position (cells).
     pub y: f32,
+    /// x velocity (cells/second).
     pub vx: f32,
+    /// y velocity (cells/second).
     pub vy: f32,
+    /// Glyph to render.
     pub symbol: char,
+    /// Foreground color.
     pub color: Color,
+    /// Total time the particle lives before despawning.
     pub lifetime: Duration,
+    /// Time elapsed since spawn.
     pub age: Duration,
 }
 
 impl Particle {
+    /// Whether this particle is still within its `lifetime`.
     pub fn is_alive(&self) -> bool {
         self.age < self.lifetime
     }
 }
 
+/// A collection of `Particle`s: spawn, `update` each tick, `render`
+/// each frame; dead particles are dropped automatically.
 #[derive(Clone, Debug, Default)]
 pub struct ParticleSystem {
     particles: Vec<Particle>,
 }
 
 impl ParticleSystem {
+    /// Creates an empty particle system.
     pub fn new() -> Self {
         ParticleSystem::default()
     }
 
+    /// Adds a particle to the system.
     pub fn spawn(&mut self, p: Particle) {
         self.particles.push(p);
     }
 
+    /// Advances every particle's position and age by `elapsed`,
+    /// dropping any that have expired.
     pub fn update(&mut self, elapsed: Duration) {
         let dt = elapsed.as_secs_f32();
         for p in &mut self.particles {
@@ -44,6 +63,8 @@ impl ParticleSystem {
         self.particles.retain(|p| p.is_alive());
     }
 
+    /// Draws every particle's glyph at its rounded position, skipping
+    /// any that have moved out of bounds.
     pub fn render(&self, buf: &mut Buffer) {
         for p in &self.particles {
             let x = p.x.round();
@@ -63,10 +84,12 @@ impl ParticleSystem {
         }
     }
 
+    /// Number of currently-alive particles.
     pub fn len(&self) -> usize {
         self.particles.len()
     }
 
+    /// Whether there are no currently-alive particles.
     pub fn is_empty(&self) -> bool {
         self.particles.is_empty()
     }

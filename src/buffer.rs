@@ -1,15 +1,27 @@
+//! `Cell`/`Buffer`/`LayerStack` — the framework's core render target.
+//! Widgets write `Cell`s into a `Buffer`; apps composite multiple
+//! layers into one via `LayerStack` before the terminal diff-flush.
+
 use crossterm::style::Color;
 
+/// Text styling flags for a single `Cell`, beyond color.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct CellStyle {
+    /// Whether the cell renders bold.
     pub bold: bool,
 }
 
+/// One terminal character cell: glyph, foreground/background color,
+/// and style.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Cell {
+    /// The glyph to render.
     pub symbol: char,
+    /// Foreground (text) color.
     pub fg: Color,
+    /// Background color.
     pub bg: Color,
+    /// Bold/etc. styling.
     pub style: CellStyle,
 }
 
@@ -24,14 +36,20 @@ impl Default for Cell {
     }
 }
 
+/// A flat grid of `Cell`s — one render target's worth of terminal
+/// content.
 #[derive(Clone, Debug)]
 pub struct Buffer {
+    /// Grid width in cells.
     pub width: u16,
+    /// Grid height in cells.
     pub height: u16,
     cells: Vec<Cell>,
 }
 
 impl Buffer {
+    /// Creates a `width`x`height` buffer filled with default
+    /// (blank) cells.
     pub fn new(width: u16, height: u16) -> Self {
         Buffer {
             width,
@@ -40,10 +58,12 @@ impl Buffer {
         }
     }
 
+    /// Returns the cell at `(x, y)`. Panics if out of bounds.
     pub fn get(&self, x: u16, y: u16) -> &Cell {
         &self.cells[self.index(x, y)]
     }
 
+    /// Overwrites the cell at `(x, y)`. Panics if out of bounds.
     pub fn set(&mut self, x: u16, y: u16, cell: Cell) {
         let idx = self.index(x, y);
         self.cells[idx] = cell;
@@ -54,13 +74,19 @@ impl Buffer {
     }
 }
 
+/// A single changed cell, as produced by `diff`.
 #[derive(Debug, PartialEq)]
 pub struct CellDiff {
+    /// Column of the changed cell.
     pub x: u16,
+    /// Row of the changed cell.
     pub y: u16,
+    /// The cell's new value.
     pub cell: Cell,
 }
 
+/// Returns every cell in `next` that differs from `prev` at the same
+/// position — used to redraw only what actually changed.
 pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
     let mut out = Vec::new();
     for y in 0..next.height {
@@ -84,6 +110,9 @@ pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
 // what's beneath it — it must set a non-default fg, bg, or style to
 // actually cover the layer below (e.g. a bolded blank cell is non-default
 // and DOES occlude, even though it renders identically to a blank).
+/// An ordered stack of same-sized `Buffer`s, composited top-to-bottom
+/// with `Cell::default()` cells treated as transparent (see the
+/// transparency-rule comment above).
 #[derive(Clone, Debug)]
 pub struct LayerStack {
     // Invariant: always has length >= 1; layers[0] is the base layer. This
@@ -92,12 +121,14 @@ pub struct LayerStack {
 }
 
 impl LayerStack {
+    /// Creates a stack with a single `width`x`height` base layer.
     pub fn new(width: u16, height: u16) -> Self {
         LayerStack {
             layers: vec![Buffer::new(width, height)],
         }
     }
 
+    /// Adds a new blank layer on top and returns it for writing.
     pub fn push_layer(&mut self) -> &mut Buffer {
         let width = self.layers[0].width;
         let height = self.layers[0].height;
@@ -108,17 +139,22 @@ impl LayerStack {
     // `index` must already exist via a prior `push_layer()` call — there is
     // no auto-grow; an out-of-range index panics (standard Vec indexing
     // panic).
+    /// Mutable access to the layer at `index` (0 = base). Panics if
+    /// `index` hasn't been created via `push_layer`.
     pub fn layer_mut(&mut self, index: usize) -> &mut Buffer {
         &mut self.layers[index]
     }
 
     // Read-only counterpart to `layer_mut` — same out-of-range panic
     // behavior (standard Vec indexing panic).
+    /// Read-only access to the layer at `index` (0 = base). Panics if
+    /// `index` hasn't been created via `push_layer`.
     pub fn layer(&self, index: usize) -> &Buffer {
         &self.layers[index]
     }
 
     // Number of layers currently in the stack (always >= 1).
+    /// Number of layers currently in the stack (always >= 1).
     pub fn layer_count(&self) -> usize {
         self.layers.len()
     }
@@ -127,6 +163,8 @@ impl LayerStack {
     // For depth > 1: top-to-bottom scan, stopping at the first (topmost)
     // non-default cell at each position (see transparency rule on
     // `LayerStack`).
+    /// Flattens every layer into one `Buffer`, topmost non-default
+    /// cell winning at each position.
     pub fn composite(&self) -> Buffer {
         if self.layers.len() == 1 {
             return self.layers[0].clone();
