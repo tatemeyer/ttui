@@ -21,6 +21,13 @@ wait for the four required status checks (`build`/`test`/`clippy`/
 commit per Arc and avoids `main` accumulating every intermediate
 task-commit from inside the worktree.
 
+When end-of-Arc removal was skipped and worktrees accumulate, follow the
+cleanup runbook in
+`docs/design/specs/core/2026-08-08-worktree-cleanup-procedure-design.md`
+— it consumes `audit-graph-compliance`'s buckets and defines the action
+and autonomy tier per bucket (including the squash-merge `-d`-vs-`-D`
+and `locked`-worktree cases).
+
 `enforce_admins` stays `false` — the autonomy-tier scheme below is
 what actually gates which work may use that bypass, not the
 branch-protection setting itself. `delete_branch_on_merge` is `true`

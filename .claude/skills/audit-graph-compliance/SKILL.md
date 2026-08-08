@@ -73,6 +73,11 @@ For the current branch's Arc:
    activity), and active (everything else) — so the user can act on
    groups rather than one at a time.
 
+This check *classifies*; the action to take on each bucket (and the
+autonomy tier it falls under) is defined in the cleanup runbook,
+`docs/design/specs/core/2026-08-08-worktree-cleanup-procedure-design.md`
+— keep the two in sync but don't duplicate the classification there.
+
 ### Still stubbed
 
 - **Interrupt handling** — defining and checking what "safely
