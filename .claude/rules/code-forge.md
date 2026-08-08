@@ -28,7 +28,7 @@ model tier.
   frontmatter conventions, or something more automated.
 - **Does agent-authored work get a real merge gate, or is admin bypass
   accepted as the norm?** `main`'s branch protection
-  (`docs/design/plans/2026-08-04-gitops-github-workflow-plan.md`, Task 7)
+  (`docs/design/plans/core/2026-08-04-gitops-github-workflow-plan.md`, Task 7)
   sets `enforce_admins: false` — the repo owner (whose credentials an
   agent operates under) can push straight past required PRs and CI
   checks. This was a deliberate spec decision (the stated "escape valve
