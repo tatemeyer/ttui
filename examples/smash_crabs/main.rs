@@ -421,20 +421,18 @@ impl App for SmashCrabs {
                     ));
                     self.audio.play("cursor");
                 }
-                KeyCode::Enter => {
-                    if self.cursor_tween.is_none() {
-                        let destination = screen_for_selected(self.selected);
-                        self.transitioning_to = Some((
-                            destination,
-                            Transition::start(Duration::from_millis(VS_TRANSITION_MS)),
-                        ));
-                        self.p2_damage = 0;
-                        self.damage_tween = None;
-                        self.flash_ticks_remaining = 0;
-                        self.shake_ticks_remaining = 0;
-                        self.particles = ParticleSystem::new();
-                        self.audio.play("select");
-                    }
+                KeyCode::Enter if self.cursor_tween.is_none() => {
+                    let destination = screen_for_selected(self.selected);
+                    self.transitioning_to = Some((
+                        destination,
+                        Transition::start(Duration::from_millis(VS_TRANSITION_MS)),
+                    ));
+                    self.p2_damage = 0;
+                    self.damage_tween = None;
+                    self.flash_ticks_remaining = 0;
+                    self.shake_ticks_remaining = 0;
+                    self.particles = ParticleSystem::new();
+                    self.audio.play("select");
                 }
                 _ => {}
             },

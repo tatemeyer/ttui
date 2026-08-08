@@ -421,15 +421,13 @@ impl App for Tardis {
                         Transition::start(Duration::from_millis(ROTATE_TWEEN_MS)),
                     ));
                 }
-                KeyCode::Enter => {
-                    if self.face_tween.is_none() {
-                        if let Some(dest) = screen_for_face(self.selected_face) {
-                            self.transitioning_to = Some((
-                                dest,
-                                Transition::start(Duration::from_millis(FLIGHT_TRANSITION_MS)),
-                            ));
-                            self.audio.play("flight");
-                        }
+                KeyCode::Enter if self.face_tween.is_none() => {
+                    if let Some(dest) = screen_for_face(self.selected_face) {
+                        self.transitioning_to = Some((
+                            dest,
+                            Transition::start(Duration::from_millis(FLIGHT_TRANSITION_MS)),
+                        ));
+                        self.audio.play("flight");
                     }
                 }
                 _ => {}
