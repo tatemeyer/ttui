@@ -273,6 +273,69 @@ impl App for RenderSpike {
 }
 
 fn main() -> std::io::Result<()> {
+    if std::env::args().any(|a| a == "--bench") {
+        return bench_frame_cost();
+    }
     let mut app = RenderSpike::new();
     run(&mut app)
+}
+
+/// Ad hoc timing harness for this spike's recommendations write-up —
+/// not a criterion benchmark, not kept as a permanent measurement
+/// tool. Builds the densest frame this scene produces (mid-burst, all
+/// six levers active) and times `view` + `composite` + `render_diff`
+/// directly, bypassing the terminal.
+fn bench_frame_cost() -> std::io::Result<()> {
+    use ttui::buffer::{diff, LayerStack};
+    use ttui::terminal::render_diff;
+
+    let mut app = RenderSpike::new();
+    for i in 0..16 {
+        let angle = i as f32 * (std::f32::consts::TAU / 16.0);
+        app.particles.spawn(Particle {
+            x: 40.0,
+            y: 15.0,
+            vx: angle.cos() * 20.0,
+            vy: angle.sin() * 10.0,
+            symbol: '*',
+            color: Color::Rgb {
+                r: 255,
+                g: 180,
+                b: 40,
+            },
+            lifetime: Duration::from_millis(700),
+            age: Duration::ZERO,
+        });
+    }
+    app.on_tick(Duration::from_millis(16));
+
+    let area = Rect {
+        x: 0,
+        y: 0,
+        width: 120,
+        height: 40,
+    };
+    let mut prev = ttui::buffer::Buffer::new(area.width, area.height);
+    let start = std::time::Instant::now();
+    const FRAMES: u32 = 200;
+    let mut total_diffs = 0usize;
+    for _ in 0..FRAMES {
+        let mut stack = LayerStack::new(area.width, area.height);
+        app.view(area, &mut stack);
+        let next = stack.composite();
+        let diffs = diff(&prev, &next);
+        total_diffs += diffs.len();
+        let mut sink = Vec::new();
+        render_diff(&mut sink, &diffs)?;
+        prev = next;
+        app.on_tick(Duration::from_millis(16));
+    }
+    let elapsed = start.elapsed();
+    println!(
+        "{FRAMES} frames in {:?} ({:?}/frame avg), avg {} diffed cells/frame",
+        elapsed,
+        elapsed / FRAMES,
+        total_diffs / FRAMES as usize
+    );
+    Ok(())
 }

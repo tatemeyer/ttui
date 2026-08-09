@@ -161,3 +161,42 @@ commits to — not by promoting spike code as-is.
   future brainstorm, gated on this spike's findings.
 - The recommendations write-up itself — not yet written; appended after
   the spike runs, before this spec is considered closed.
+
+## Recommendations (post-spike)
+
+Written after running `examples/render_spike.rs` and its `--bench`
+timing harness.
+
+- **Color depth (lever 1):** Smooth — Task 1's visual check showed a
+  smooth, continuous color gradient with no visible banding; the 24-bit
+  RGB escape sequences observed in the output confirmed truecolor is
+  reaching the terminal at full fidelity, not silently downsampled to
+  ANSI 256/16.
+- **Frame cost:** `--bench` (debug build, densest mid-burst frame, all
+  six levers active, 120x40 area): `200 frames in 1.4719147s
+  (7.359573ms/frame avg), avg 622 diffed cells/frame` — well under a
+  16ms (60fps) frame budget even in an unoptimized debug build, so
+  Rev A's tactile-responsiveness bar is comfortably met; a release
+  build would only widen that margin further.
+- **Graduation ranking**, highest-confidence first:
+  1. Full `CellStyle` attributes (lever 3, minus `dim`) — cheapest,
+     already SGR-coalesced, no structural risk. Recommend committing
+     as-is via a real brainstorm, including the `Intensity` enum
+     refactor flagged in Task 5 (folding `bold` and a proper `dim`
+     into one tri-state field instead of independent bools).
+  2. Sub-cell `Canvas` (lever 2) — both modes worked; recommend a real
+     spec deciding whether `HalfBlock`/`Braille` stay one type with a
+     mode enum (as prototyped) or split into two types.
+  3. Gradient color ramps (lever 4) — `easing::lerp_color` already
+     covers this; mainly needs a real widget-level home (e.g. a
+     gradient option on `Block`/`Theme`), not new core math.
+  4. Alpha blending (lever 5) — works for opaque-to-Rgb-target fades
+     (as used for the particle trail) but **cannot gradually fade
+     toward true transparency** (`Color::Reset`) — `lerp_color`'s
+     non-Rgb fallback makes any real "fade to transparent" require an
+     actual alpha channel on `Cell`, confirming this lever's
+     flagged structural risk. Recommend a dedicated spec if pursued,
+     given the `Cell`-shape cost.
+  5. Particle trails (lever 6) — validated as an application of levers
+     3/5/existing `ParticleSystem`, not a new primitive of its own;
+     no separate Arc needed, it falls out of whichever of 1/4 lands.
