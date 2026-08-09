@@ -8,3 +8,4 @@ pub mod encode;
 pub mod glyph;
 pub mod keys;
 pub mod render;
+pub mod script;
