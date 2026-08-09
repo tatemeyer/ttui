@@ -63,6 +63,27 @@ pub fn build_example(name: &str) -> Result<PathBuf, PtyError> {
 /// parsing whatever has landed in the shared buffer so far.
 pub const SETTLE_DELAY: Duration = Duration::from_millis(100);
 
+/// Scans `chunk` (a single `read()` call's worth of bytes) for the
+/// 4-byte Device Status Report cursor-position query `ESC[6n`, correctly
+/// detecting it even when the OS delivers it split across two or more
+/// separate `read()` calls. `carry` holds up to 3 trailing bytes left
+/// over from the previous call so a query can be reassembled across
+/// that boundary; callers must reuse the same `carry` across every call
+/// for a given stream. Returns `true` if the query is present in
+/// `carry` followed by `chunk` (i.e. spanning the join point or fully
+/// contained in `chunk`).
+fn dsr_query_seen(carry: &mut Vec<u8>, chunk: &[u8]) -> bool {
+    carry.extend_from_slice(chunk);
+    let found = carry.windows(4).any(|w| w == b"\x1b[6n");
+    // Keep only the last 3 bytes (one short of the query's 4-byte
+    // length) — enough to bridge into whatever arrives next, without
+    // letting `carry` grow unbounded across a long-lived session.
+    let keep = carry.len().min(3);
+    let drop = carry.len() - keep;
+    carry.drain(..drop);
+    found
+}
+
 /// An active PTY-attached child process plus a background thread
 /// continuously draining its output into a shared buffer.
 pub struct Session {
@@ -116,6 +137,9 @@ impl Session {
         let dsr_writer = Arc::clone(&writer);
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
+            // Bridges `ESC[6n` detection across `read()` call boundaries —
+            // see `dsr_query_seen`.
+            let mut dsr_carry: Vec<u8> = Vec::new();
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
@@ -125,21 +149,29 @@ impl Session {
                         // outer terminal shortly after attaching, as part
                         // of its own startup handshake — this is separate
                         // from anything the spawned binary itself writes.
-                        // Until something answers with a Cursor Position
-                        // Report (`ESC[row;colR`) on the input side,
-                        // conhost stalls: it neither forwards the child's
-                        // real output nor delivers further input to the
-                        // child. Confirmed empirically while building
-                        // `run_script` — without this reply, not even a
-                        // single raw byte written via `send` ever reached
-                        // a spawned child's stdin, regardless of encoding
-                        // or wait time. Answering with an arbitrary
-                        // position (`1;1`) is sufficient; nothing in this
-                        // tool's rendering path depends on cursor state
-                        // being accurate. Unix PTYs have no such
-                        // handshake, so this is a no-op there — the query
-                        // byte sequence never appears in that path.
-                        if buf[..n].windows(4).any(|w| w == b"\x1b[6n") {
+                        // (Assumption: a child's *own* legitimate `ESC[6n`
+                        // emission, if it ever made one, is answered by
+                        // conhost internally and never leaks out onto this
+                        // stream — conhost owns the real console buffer
+                        // the child is drawing into, so it can satisfy
+                        // that query itself without forwarding it. Only
+                        // conhost's own handshake query, sent before it
+                        // has a downstream terminal to ask, is observed
+                        // here in practice.) Until something answers with
+                        // a Cursor Position Report (`ESC[row;colR`) on the
+                        // input side, conhost stalls: it neither forwards
+                        // the child's real output nor delivers further
+                        // input to the child. Confirmed empirically while
+                        // building `run_script` — without this reply, not
+                        // even a single raw byte written via `send` ever
+                        // reached a spawned child's stdin, regardless of
+                        // encoding or wait time. Answering with an
+                        // arbitrary position (`1;1`) is sufficient;
+                        // nothing in this tool's rendering path depends on
+                        // cursor state being accurate. Unix PTYs have no
+                        // such handshake, so this is a no-op there — the
+                        // query byte sequence never appears in that path.
+                        if dsr_query_seen(&mut dsr_carry, &buf[..n]) {
                             let mut w = dsr_writer.lock().unwrap();
                             let _ = w.write_all(b"\x1b[1;1R");
                             let _ = w.flush();
@@ -219,7 +251,9 @@ pub fn run_script(
                 Duration::from_millis(*wait_ms)
             }
             Step::Key { key } => {
-                let bytes = keys::encode_key(key).map_err(|e| PtyError::Pty(format!("{e:?}")))?;
+                let bytes = keys::encode_key(key).map_err(|keys::KeyEncodeError::Unknown(k)| {
+                    PtyError::Pty(format!("unknown key name: {k}"))
+                })?;
                 session.send(&bytes)?;
                 KEY_STEP_DISPLAY_DURATION
             }
@@ -287,5 +321,49 @@ mod tests {
             );
             thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    /// Guards a Task 9 review finding: the original detection scanned
+    /// only within a single `read()` call's bytes, so a `\x1b[6n` query
+    /// split across two `read()`s (e.g. the OS delivering `\x1b[6` in
+    /// one call and `n` in the next) would never be reassembled and go
+    /// permanently undetected — silently hanging the session, since
+    /// conhost stalls until the query is answered. This drives
+    /// `dsr_query_seen` directly with two separate calls, bypassing the
+    /// real PTY (whose actual `read()` chunking isn't something a test
+    /// can force), to prove the carry-over reassembly works.
+    #[test]
+    fn dsr_query_split_across_two_reads_is_still_detected() {
+        let mut carry = Vec::new();
+        assert!(
+            !dsr_query_seen(&mut carry, b"\x1b[6"),
+            "a partial query alone must not be reported as seen"
+        );
+        assert!(
+            dsr_query_seen(&mut carry, b"n"),
+            "the query must be detected once the remaining byte arrives"
+        );
+    }
+
+    #[test]
+    fn dsr_query_split_one_byte_at_a_time_is_still_detected() {
+        let mut carry = Vec::new();
+        assert!(!dsr_query_seen(&mut carry, b"\x1b"));
+        assert!(!dsr_query_seen(&mut carry, b"["));
+        assert!(!dsr_query_seen(&mut carry, b"6"));
+        assert!(dsr_query_seen(&mut carry, b"n"));
+    }
+
+    #[test]
+    fn dsr_query_within_a_single_read_is_detected() {
+        let mut carry = Vec::new();
+        assert!(dsr_query_seen(&mut carry, b"\x1b[6n"));
+    }
+
+    #[test]
+    fn unrelated_bytes_do_not_false_positive_as_a_dsr_query() {
+        let mut carry = Vec::new();
+        assert!(!dsr_query_seen(&mut carry, b"hello world"));
+        assert!(!dsr_query_seen(&mut carry, b"more unrelated output"));
     }
 }
