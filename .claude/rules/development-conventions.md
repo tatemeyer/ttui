@@ -61,6 +61,22 @@ justified for a solo project.
 
 Full rationale: `docs/design/specs/2026-08-04-testing-verification-conventions-design.md`.
 
+## Visual review
+
+Any task or final code review touching rendering-affecting code
+(`src/effects.rs`, `src/particles.rs`, `src/transition.rs`,
+`src/widgets/`, `src/canvas.rs`, `src/glitch.rs`, or an example's
+`view()`/`on_tick()`) must run `tools/visual-snapshot` against the
+affected example(s) and `Read` the resulting PNG/GIF before approving —
+not optional, and "reasoned through it, no PTY available" is no longer
+an acceptable substitute now that this tool exists. See
+`docs/design/specs/core/2026-08-09-visual-snapshot-tooling-design.md`.
+
+Record which snapshots were reviewed in the PR template's existing
+freeform Verification section
+(`.claude/templates/github/PULL_REQUEST_TEMPLATE.md`), the same pattern
+already used for real-TTY test results below.
+
 ## Commit conventions
 
 Conventional Commits: `type(scope): description`.
