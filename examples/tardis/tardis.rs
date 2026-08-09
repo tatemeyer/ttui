@@ -304,6 +304,7 @@ impl Tardis {
                             symbol: ' ',
                             fg: Color::Reset,
                             bg: Color::Rgb { r: 5, g: 0, b: 15 },
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -331,6 +332,7 @@ impl Tardis {
                                 b: 255,
                             },
                             bg: Color::Reset,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -379,6 +381,7 @@ fn render_ink_row(buf: &mut LayerStack, area: Rect, y: u16, text: &str, fg: Colo
                 symbol: ch,
                 fg,
                 bg: PAPER_COLOR,
+                alpha: 1.0,
                 ..Default::default()
             },
         );

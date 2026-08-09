@@ -262,6 +262,7 @@ impl SmashCrabs {
             symbol: ' ',
             fg: self.theme.primary,
             bg: self.theme.background,
+            alpha: 1.0,
             ..Default::default()
         };
         for y in 0..area.height {
@@ -318,6 +319,7 @@ impl SmashCrabs {
                             symbol: ' ',
                             fg: Color::Reset,
                             bg: Color::Black,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -362,6 +364,7 @@ impl SmashCrabs {
                         symbol: ' ',
                         fg: Color::Reset,
                         bg: Color::Black,
+                        alpha: 1.0,
                         ..Default::default()
                     }
                 };
@@ -391,6 +394,7 @@ fn render_row(buf: &mut Buffer, area: Rect, text: &str, fg: Color) {
                 symbol: ch,
                 fg,
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             },
         );

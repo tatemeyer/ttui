@@ -31,6 +31,7 @@ mod tests {
             symbol: 'x',
             fg: Color::Red,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(0, 0, cell.clone());
@@ -47,6 +48,7 @@ mod tests {
             symbol: 'a',
             fg: Color::Green,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(0, 0, cell.clone());
@@ -64,6 +66,7 @@ mod tests {
             symbol: 'b',
             fg: Color::Blue,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(0, 1, cell.clone());
@@ -81,6 +84,7 @@ mod tests {
             symbol: 'c',
             fg: Color::Cyan,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(0, 0, cell.clone());

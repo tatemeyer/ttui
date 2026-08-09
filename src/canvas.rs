@@ -246,6 +246,7 @@ mod tests {
                 symbol: '▀',
                 fg: red(),
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -263,6 +264,7 @@ mod tests {
                 symbol: '▄',
                 fg: blue(),
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -281,6 +283,7 @@ mod tests {
                 symbol: '█',
                 fg: red(),
                 bg: red(),
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -299,6 +302,7 @@ mod tests {
                 symbol: '▀',
                 fg: red(),
                 bg: blue(),
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -312,6 +316,7 @@ mod tests {
             symbol: 'X',
             fg: Color::Green,
             bg: Color::Yellow,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(0, 0, sentinel.clone());
@@ -351,6 +356,7 @@ mod tests {
                 symbol: expected_symbol,
                 fg: red(),
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -385,6 +391,7 @@ mod tests {
             symbol: 'X',
             fg: Color::Green,
             bg: Color::Yellow,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(0, 0, sentinel.clone());

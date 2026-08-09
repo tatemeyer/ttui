@@ -13,6 +13,7 @@ impl Tardis {
                                 symbol: ' ',
                                 fg: Color::Reset,
                                 bg: self.theme.accent,
+                                alpha: 1.0,
                                 ..Default::default()
                             },
                         );
@@ -56,6 +57,7 @@ impl Tardis {
                             symbol: ch,
                             fg: self.theme.accent,
                             bg: Color::Reset,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -73,6 +75,7 @@ impl Tardis {
                             symbol: glyph,
                             fg: self.theme.secondary,
                             bg: Color::Reset,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );

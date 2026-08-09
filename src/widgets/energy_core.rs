@@ -51,6 +51,7 @@ impl EnergyCore {
                     symbol,
                     fg,
                     bg: Color::Reset,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );

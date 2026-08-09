@@ -70,6 +70,7 @@ impl SmashCrabs {
                             symbol: TS_IMPACT_GLYPH,
                             fg: self.theme.accent,
                             bg: Color::Reset,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );

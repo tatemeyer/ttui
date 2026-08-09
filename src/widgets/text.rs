@@ -34,6 +34,7 @@ impl<'a> Text<'a> {
                     symbol: ch,
                     fg: self.fg,
                     bg: self.bg,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );

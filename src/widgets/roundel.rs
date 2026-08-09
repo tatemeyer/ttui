@@ -46,6 +46,7 @@ impl Roundel {
                     symbol: 'O',
                     fg: scaled,
                     bg: Color::Reset,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );
