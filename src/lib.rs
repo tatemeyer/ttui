@@ -9,6 +9,9 @@ pub mod app;
 pub mod audio;
 /// Cell/`Buffer`/`LayerStack` — the framework's core render target.
 pub mod buffer;
+/// Sub-cell rendering primitive (half-block + braille) — spike
+/// prototype, not a committed API.
+pub mod canvas;
 /// Deterministic camera viewport and brightness scaling.
 pub mod camera;
 /// Linear/eased interpolation and progress helpers.
