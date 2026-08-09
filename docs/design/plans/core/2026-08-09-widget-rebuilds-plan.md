@@ -1,6 +1,6 @@
 # Widget Rebuilds Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Rebuild `TimeRotor`, `DamageMeter`, `EnergyCore`, and `Roundel` on the rendering primitives graduated in PR #93 (`Canvas`, `easing::lerp_color`) — real rotation instead of hash noise, continuous color gradients instead of hard thresholds, and a real filled circle for `Roundel`.
 
@@ -28,7 +28,7 @@
 - Consumes: `ttui::canvas::{Canvas, CanvasMode}` (existing, unchanged).
 - Produces: `TimeRotor::new(speed)`/`.render(area, tick_count, buf)` — signature unchanged, no downstream call-site changes.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace `src/widgets/time_rotor.rs`'s entire `#[cfg(test)] mod tests` block with:
 
@@ -112,12 +112,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --lib widgets::time_rotor::tests`
 Expected: `renders_at_least_one_braille_glyph_in_the_area` and `different_speeds_render_differently_for_the_same_tick_count` FAIL against the current hash-based implementation is not guaranteed — the current code also draws braille glyphs, just meaningless ones, so some of these tests may already pass. That's fine; the meaningful RED signal here is that these tests describe intent for the NEW implementation. Proceed to Step 3 regardless of which specific tests failed.
 
-- [ ] **Step 3: Implement rotation via `Canvas`**
+- [x] **Step 3: Implement rotation via `Canvas`**
 
 Replace the whole file's non-test content (everything above `#[cfg(test)]`) with:
 
@@ -178,16 +178,16 @@ impl TimeRotor {
 
 (A single line from `(cx-dx, cy-dy)` to `(cx+dx, cy+dy)` already passes through the center in both directions — no separate mirrored line call is needed. `as u16` casts on `f32` saturate to `0`/`u16::MAX` rather than panicking or wrapping, per Rust's float-to-int cast semantics since 1.45, so a negative or out-of-range coordinate degrades safely; `Canvas::set_pixel` additionally silently ignores any coordinate still out of the canvas's own bounds.)
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --lib widgets::time_rotor::tests`
 Expected: PASS, all 4 tests. If `different_speeds_render_differently_for_the_same_tick_count` doesn't pass with the given `speed`/`tick_count` values (unlikely, but two angles could theoretically round to visually-identical line endpoints on a small grid), adjust the test's speed/tick constants slightly (e.g. try `speed: 12.0` instead of `8.0`) until it reliably passes — don't weaken the assertion itself.
 
-- [ ] **Step 5: Visual check**
+- [x] **Step 5: Visual check**
 
 Run: `cargo run --example tardis` (TimeRotor is used at `examples/tardis/hub.rs:60` and `examples/tardis/artron_energy.rs:42` — signatures unchanged, no call-site edits needed). Confirm the rotor visibly sweeps/rotates rather than flickering as random noise. If the rotation looks too fast/slow, adjust `ROTATION_RATE` (this is a visual-feel constant, not a correctness requirement) and re-run.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/widgets/time_rotor.rs
@@ -209,7 +209,7 @@ the shape TimeRotor's name already promised."
 - Consumes: `ttui::easing::lerp_color` (existing, unchanged).
 - Produces: `DamageMeter::new(percent)`/`.render(area, buf)` — signature unchanged.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace `src/widgets/damage_meter.rs`'s entire `#[cfg(test)] mod tests` block with:
 
@@ -303,12 +303,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --lib widgets::damage_meter::tests`
 Expected: FAIL — `twenty_five_percent_is_partway_between_white_and_yellow` and `seventy_five_percent_is_partway_between_yellow_and_red` fail against the current 3-threshold implementation (25% currently renders solid white, not a lerp; 75% currently renders solid yellow, not a lerp). `zero_percent_renders_white`/`fifty_percent_renders_exactly_yellow`/`over_100_percent_...` may already pass by coincidence (the endpoints are the same colors) but that's fine — RED phase just needs the two gradient-specific tests to genuinely fail, which they will against named-color output vs. these `Color::Rgb` assertions.
 
-- [ ] **Step 3: Implement the gradient**
+- [x] **Step 3: Implement the gradient**
 
 Replace the whole file's non-test content with:
 
@@ -380,12 +380,12 @@ fn damage_color(percent: u16) -> Color {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --lib widgets::damage_meter::tests`
 Expected: PASS, all 6 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/widgets/damage_meter.rs
@@ -409,7 +409,7 @@ would silently produce a flat color instead of a gradient."
 - Consumes: `ttui::easing::lerp_color` (existing, unchanged).
 - Produces: `EnergyCore::new(percent, color)`/`.render(area, buf)` — signature unchanged.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 In `src/widgets/energy_core.rs`'s `#[cfg(test)] mod tests`, add `use crate::easing::lerp_color;` to the module's imports, then add:
 
@@ -434,12 +434,12 @@ In `src/widgets/energy_core.rs`'s `#[cfg(test)] mod tests`, add `use crate::easi
 
 Leave the four existing tests (`zero_percent_renders_all_empty_track`, `fifty_percent_fills_half`, `full_percent_sparks_every_fourth_cell`, `zero_width_area_does_not_panic`) unchanged — none of them assert `fg` on a filled non-spark cell, so all four remain valid under the gradient change without modification.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --lib widgets::energy_core::tests`
 Expected: FAIL — `fill_brightens_toward_the_leading_edge`'s two `fg` assertions fail against the current flat-`self.color` implementation (every filled cell currently renders exactly `base`, not a gradient).
 
-- [ ] **Step 3: Implement the gradient fill**
+- [x] **Step 3: Implement the gradient fill**
 
 Change:
 
@@ -496,12 +496,12 @@ to:
                 ('▓', lerp_color(self.color, WHITE, t))
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --lib widgets::energy_core::tests`
 Expected: PASS, all 5 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/widgets/energy_core.rs
@@ -524,7 +524,7 @@ non-Rgb fallback (documented on the struct)."
 - Consumes: `ttui::canvas::{Canvas, CanvasMode}` (existing, unchanged).
 - Produces: `Roundel::new(intensity, color, radius: u16)` — **signature change** (was `new(intensity, color)`), used by Task 5.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Replace `src/widgets/roundel.rs`'s entire `#[cfg(test)] mod tests` block with:
 
@@ -681,12 +681,12 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --lib widgets::roundel::tests`
 Expected: FAIL to compile — `Roundel::new` doesn't accept a third argument yet.
 
-- [ ] **Step 3: Implement the `radius` parameter and circle rendering**
+- [x] **Step 3: Implement the `radius` parameter and circle rendering**
 
 Replace the whole file's non-test content with:
 
@@ -781,12 +781,12 @@ fn scale_color(c: Color, intensity: f32) -> Color {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --lib widgets::roundel::tests`
 Expected: PASS, all 7 tests.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/widgets/roundel.rs
@@ -811,7 +811,7 @@ have room for it. Downstream call-site updates land in the next task."
 - Consumes: `Roundel::new(intensity, color, radius)` (Task 4).
 - Produces: a compiling workspace (this is a pure mechanical fixup — no new test-first cycle applies, same reasoning already established in the rendering-primitives-graduation plan for pure call-site migrations; the workspace build is the regression check).
 
-- [ ] **Step 1: `examples/tardis/artron_energy.rs`**
+- [x] **Step 1: `examples/tardis/artron_energy.rs`**
 
 Change:
 
@@ -853,7 +853,7 @@ to:
 
 (`rx`/`ry` previously marked the single cell the roundel occupied; a 3-wide/3-tall area centered on that same point starts 1 cell up-and-left of it.)
 
-- [ ] **Step 2: `examples/tardis/hub.rs`**
+- [x] **Step 2: `examples/tardis/hub.rs`**
 
 Change:
 
@@ -893,7 +893,7 @@ to:
             }
 ```
 
-- [ ] **Step 3: `examples/tardis/star_charts.rs`**
+- [x] **Step 3: `examples/tardis/star_charts.rs`**
 
 Change:
 
@@ -925,7 +925,7 @@ to:
 
 (Only the constructor call gains `, 0` — the `Rect` is intentionally unchanged, since this call site stays on the compact single-glyph path to avoid overlapping adjacent timeline rows, which are only 1 cell apart.)
 
-- [ ] **Step 4: Build and test the whole workspace**
+- [x] **Step 4: Build and test the whole workspace**
 
 Run: `cargo build --all-targets`
 Expected: succeeds.
@@ -933,7 +933,7 @@ Expected: succeeds.
 Run: `cargo test`
 Expected: full suite passes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add examples/tardis/artron_energy.rs examples/tardis/hub.rs examples/tardis/star_charts.rs
@@ -950,22 +950,22 @@ single glyph) since its timeline rows are only 1 cell apart."
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Full test suite**
+- [x] **Step 1: Full test suite**
 
 Run: `cargo test`
 Expected: full suite green, including every test added/changed across Tasks 1-5.
 
-- [ ] **Step 2: Lint and format**
+- [x] **Step 2: Lint and format**
 
 Run: `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`
 Expected: both clean.
 
-- [ ] **Step 3: Build every target**
+- [x] **Step 3: Build every target**
 
 Run: `cargo build --all-targets`
 Expected: succeeds.
 
-- [ ] **Step 4: Manual visual regression check**
+- [x] **Step 4: Manual visual regression check**
 
 Run `cargo run --example tardis`: confirm the `artron_energy`/`hub` roundels render as visible circles with no overlap; the `star_charts` roundel is unchanged (a single pulsing glyph); the time rotor visibly sweeps/rotates.
 
@@ -975,7 +975,7 @@ Run `cargo run --example omnitrix`: confirm `EnergyCore` (used by the Fasttrack 
 
 Press `q` to quit each.
 
-- [ ] **Step 5: Commit (if Step 4 required any fix) or proceed**
+- [x] **Step 5: Commit (if Step 4 required any fix) or proceed**
 
 If Step 4 surfaces no issues, there is nothing to commit for this task.
 
@@ -983,8 +983,8 @@ If Step 4 surfaces no issues, there is nothing to commit for this task.
 
 ## Final verification (whole plan)
 
-- [ ] `cargo test` — full suite green.
-- [ ] `cargo clippy --all-targets -- -D warnings` / `cargo fmt --check` — clean.
-- [ ] `cargo build --all-targets` — library, examples, benches all compile.
-- [ ] Manual visual check on TARDIS/Smash Crabs/Omnitrix confirms all four rebuilt widgets render correctly with no regression in the surrounding UI.
-- [ ] Per `.claude/rules/git-github-standards.md`: open a PR from this Arc's worktree branch to `main`, wait for all four required checks green, squash-merge, then remove the worktree via `ExitWorktree`.
+- [x] `cargo test` — full suite green.
+- [x] `cargo clippy --all-targets -- -D warnings` / `cargo fmt --check` — clean.
+- [x] `cargo build --all-targets` — library, examples, benches all compile.
+- [x] Manual visual check on TARDIS/Smash Crabs/Omnitrix confirms all four rebuilt widgets render correctly with no regression in the surrounding UI.
+- [x] Per `.claude/rules/git-github-standards.md`: open a PR from this Arc's worktree branch to `main`, wait for all four required checks green, squash-merge, then remove the worktree via `ExitWorktree`.
