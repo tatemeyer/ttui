@@ -1,10 +1,18 @@
-//! Braille-glyph rotating speed indicator — a vertical column of
-//! glyphs whose pattern advances with `tick_count` at a given speed.
+//! Braille-glyph rotating speed indicator — a line sweeping through
+//! the area's center at an angle driven by `tick_count * speed`.
 
-use crate::buffer::{Buffer, Cell};
+use crate::buffer::Buffer;
+use crate::canvas::{Canvas, CanvasMode};
 use crate::layout::Rect;
+use crossterm::style::Color;
 
-/// A vertical rotating-speed indicator rendered as braille glyphs.
+/// Radians of rotation added per `tick_count * speed` unit — tuned so
+/// the sweep is visibly moving without spinning frantically at
+/// typical `speed` values (roughly 0.5-5.0).
+const ROTATION_RATE: f32 = 0.05;
+
+/// A vertical rotating-speed indicator rendered as a sweeping braille
+/// line through the area's center.
 pub struct TimeRotor {
     speed: f32,
 }
@@ -18,32 +26,35 @@ impl TimeRotor {
         }
     }
 
-    /// Renders one braille glyph per row, centered in `area`.
+    /// Renders a line sweeping through `area`'s center, its angle
+    /// driven by `tick_count` and `speed`.
     pub fn render(&self, area: Rect, tick_count: u64, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
         }
-        let cx = area.x + area.width / 2;
-        let scaled_tick = (tick_count as f32 * self.speed) as u64;
-        for row in 0..area.height {
-            let h = (row as u64).wrapping_mul(374_761_393) ^ scaled_tick.wrapping_mul(668_265_263);
-            let dot_pattern = (h % 256) as u32;
-            let glyph = char::from_u32(0x2800 + dot_pattern).unwrap_or('\u{2800}');
-            buf.set(
-                cx,
-                area.y + row,
-                Cell {
-                    symbol: glyph,
-                    ..Default::default()
-                },
-            );
-        }
+        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
+        let grid_w = (area.width * 2) as f32;
+        let grid_h = (area.height * 4) as f32;
+        let cx = grid_w / 2.0;
+        let cy = grid_h / 2.0;
+        let radius = cx.min(cy).max(1.0);
+        let angle = tick_count as f32 * self.speed * ROTATION_RATE;
+        let (dx, dy) = (angle.cos() * radius, angle.sin() * radius);
+        canvas.line(
+            (cx - dx).round() as u16,
+            (cy - dy).round() as u16,
+            (cx + dx).round() as u16,
+            (cy + dy).round() as u16,
+            Color::Reset,
+        );
+        canvas.blit(buf, area.x, area.y);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::Cell;
 
     fn area() -> Rect {
         Rect {
@@ -59,14 +70,18 @@ mod tests {
     }
 
     #[test]
-    fn renders_one_braille_glyph_per_row_at_the_center_column() {
+    fn renders_at_least_one_braille_glyph_in_the_area() {
         let mut buf = Buffer::new(5, 4);
         TimeRotor::new(1.0).render(area(), 0, &mut buf);
-
-        for row in 0..4 {
-            assert!(is_braille(buf.get(2, row).symbol));
+        let mut found = false;
+        for y in 0..4 {
+            for x in 0..5 {
+                if is_braille(buf.get(x, y).symbol) {
+                    found = true;
+                }
+            }
         }
-        assert_eq!(*buf.get(0, 0), Cell::default());
+        assert!(found, "expected at least one braille glyph drawn");
     }
 
     #[test]
@@ -75,35 +90,63 @@ mod tests {
         let mut buf_b = Buffer::new(5, 4);
         TimeRotor::new(2.5).render(area(), 7, &mut buf_a);
         TimeRotor::new(2.5).render(area(), 7, &mut buf_b);
-
-        for row in 0..4 {
-            assert_eq!(buf_a.get(2, row), buf_b.get(2, row));
+        for y in 0..4 {
+            for x in 0..5 {
+                assert_eq!(buf_a.get(x, y), buf_b.get(x, y));
+            }
         }
     }
 
     #[test]
     fn different_speeds_render_differently_for_the_same_tick_count() {
+        let mut slow = Buffer::new(5, 4);
+        let mut fast = Buffer::new(5, 4);
+        TimeRotor::new(1.0).render(area(), 10, &mut slow);
+        TimeRotor::new(8.0).render(area(), 10, &mut fast);
+        let mut any_different = false;
+        for y in 0..4 {
+            for x in 0..5 {
+                if slow.get(x, y) != fast.get(x, y) {
+                    any_different = true;
+                }
+            }
+        }
+        assert!(
+            any_different,
+            "expected a visibly different rotation angle between speed 1.0 and 8.0 at tick 10"
+        );
+    }
+
+    #[test]
+    fn tick_zero_draws_a_horizontal_line_through_the_areas_center_row() {
+        let mut buf = Buffer::new(5, 4);
+        TimeRotor::new(1.0).render(area(), 0, &mut buf);
+        for x in 0..5 {
+            assert!(
+                is_braille(buf.get(x, 2).symbol),
+                "expected a braille glyph in the center row at column {x}"
+            );
+        }
+        for y in [0u16, 1, 3] {
+            for x in 0..5 {
+                assert_eq!(
+                    *buf.get(x, y),
+                    Cell::default(),
+                    "row {y} should be untouched by a horizontal center-row line"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn zero_size_area_does_not_panic() {
+        let mut buf = Buffer::new(1, 1);
         let area = Rect {
             x: 0,
             y: 0,
-            width: 3,
-            height: 2,
+            width: 0,
+            height: 1,
         };
-        let mut slow = Buffer::new(3, 2);
-        let mut fast = Buffer::new(3, 2);
-
-        TimeRotor::new(1.0).render(area, 10, &mut slow);
-        TimeRotor::new(5.0).render(area, 10, &mut fast);
-
-        // Hand-verified for these exact inputs (area width 3, tick 10):
-        // row 0's hash differs between speed 1.0 (scaled_tick=10) and
-        // speed 5.0 (scaled_tick=50), so at least one cell differs.
-        let mut any_different = false;
-        for row in 0..2 {
-            if slow.get(1, row) != fast.get(1, row) {
-                any_different = true;
-            }
-        }
-        assert!(any_different);
+        TimeRotor::new(1.0).render(area, 0, &mut buf);
     }
 }

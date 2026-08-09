@@ -30,7 +30,7 @@ impl Tardis {
             }
             if diff == 0 {
                 let pulse = ((self.tick_count as f32 * 0.1).sin() + 1.0) / 2.0;
-                Roundel::new(pulse, self.theme.primary).render(
+                Roundel::new(pulse, self.theme.primary, 0).render(
                     Rect {
                         x: area.x,
                         y: area.y + row,

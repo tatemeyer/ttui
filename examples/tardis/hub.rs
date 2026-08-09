@@ -14,12 +14,12 @@ impl Tardis {
                 let rx = area.x + (area.width / 4) * (i + 1);
                 let ry = area.y + area.height / 2;
                 let pulse = ((self.tick_count as f32 * 0.05 + i as f32).sin() + 1.0) / 2.0;
-                Roundel::new(pulse, self.theme.tertiary).render(
+                Roundel::new(pulse, self.theme.tertiary, 1).render(
                     Rect {
-                        x: rx,
-                        y: ry,
-                        width: 1,
-                        height: 1,
+                        x: rx.saturating_sub(1),
+                        y: ry.saturating_sub(1),
+                        width: 3,
+                        height: 3,
                     },
                     buf,
                 );
@@ -51,10 +51,11 @@ impl Tardis {
         let view = camera::viewport(&virtual_buf, &cam, vw, vh);
         blit(&view, area, buf);
 
+        let rotor_width = (area.width / 4).max(3);
         let rotor_area = Rect {
-            x: area.x,
+            x: area.x + area.width.saturating_sub(rotor_width) / 2,
             y: area.y + 1,
-            width: area.width,
+            width: rotor_width,
             height: area.height.saturating_sub(2),
         };
         TimeRotor::new(self.time_rotor_speed()).render(rotor_area, self.tick_count, buf);
