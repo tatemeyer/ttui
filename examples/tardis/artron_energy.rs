@@ -14,12 +14,12 @@ impl Tardis {
             let seg_intensity = ((self.energy - i as f32 * 33.0) / 33.0).clamp(0.0, 1.0);
             let rx = area.x + 4 + i * 4;
             let ry = area.y + 2;
-            Roundel::new(seg_intensity, self.theme.tertiary).render(
+            Roundel::new(seg_intensity, self.theme.tertiary, 1).render(
                 Rect {
-                    x: rx,
-                    y: ry,
-                    width: 1,
-                    height: 1,
+                    x: rx.saturating_sub(1),
+                    y: ry.saturating_sub(1),
+                    width: 3,
+                    height: 3,
                 },
                 buf,
             );
