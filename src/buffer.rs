@@ -2,7 +2,6 @@
 //! Widgets write `Cell`s into a `Buffer`; apps composite multiple
 //! layers into one via `LayerStack` before the terminal diff-flush.
 
-use crate::easing::lerp_color;
 use crossterm::style::Color;
 
 /// Text intensity — a single SGR axis; a cell is bold, dim, or
@@ -426,8 +425,8 @@ mod tests {
         // formula used as its test oracle, not an independently-derived
         // magic number.
         let expected_fg = {
-            let after_mid = lerp_color(top_fg, mid_fg, 0.25 / 0.75); // mid's contribution / total-so-far
-            lerp_color(after_mid, bottom_fg, 0.25 / 1.0) // bottom's contribution / total-so-far
+            let after_mid = crate::easing::lerp_color(top_fg, mid_fg, 0.25 / 0.75); // mid's contribution / total-so-far
+            crate::easing::lerp_color(after_mid, bottom_fg, 0.25 / 1.0) // bottom's contribution / total-so-far
         };
         assert_eq!(out.get(0, 0).fg, expected_fg);
         assert_eq!(out.get(0, 0).symbol, 'c'); // topmost to cross the 0.5 threshold
