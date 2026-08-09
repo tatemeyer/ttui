@@ -134,15 +134,16 @@ pub fn diff(prev: &Buffer, next: &Buffer) -> Vec<CellDiff> {
     out
 }
 
-// Transparency rule: a cell is "transparent" (lets a lower layer show
-// through during compositing) iff it equals `Cell::default()`. An overlay
-// layer painting a plain space with default fg/bg/style does NOT occlude
-// what's beneath it — it must set a non-default fg, bg, or style to
-// actually cover the layer below (e.g. a bolded blank cell is non-default
-// and DOES occlude, even though it renders identically to a blank).
+// Transparency rule: a cell is "transparent" (lets lower layers show
+// through during compositing) iff its alpha is 0.0. The symbol, fg, bg,
+// and style are irrelevant to transparency — a blank cell with alpha: 1.0
+// DOES occlude what's beneath it, and a fully-styled cell with alpha: 0.0
+// does NOT occlude. This is the foundation of the Porter-Duff "over"
+// compositing algorithm used by `composite_cell`.
 /// An ordered stack of same-sized `Buffer`s, composited top-to-bottom
-/// with `Cell::default()` cells treated as transparent (see the
-/// transparency-rule comment above).
+/// via Porter-Duff "over" accumulation: each layer's contribution
+/// scales with its alpha, colors blend via weighted lerp, and the
+/// first layer to reach >= 0.5 contribution wins the glyph/style.
 #[derive(Clone, Debug)]
 pub struct LayerStack {
     // Invariant: always has length >= 1; layers[0] is the base layer. This
@@ -190,11 +191,13 @@ impl LayerStack {
     }
 
     // Depth-1 fast path: returns a clone of the base layer with no scan.
-    // For depth > 1: top-to-bottom scan, stopping at the first (topmost)
-    // non-default cell at each position (see transparency rule on
-    // `LayerStack`).
-    /// Flattens every layer into one `Buffer`, topmost non-default
-    /// cell winning at each position.
+    // For depth > 1: top-to-bottom Porter-Duff "over" accumulation at each
+    // position (see transparency rule on `LayerStack`). The first layer
+    // whose contribution >= 0.5 wins the glyph/style; if none reach that
+    // threshold, the topmost non-transparent contributor wins. Colors blend
+    // via incremental weighted lerp across all contributing layers.
+    /// Flattens every layer into one `Buffer` via Porter-Duff "over"
+    /// compositing: alpha-weighted top-to-bottom accumulation.
     pub fn composite(&self) -> Buffer {
         if self.layers.len() == 1 {
             return self.layers[0].clone();
