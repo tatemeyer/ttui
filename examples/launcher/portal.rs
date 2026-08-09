@@ -31,7 +31,11 @@ pub(crate) fn draw(
         secondary: accent,
         tertiary: accent,
         accent,
-        primary_end: None,
+        primary_end: if focused {
+            Some(dim_color(accent, 0.3 + 0.7 * pulse))
+        } else {
+            None
+        },
         border: BorderSet {
             horizontal: '─',
             vertical: '│',
