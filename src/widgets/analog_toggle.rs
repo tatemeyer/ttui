@@ -23,6 +23,7 @@ impl AnalogToggle {
                 area.y,
                 Cell {
                     symbol: ch,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );

@@ -32,6 +32,7 @@ impl SmashCrabs {
                 symbol: '*',
                 fg: Color::Black,
                 bg: self.theme.accent,
+                alpha: 1.0,
                 ..Default::default()
             };
             let w = 7.min(area.width);

@@ -169,6 +169,53 @@ preserving frame-to-frame diff stability.
 - **No attempt to give `render_diff`/the terminal writer any notion of
   transparency** — real terminals don't have one; see §3.
 
+## Addendum: one documented behavior divergence (found in final review)
+
+The rest of this spec (and its Testing section below) claims `composite()`
+degenerates byte-identically to the pre-migration "topmost non-default
+cell wins" behavior for every existing app. That claim holds for symbol/
+fg/bg/style, but not unconditionally for transparency itself, and the
+final whole-branch review found one concrete, reachable place where it
+mattered:
+
+- **Old rule:** a cell was transparent iff it was equal to
+  `Cell::default()` across *every* field (symbol, fg, bg, style) — full
+  struct equality was the sentinel.
+- **New rule:** a cell is transparent iff `alpha <= 0.0` — alpha alone is
+  the sentinel; symbol/fg/bg/style are irrelevant to transparency (see
+  the transparency-rule comment above `LayerStack`).
+
+These two rules diverge for a cell that is *painted* (a widget explicitly
+constructed and wrote it) but happens to look visually blank — default
+symbol/fg/bg/style — while carrying `alpha: 1.0`. Old rule: transparent
+(full-struct equality to `Cell::default()` holds). New rule: opaque
+(`alpha` is `1.0`, not `0.0`).
+
+`src/widgets/text.rs`'s `Text::render` produces exactly this cell shape
+for every space character in its content: `Cell { symbol: ' ', fg:
+Color::Reset, bg: Color::Reset, alpha: 1.0, .. }`. Pre-migration, that
+cell was indistinguishable from "untouched" and stayed transparent
+during compositing. Post-migration it does not — it occludes whatever is
+beneath it. This was concretely reachable in
+`examples/smash_crabs/target_smash.rs`: the TargetSmash hint row's
+word-gap spaces punched `Color::Reset` holes through the arena's themed
+background instead of letting it show through, a real visual regression
+caught by the final review's headless probe against the compiled code.
+Fixed by giving `Text` a `.bg()` builder and having `target_smash.rs`
+pass the arena's themed background explicitly, rather than relying on
+the old rule's incidental transparency.
+
+This divergence is accepted as correct and intentional going forward,
+not treated as an open bug: alpha as the single source of truth for
+transparency is more predictable than incidental full-struct equality
+(a widget that deliberately paints a blank, opaque cell — e.g. to erase
+something — now behaves as painted, not as a no-op that happened to look
+the same). Call sites that want the old "blank space lets the layer
+below show through" behavior get it by constructing a cell with
+`alpha: 0.0` (or, for `Text`, by not painting that position at all);
+call sites that want a real opaque blank (like `Text`'s spaces) now get
+that too, correctly, which the old rule could never express.
+
 ## Testing
 
 Per `.claude/rules/development-conventions.md`: `coding`-tagged, full

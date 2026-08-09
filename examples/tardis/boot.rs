@@ -29,6 +29,7 @@ impl Tardis {
                             symbol: ch,
                             fg: self.theme.tertiary,
                             bg: Color::Reset,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -47,6 +48,7 @@ impl Tardis {
                         symbol: ' ',
                         fg: Color::Reset,
                         bg: Color::Black,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -90,6 +92,7 @@ impl Tardis {
                                 g: 255,
                                 b: 255,
                             },
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );

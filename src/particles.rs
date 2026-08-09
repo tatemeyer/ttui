@@ -77,6 +77,7 @@ impl ParticleSystem {
                         symbol: p.symbol,
                         fg: p.color,
                         bg: Color::Reset,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -150,6 +151,7 @@ mod tests {
                 symbol: '*',
                 fg: Color::Red,
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -182,6 +184,7 @@ mod tests {
                 symbol: '*',
                 fg: Color::Red,
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -271,6 +274,7 @@ mod tests {
                 symbol: 'X',
                 fg: Color::Blue,
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );

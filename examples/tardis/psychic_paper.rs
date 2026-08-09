@@ -11,6 +11,7 @@ impl Tardis {
                         symbol: ' ',
                         fg: Color::Reset,
                         bg: PAPER_COLOR,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );

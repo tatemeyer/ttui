@@ -53,6 +53,7 @@ impl<'a> Table<'a> {
                         symbol: ch,
                         fg,
                         bg,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );

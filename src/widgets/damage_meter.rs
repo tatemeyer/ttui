@@ -45,6 +45,7 @@ impl DamageMeter {
                     symbol: ch,
                     fg: color,
                     bg: Color::Reset,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );

@@ -32,6 +32,7 @@ impl<'a> List<'a> {
                         symbol: ' ',
                         fg,
                         bg,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -44,6 +45,7 @@ impl<'a> List<'a> {
                         symbol: ch,
                         fg,
                         bg,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );

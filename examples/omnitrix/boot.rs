@@ -11,6 +11,7 @@ impl Omnitrix {
                         symbol: ' ',
                         fg: Color::Reset,
                         bg: Color::Black,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -30,6 +31,7 @@ impl Omnitrix {
                             symbol: ch,
                             fg: theme.primary,
                             bg: Color::Reset,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -65,6 +67,7 @@ impl Omnitrix {
                                 g: 255,
                                 b: 65,
                             },
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );

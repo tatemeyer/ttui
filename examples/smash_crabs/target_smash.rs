@@ -51,7 +51,9 @@ impl SmashCrabs {
             width: inner.width,
             height: inner.height.saturating_sub(1).min(1),
         };
-        Text::new("Up/Down move * Enter smash * Esc back * q quit").render(hint_row, &mut buf);
+        Text::new("Up/Down move * Enter smash * Esc back * q quit")
+            .bg(self.theme.background)
+            .render(hint_row, &mut buf);
         buf
     }
 
@@ -70,6 +72,7 @@ impl SmashCrabs {
                             symbol: TS_IMPACT_GLYPH,
                             fg: self.theme.accent,
                             bg: Color::Reset,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -90,6 +93,7 @@ impl SmashCrabs {
                                 intensity: Intensity::Bold,
                                 ..Default::default()
                             },
+                            alpha: 1.0,
                         },
                     );
                 }

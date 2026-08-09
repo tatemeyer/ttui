@@ -182,6 +182,7 @@ impl Omnitrix {
                         symbol: braille_noise(x, area.y, self.tick_count),
                         fg: theme.primary,
                         bg: Color::Reset,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -192,6 +193,7 @@ impl Omnitrix {
                         symbol: braille_noise(x, area.y + area.height - 1, self.tick_count),
                         fg: theme.primary,
                         bg: Color::Reset,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -206,6 +208,7 @@ impl Omnitrix {
                         symbol: braille_noise(area.x, y, self.tick_count),
                         fg: theme.primary,
                         bg: Color::Reset,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -216,6 +219,7 @@ impl Omnitrix {
                         symbol: braille_noise(area.x + area.width - 1, y, self.tick_count),
                         fg: theme.primary,
                         bg: Color::Reset,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -234,6 +238,7 @@ impl Omnitrix {
                             symbol: ' ',
                             fg: Color::Reset,
                             bg: Color::Yellow,
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -255,6 +260,7 @@ impl Omnitrix {
                         symbol: braille_noise(x, y, self.tick_count),
                         fg: Color::Reset,
                         bg: Color::Yellow,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                     std::cmp::Ordering::Greater => old_content.get(x, y).clone(),
@@ -285,6 +291,7 @@ fn render_row(buf: &mut Buffer, area: Rect, y: u16, text: &str, fg: Color, bg: C
                 symbol: ch,
                 fg,
                 bg,
+                alpha: 1.0,
                 ..Default::default()
             },
         );

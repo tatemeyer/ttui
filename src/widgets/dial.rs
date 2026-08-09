@@ -57,6 +57,7 @@ impl<'a> Dial<'a> {
                         py as u16,
                         Cell {
                             symbol: '.',
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );
@@ -87,6 +88,7 @@ impl<'a> Dial<'a> {
                                 symbol: *ch,
                                 fg,
                                 bg,
+                                alpha: 1.0,
                                 ..Default::default()
                             },
                         );
@@ -104,6 +106,7 @@ impl<'a> Dial<'a> {
                                 symbol: *ch,
                                 fg,
                                 bg,
+                                alpha: 1.0,
                                 ..Default::default()
                             },
                         );
@@ -120,6 +123,7 @@ impl<'a> Dial<'a> {
                         ppy as u16,
                         Cell {
                             symbol: '*',
+                            alpha: 1.0,
                             ..Default::default()
                         },
                     );

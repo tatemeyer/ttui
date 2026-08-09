@@ -35,6 +35,7 @@ impl ScuttleCursor {
                 py as u16,
                 Cell {
                     symbol: self.symbol,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );

@@ -99,24 +99,28 @@ impl Canvas {
                         fg: t,
                         bg: Color::Reset,
                         style: CellStyle::default(),
+                        alpha: 1.0,
                     },
                     (None, Some(b)) => Cell {
                         symbol: '▄',
                         fg: b,
                         bg: Color::Reset,
                         style: CellStyle::default(),
+                        alpha: 1.0,
                     },
                     (Some(t), Some(b)) if t == b => Cell {
                         symbol: '█',
                         fg: t,
                         bg: t,
                         style: CellStyle::default(),
+                        alpha: 1.0,
                     },
                     (Some(t), Some(b)) => Cell {
                         symbol: '▀',
                         fg: t,
                         bg: b,
                         style: CellStyle::default(),
+                        alpha: 1.0,
                     },
                 };
                 let bx = ox + cx;
@@ -162,6 +166,7 @@ impl Canvas {
                             fg: color.unwrap(),
                             bg: Color::Reset,
                             style: CellStyle::default(),
+                            alpha: 1.0,
                         },
                     );
                 }
@@ -246,6 +251,7 @@ mod tests {
                 symbol: '▀',
                 fg: red(),
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -263,6 +269,7 @@ mod tests {
                 symbol: '▄',
                 fg: blue(),
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -281,6 +288,7 @@ mod tests {
                 symbol: '█',
                 fg: red(),
                 bg: red(),
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -299,6 +307,7 @@ mod tests {
                 symbol: '▀',
                 fg: red(),
                 bg: blue(),
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -312,6 +321,7 @@ mod tests {
             symbol: 'X',
             fg: Color::Green,
             bg: Color::Yellow,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(0, 0, sentinel.clone());
@@ -351,6 +361,7 @@ mod tests {
                 symbol: expected_symbol,
                 fg: red(),
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             }
         );
@@ -385,6 +396,7 @@ mod tests {
             symbol: 'X',
             fg: Color::Green,
             bg: Color::Yellow,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(0, 0, sentinel.clone());

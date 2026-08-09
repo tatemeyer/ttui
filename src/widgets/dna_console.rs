@@ -44,6 +44,7 @@ impl<'a> DNAConsole<'a> {
                     symbol: ch,
                     fg: color,
                     bg: Color::Reset,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );
@@ -57,6 +58,7 @@ impl<'a> DNAConsole<'a> {
                     symbol: '▌',
                     fg: self.primary,
                     bg: Color::Reset,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );

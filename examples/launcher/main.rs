@@ -175,6 +175,7 @@ pub(crate) fn text_center(scene: &mut Buffer, area: Rect, y: u16, s: &str, fg: C
                     },
                     ..Default::default()
                 },
+                alpha: 1.0,
             },
         );
     }

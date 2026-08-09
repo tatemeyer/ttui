@@ -27,6 +27,7 @@ fn render_centered_art(buf: &mut Buffer, area: Rect, art: &[&str], fg: Color) {
                         symbol: ch,
                         fg,
                         bg: Color::Reset,
+                        alpha: 1.0,
                         ..Default::default()
                     },
                 );
@@ -65,6 +66,7 @@ fn render_boot_title(buf: &mut Buffer, area: Rect, sub: f32, fg: Color) {
                     symbol: ch,
                     fg,
                     bg: Color::Reset,
+                    alpha: 1.0,
                     ..Default::default()
                 },
             );
@@ -91,6 +93,7 @@ impl SmashCrabs {
                 symbol: ' ',
                 fg: Color::Reset,
                 bg: Color::White,
+                alpha: 1.0,
                 ..Default::default()
             };
             for y in 0..area.height {
@@ -139,6 +142,7 @@ impl SmashCrabs {
                         symbol: '|',
                         fg,
                         bg: Color::Reset,
+                        alpha: 1.0,
                         ..Default::default()
                     }
                 } else if fx < flare_x {

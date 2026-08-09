@@ -82,6 +82,7 @@ mod tests {
     fn labeled(symbol: char) -> Cell {
         Cell {
             symbol,
+            alpha: 1.0,
             ..Default::default()
         }
     }
@@ -142,6 +143,7 @@ mod tests {
                     g: 20,
                     b: 30,
                 },
+                alpha: 1.0,
                 ..Default::default()
             },
         );
@@ -180,6 +182,7 @@ mod tests {
                     b: 200,
                 },
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             },
         );
@@ -202,6 +205,7 @@ mod tests {
                     b: 200,
                 },
                 bg: Color::Reset,
+                alpha: 1.0,
                 ..Default::default()
             },
         );
@@ -228,6 +232,7 @@ mod tests {
                 fg: Color::Red,
                 bg: Color::Reset,
                 symbol: 'Y',
+                alpha: 1.0,
                 ..Default::default()
             },
         );
