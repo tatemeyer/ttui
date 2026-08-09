@@ -103,19 +103,24 @@ fn portals(scene: &mut Buffer, selected: usize, phase: f32) {
     if slot_w < 6 {
         return;
     }
-    let box_w = slot_w.saturating_sub(2).max(5);
-    let box_h = h.saturating_sub(8).clamp(5, 11);
-    let top = 4 + h.saturating_sub(8).saturating_sub(box_h) / 2;
+    let base_w = slot_w.saturating_sub(2).max(5);
+    let base_h = h.saturating_sub(8).clamp(5, 11);
+    let focus_w = (base_w + 2).min(slot_w.saturating_sub(1));
+    let focus_h = (base_h + 1).min(h.saturating_sub(2));
 
     for (i, &(name, tagline, accent)) in PORTALS.iter().enumerate() {
+        let focused = i == selected;
+        let box_w = if focused { focus_w } else { base_w };
+        let box_h = if focused { focus_h } else { base_h };
         let slot_x = i as u16 * slot_w + slot_w.saturating_sub(box_w) / 2;
+        let top = 4 + h.saturating_sub(8).saturating_sub(box_h) / 2;
         let slot = Rect {
             x: slot_x,
             y: top,
             width: box_w,
             height: box_h,
         };
-        portal::draw(scene, slot, name, tagline, accent, i == selected, phase);
+        portal::draw(scene, slot, name, tagline, accent, focused, phase);
     }
 }
 
