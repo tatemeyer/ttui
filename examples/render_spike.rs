@@ -10,15 +10,19 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::{run, App};
-use ttui::buffer::{Cell, LayerStack};
+use ttui::blend::{blend_over, fade_toward};
+use ttui::buffer::{Buffer, Cell, LayerStack};
 use ttui::canvas::{Canvas, CanvasMode};
 use ttui::easing::lerp_color;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
+use ttui::particles::{Particle, ParticleSystem};
 
 struct RenderSpike {
     hue_shift: f32,
     gauge_phase: f32,
     plot_phase: f32,
+    particles: ParticleSystem,
+    trail: Buffer,
     quit: bool,
 }
 
@@ -28,6 +32,8 @@ impl RenderSpike {
             hue_shift: 0.0,
             gauge_phase: 0.0,
             plot_phase: 0.0,
+            particles: ParticleSystem::new(),
+            trail: Buffer::new(160, 50),
             quit: false,
         }
     }
@@ -124,6 +130,12 @@ impl RenderSpike {
             x += 2; // gap between words
         }
     }
+
+    fn blend_trail(&self, buf: &mut LayerStack) {
+        let scene = buf.composite();
+        let scene = blend_over(&scene, &self.trail, 1.0);
+        *buf.layer_mut(0) = scene;
+    }
 }
 
 /// Cheap HSV(hue, 1.0, 1.0)->RGB — used only to paint smooth test
@@ -152,8 +164,29 @@ impl App for RenderSpike {
         if k.kind != KeyEventKind::Press {
             return;
         }
-        if k.code == KeyCode::Char('q') {
-            self.quit = true;
+        match k.code {
+            KeyCode::Char('q') => self.quit = true,
+            KeyCode::Char(' ') => {
+                let center = (40.0, 15.0);
+                for i in 0..16 {
+                    let angle = i as f32 * (std::f32::consts::TAU / 16.0);
+                    self.particles.spawn(Particle {
+                        x: center.0,
+                        y: center.1,
+                        vx: angle.cos() * 20.0,
+                        vy: angle.sin() * 10.0,
+                        symbol: '*',
+                        color: Color::Rgb {
+                            r: 255,
+                            g: 180,
+                            b: 40,
+                        },
+                        lifetime: Duration::from_millis(700),
+                        age: Duration::ZERO,
+                    });
+                }
+            }
+            _ => {}
         }
     }
 
@@ -201,6 +234,9 @@ impl App for RenderSpike {
         self.hue_shift = (self.hue_shift + 2.0) % 360.0;
         self.gauge_phase += elapsed.as_secs_f32() * 1.5;
         self.plot_phase += elapsed.as_secs_f32() * 4.0;
+        self.particles.update(elapsed);
+        self.trail = fade_toward(&self.trail, Color::Rgb { r: 0, g: 0, b: 0 }, 0.2);
+        self.particles.render(&mut self.trail);
     }
 }
 
