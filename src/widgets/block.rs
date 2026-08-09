@@ -40,13 +40,14 @@ impl<'a> Block<'a> {
         if area.width < 2 || area.height < 2 {
             return area;
         }
-        let (border, fg, bg, border_bold, border_thick) = match self.theme {
+        let (border, fg, bg, border_bold, border_thick, primary_end) = match self.theme {
             Some(t) => (
                 t.border,
                 t.primary,
                 t.background,
                 t.border_bold,
                 t.border_thick,
+                t.primary_end,
             ),
             None => (
                 BorderSet::default(),
@@ -54,11 +55,23 @@ impl<'a> Block<'a> {
                 Color::Reset,
                 false,
                 false,
+                None,
             ),
         };
-        let plain = || Cell {
+        let ring_fg = |x: u16, y: u16| -> Color {
+            match primary_end {
+                Some(end) => {
+                    let t = ((x as f32 - area.x as f32) / area.width.max(1) as f32
+                        + (y as f32 - area.y as f32) / area.height.max(1) as f32)
+                        .clamp(0.0, 1.0);
+                    crate::easing::lerp_color(fg, end, t)
+                }
+                None => fg,
+            }
+        };
+        let plain = |x: u16, y: u16| Cell {
             symbol: ' ',
-            fg,
+            fg: ring_fg(x, y),
             bg,
             style: CellStyle {
                 intensity: if border_bold {
@@ -77,7 +90,7 @@ impl<'a> Block<'a> {
                     ring_area.y,
                     Cell {
                         symbol: border.horizontal,
-                        ..plain()
+                        ..plain(x, ring_area.y)
                     },
                 );
                 buf.set(
@@ -85,7 +98,7 @@ impl<'a> Block<'a> {
                     ring_area.y + ring_area.height - 1,
                     Cell {
                         symbol: border.horizontal,
-                        ..plain()
+                        ..plain(x, ring_area.y + ring_area.height - 1)
                     },
                 );
             }
@@ -95,7 +108,7 @@ impl<'a> Block<'a> {
                     y,
                     Cell {
                         symbol: border.vertical,
-                        ..plain()
+                        ..plain(ring_area.x, y)
                     },
                 );
                 buf.set(
@@ -103,7 +116,7 @@ impl<'a> Block<'a> {
                     y,
                     Cell {
                         symbol: border.vertical,
-                        ..plain()
+                        ..plain(ring_area.x + ring_area.width - 1, y)
                     },
                 );
             }
@@ -112,7 +125,7 @@ impl<'a> Block<'a> {
                 ring_area.y,
                 Cell {
                     symbol: border.corner,
-                    ..plain()
+                    ..plain(ring_area.x, ring_area.y)
                 },
             );
             buf.set(
@@ -120,7 +133,7 @@ impl<'a> Block<'a> {
                 ring_area.y,
                 Cell {
                     symbol: border.corner,
-                    ..plain()
+                    ..plain(ring_area.x + ring_area.width - 1, ring_area.y)
                 },
             );
             buf.set(
@@ -128,7 +141,7 @@ impl<'a> Block<'a> {
                 ring_area.y + ring_area.height - 1,
                 Cell {
                     symbol: border.corner,
-                    ..plain()
+                    ..plain(ring_area.x, ring_area.y + ring_area.height - 1)
                 },
             );
             buf.set(
@@ -136,7 +149,10 @@ impl<'a> Block<'a> {
                 ring_area.y + ring_area.height - 1,
                 Cell {
                     symbol: border.corner,
-                    ..plain()
+                    ..plain(
+                        ring_area.x + ring_area.width - 1,
+                        ring_area.y + ring_area.height - 1,
+                    )
                 },
             );
         };
@@ -167,13 +183,14 @@ impl<'a> Block<'a> {
                 .take(area.width.saturating_sub(2) as usize)
                 .enumerate()
             {
+                let x = area.x + 1 + i as u16;
                 buf.set(
-                    area.x + 1 + i as u16,
+                    x,
                     area.y,
                     Cell {
                         symbol: ch,
                         style: CellStyle::default(),
-                        ..plain()
+                        ..plain(x, area.y)
                     },
                 );
             }
@@ -438,5 +455,100 @@ mod tests {
 
         assert_eq!(buf.get(1, 0).style.intensity, Intensity::Normal); // 'H'
         assert_eq!(buf.get(2, 0).style.intensity, Intensity::Normal); // 'i'
+    }
+
+    #[test]
+    fn primary_end_none_produces_byte_for_byte_identical_output_to_flat_color() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            primary_end: None,
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+            border_bold: false,
+            border_thick: false,
+        };
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        // Every border cell must be flat theme.primary — the exact
+        // regression guarantee for existing themed apps that never
+        // set primary_end.
+        for x in 0..4 {
+            assert_eq!(buf.get(x, 0).fg, Color::Green);
+            assert_eq!(buf.get(x, 2).fg, Color::Green);
+        }
+        for y in 0..3 {
+            assert_eq!(buf.get(0, y).fg, Color::Green);
+            assert_eq!(buf.get(3, y).fg, Color::Green);
+        }
+    }
+
+    #[test]
+    fn primary_end_some_lerps_color_across_the_border_ring() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Rgb { r: 0, g: 0, b: 0 },
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            primary_end: Some(Color::Rgb {
+                r: 200,
+                g: 100,
+                b: 50,
+            }),
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+            border_bold: false,
+            border_thick: false,
+        };
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        // Top-left corner (0,0) is at perimeter position t=0 -> exactly primary.
+        assert_eq!(buf.get(0, 0).fg, Color::Rgb { r: 0, g: 0, b: 0 });
+        // Bottom-right corner (3,2) is at perimeter position t=1 (clamped) -> exactly primary_end.
+        assert_eq!(
+            buf.get(3, 2).fg,
+            Color::Rgb {
+                r: 200,
+                g: 100,
+                b: 50
+            }
+        );
+        // A cell strictly between the two corners must differ from both endpoints.
+        let mid = buf.get(3, 0).fg;
+        assert_ne!(mid, Color::Rgb { r: 0, g: 0, b: 0 });
+        assert_ne!(
+            mid,
+            Color::Rgb {
+                r: 200,
+                g: 100,
+                b: 50
+            }
+        );
     }
 }
