@@ -6,18 +6,26 @@ use crossterm::style::Color;
 use ttui::buffer::{Buffer, Cell, CellStyle, LayerStack};
 use ttui::camera;
 use ttui::layout::Rect;
+use ttui::particles::ParticleSystem;
 
 use crate::{portal, text_center, PORTALS, VOID};
 
 /// Renders the nexus for `selected`/`phase` into `buf`, dimmed by
 /// `fade` (1.0 = fully visible; < 1.0 during the return transition).
-pub(crate) fn render(selected: usize, phase: f32, fade: f32, area: Rect, buf: &mut LayerStack) {
+pub(crate) fn render(
+    selected: usize,
+    starfield: &ParticleSystem,
+    phase: f32,
+    fade: f32,
+    area: Rect,
+    buf: &mut LayerStack,
+) {
     if area.width < 12 || area.height < 10 {
         return;
     }
     let mut scene = Buffer::new(area.width, area.height);
     fill_void(&mut scene);
-    starfield(&mut scene, phase);
+    starfield.render(&mut scene);
     header(&mut scene);
     portals(&mut scene, selected, phase);
     footer(&mut scene);
@@ -52,42 +60,6 @@ fn fill_void(scene: &mut Buffer) {
                 Cell {
                     symbol: ' ',
                     fg: Color::Reset,
-                    bg: VOID,
-                    style: CellStyle::default(),
-                },
-            );
-        }
-    }
-}
-
-fn starfield(scene: &mut Buffer, phase: f32) {
-    let tick = (phase * 4.0) as u64;
-    for y in 0..scene.height {
-        for x in 0..scene.width {
-            let h = (x as u64).wrapping_mul(73_856_093) ^ (y as u64).wrapping_mul(19_349_663);
-            if !h.is_multiple_of(31) {
-                continue;
-            }
-            // Twinkle: brightness drifts with a per-star phase offset.
-            let twinkle = (((h >> 5).wrapping_add(tick)) % 8) as f32 / 7.0;
-            let level = (70.0 + 150.0 * twinkle) as u8;
-            let symbol = if twinkle > 0.75 {
-                '✦'
-            } else if twinkle > 0.4 {
-                '·'
-            } else {
-                '.'
-            };
-            scene.set(
-                x,
-                y,
-                Cell {
-                    symbol,
-                    fg: Color::Rgb {
-                        r: level,
-                        g: level,
-                        b: (level as u16 + 30).min(255) as u8,
-                    },
                     bg: VOID,
                     style: CellStyle::default(),
                 },

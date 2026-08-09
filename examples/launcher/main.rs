@@ -9,6 +9,7 @@ use crossterm::style::Color;
 use ttui::app::{run, App};
 use ttui::buffer::{Buffer, Cell, CellStyle, Intensity, LayerStack};
 use ttui::layout::Rect;
+use ttui::particles::{Particle, ParticleSystem};
 use ttui::transition::Transition;
 
 #[path = "../omnitrix/omnitrix.rs"]
@@ -59,6 +60,10 @@ pub(crate) const VOID: Color = Color::Rgb { r: 6, g: 8, b: 22 };
 
 const NEXUS_TICK: Duration = Duration::from_millis(50);
 const RETURN_FADE_MS: u64 = 350;
+const STARFIELD_W: u16 = 250;
+const STARFIELD_H: u16 = 80;
+const TARGET_STAR_COUNT: usize = 60;
+const STAR_LIFETIME_SECS: u64 = 30;
 
 /// Which app (or the nexus) is currently front-and-center.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -171,6 +176,43 @@ pub(crate) fn text_center(scene: &mut Buffer, area: Rect, y: u16, s: &str, fg: C
     }
 }
 
+/// Spawns one drifting background star at a pseudo-random position and
+/// velocity within the fixed virtual starfield space, derived from
+/// `seed` (a monotonically-increasing counter, not real randomness —
+/// deterministic and dependency-free, matching this codebase's
+/// existing hash-based pseudo-random patterns).
+fn spawn_star(seed: u64) -> Particle {
+    let h1 = seed.wrapping_mul(2_654_435_761);
+    let h2 = seed.wrapping_mul(2_246_822_519) ^ 0x9E37_79B9;
+    let x = (h1 % STARFIELD_W as u64) as f32;
+    let y = (h2 % STARFIELD_H as u64) as f32;
+    let angle = ((h1 >> 16) % 360) as f32 * std::f32::consts::PI / 180.0;
+    let speed = 0.3 + ((h2 >> 8) % 71) as f32 / 100.0; // 0.3..1.0 cells/sec
+    let brightness = ((h1 >> 24) % 200) as u8;
+    let level = 70u8.saturating_add(brightness);
+    let symbol = if brightness > 150 {
+        '✦'
+    } else if brightness > 80 {
+        '·'
+    } else {
+        '.'
+    };
+    Particle {
+        x,
+        y,
+        vx: angle.cos() * speed,
+        vy: angle.sin() * speed,
+        symbol,
+        color: Color::Rgb {
+            r: level,
+            g: level,
+            b: (level as u16 + 30).min(255) as u8,
+        },
+        lifetime: Duration::from_secs(STAR_LIFETIME_SECS),
+        age: Duration::ZERO,
+    }
+}
+
 /// The launcher itself — an `App` that either delegates to the active
 /// sub-app or renders the portal nexus.
 struct Launcher {
@@ -178,6 +220,8 @@ struct Launcher {
     active: Option<Box<dyn App>>,
     selected: usize,
     nexus_phase: f32,
+    starfield: ParticleSystem,
+    star_seed: u64,
     returning: Option<Transition>,
     quit: bool,
 }
@@ -189,6 +233,8 @@ impl Launcher {
             active: None,
             selected: 0,
             nexus_phase: 0.0,
+            starfield: ParticleSystem::new(),
+            star_seed: 0,
             returning: None,
             quit: false,
         }
@@ -250,7 +296,14 @@ impl App for Launcher {
             Some(app) => app.view(area, buf),
             None => {
                 let fade = self.returning.as_ref().map_or(1.0, |t| t.progress());
-                nexus::render(self.selected, self.nexus_phase, fade, area, buf);
+                nexus::render(
+                    self.selected,
+                    &self.starfield,
+                    self.nexus_phase,
+                    fade,
+                    area,
+                    buf,
+                );
             }
         }
     }
@@ -271,6 +324,11 @@ impl App for Launcher {
             Some(app) => app.on_tick(elapsed),
             None => {
                 self.nexus_phase += elapsed.as_secs_f32();
+                self.starfield.update(elapsed);
+                while self.starfield.len() < TARGET_STAR_COUNT {
+                    self.star_seed = self.star_seed.wrapping_add(1);
+                    self.starfield.spawn(spawn_star(self.star_seed));
+                }
                 if let Some(t) = &mut self.returning {
                     t.tick(elapsed);
                     if t.is_complete() {
@@ -386,6 +444,7 @@ mod tests {
 
     #[test]
     fn nexus_render_does_not_panic_across_sizes() {
+        let starfield = ParticleSystem::new();
         for (w, h) in [(12, 10), (40, 15), (80, 24), (120, 40), (200, 60)] {
             let mut stack = LayerStack::new(w, h);
             let area = Rect {
@@ -395,9 +454,19 @@ mod tests {
                 height: h,
             };
             for sel in 0..APP_COUNT {
-                nexus::render(sel, 1.23, 1.0, area, &mut stack);
-                nexus::render(sel, 5.0, 0.4, area, &mut stack);
+                nexus::render(sel, &starfield, 1.23, 1.0, area, &mut stack);
+                nexus::render(sel, &starfield, 5.0, 0.4, area, &mut stack);
             }
         }
+    }
+
+    #[test]
+    fn starfield_tops_up_to_target_count_after_ticking() {
+        let mut l = Launcher::new();
+        assert_eq!(l.starfield.len(), 0);
+        for _ in 0..TARGET_STAR_COUNT {
+            l.on_tick(Duration::from_millis(50));
+        }
+        assert_eq!(l.starfield.len(), TARGET_STAR_COUNT);
     }
 }
