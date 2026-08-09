@@ -219,18 +219,36 @@ dispatch prompt written for this repo must follow:
   only if `portable-pty`'s scripted approach turns out insufficient for
   some interaction-latency-specific bug.
 
-## Open questions to verify during implementation
+## Resolved during planning (docs.rs verification)
 
-- Exact `vt100` crate `Cell` API shape (which style axes it exposes
-  distinctly — e.g. whether it distinguishes dim from bold, or only
-  exposes a single bold-like flag) needs confirming against the crate's
-  actual docs/source before the style-approximation mapping is
-  finalized; the design above assumes parity with `CellStyle`'s axes
-  but that assumption isn't verified yet.
-- `font8x8`'s actual coverage of the block-element range (`░▒▓█▀▄▌`)
-  and confirmation that the dingbat star `✦` is indeed unmapped (the
-  hard-error path exists specifically because this hasn't been
-  confirmed either way).
+Both open questions above were checked against the real crate docs
+before writing the implementation plan:
+
+- **`vt100::Cell` exposes `bold()`, `italic()`, `underline()`, and
+  `inverse()` — there is no `dim()` or `strikethrough()` accessor.**
+  This is a real fidelity gap, not an oversight: `CellStyle::intensity`'s
+  `Dim` variant and `CellStyle::strikethrough` are not visually
+  verifiable through this tool, because `vt100` itself doesn't expose
+  them from the parsed ANSI stream. The "Style axes" paragraph above is
+  narrowed accordingly — the rasterizer approximates bold (brighten),
+  inverse (swap), and underline (line overlay); italic is tracked
+  conceptually but never rendered (no slanted bitmap variant); dim and
+  strikethrough are not rendered at all, by API constraint rather than
+  choice. If a future bug specifically hinges on dim or strikethrough
+  rendering, that's a reason to revisit the deferred synthetic
+  `Buffer`-construction fallback (which has direct access to the full
+  `CellStyle`), not to route around `vt100`.
+- **`font8x8`'s `MISC_FONTS` table covers only ~10 currency/fraction
+  glyphs — it does not reach the Dingbats block (U+2700–U+27BF).**
+  This confirms the dingbat star `✦` (U+2726) used by `EnergyCore`'s
+  charged state is genuinely unmapped, not a hypothetical gap: running
+  this tool against `omnitrix`'s `EnergyCore` widget in its charged
+  state is expected to hit the hard-error path on day one. That's
+  treated as correct behavior (the error names the real gap), not a
+  bug to route around during this Arc — a future Arc could add a
+  small supplemental hand-drawn 8x8 bitmap for the handful of specific
+  glyphs TTUI actually needs outside `font8x8`'s coverage, but that's
+  new scope, not part of this plan.
 
 ## Sources consulted
 
