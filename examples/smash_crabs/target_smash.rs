@@ -86,7 +86,10 @@ impl SmashCrabs {
                             symbol: ch,
                             fg: self.theme.tertiary,
                             bg: self.theme.primary,
-                            style: CellStyle { bold: true },
+                            style: CellStyle {
+                                bold: true,
+                                ..Default::default()
+                            },
                         },
                     );
                 }

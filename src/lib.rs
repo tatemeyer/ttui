@@ -7,10 +7,15 @@
 pub mod app;
 /// `AudioSink` trait for optional sound-effect playback.
 pub mod audio;
+/// Alpha-blending prototype — spike prototype, not a committed API.
+pub mod blend;
 /// Cell/`Buffer`/`LayerStack` — the framework's core render target.
 pub mod buffer;
 /// Deterministic camera viewport and brightness scaling.
 pub mod camera;
+/// Sub-cell rendering primitive (half-block + braille) — spike
+/// prototype, not a committed API.
+pub mod canvas;
 /// Linear/eased interpolation and progress helpers.
 pub mod easing;
 /// Screen-shake and other whole-buffer visual effects.

@@ -161,3 +161,81 @@ commits to — not by promoting spike code as-is.
   future brainstorm, gated on this spike's findings.
 - The recommendations write-up itself — not yet written; appended after
   the spike runs, before this spec is considered closed.
+
+## Recommendations (post-spike)
+
+Written after running `examples/render_spike.rs` and its `--bench`
+timing harness.
+
+- **Color depth (lever 1):** Smooth — Task 1's visual check showed a
+  smooth, continuous color gradient with no visible banding; the 24-bit
+  RGB escape sequences observed in the output confirm what `ttui`
+  *emits* is truecolor, but the actual evidence that the *terminal*
+  rendered it at full fidelity (rather than silently downsampling to
+  ANSI 256/16) is that reported absence of banding when the example was
+  run, not the escape sequences themselves.
+- **Frame cost:** `--bench` (debug build, 120x40 area, 200-frame
+  average, all six levers wired into the scene): `200 frames in
+  1.4719147s (7.359573ms/frame avg), avg 622 diffed cells/frame`. This
+  is an average over the harness's full 200-frame run, not a single
+  densest-frame measurement — one particle burst (700ms lifetime) is
+  spawned up front and measured at a 16ms tick, so only the first
+  ~40-60 frames carry active burst content; the remaining ~140-160 are
+  the static ring+gauge+plot scene with no burst. The 622-cells/frame
+  average is therefore dominated by that static scene, and the true
+  peak per-frame cost (all six levers simultaneously dense) is likely
+  modestly higher than this average suggests. Even so, the recorded
+  number is fast in absolute terms for an unoptimized debug build — Rev
+  A's tactile-responsiveness commitment is qualitative (input-driven
+  redraw, immediate unbuffered flush), not a numeric frame-budget
+  threshold, but a ~7.4ms average leaves comfortable headroom under any
+  reasonable interactive-redraw expectation, and a release build would
+  only widen that margin further.
+- **Graduation ranking**, highest-confidence first:
+  1. Full `CellStyle` attributes (lever 3, minus `dim`) — cheapest,
+     already SGR-coalesced, no structural risk. Recommend committing
+     as-is via a real brainstorm, including the `Intensity` enum
+     refactor flagged in Task 5 (folding `bold` and a proper `dim`
+     into one tri-state field instead of independent bools).
+  2. Sub-cell `Canvas` (lever 2) — both modes worked; recommend a real
+     spec deciding whether `HalfBlock`/`Braille` stay one type with a
+     mode enum (as prototyped) or split into two types.
+  3. Gradient color ramps (lever 4) — `easing::lerp_color` already
+     covers this; mainly needs a real widget-level home (e.g. a
+     gradient option on `Block`/`Theme`), not new core math.
+  4. Alpha blending (lever 5) — works for opaque-to-Rgb-target fades
+     (as used for the particle trail) but **cannot gradually fade
+     toward true transparency** (`Color::Reset`) — `lerp_color`'s
+     non-Rgb fallback makes any real "fade to transparent" require an
+     actual alpha channel on `Cell`, confirming this lever's
+     flagged structural risk. Recommend a dedicated spec if pursued,
+     given the `Cell`-shape cost. Two further findings from close
+     review of the assembled scene reinforce this same conclusion:
+     first, `blend_trail`'s call to `blend_over(&scene, &self.trail,
+     1.0)` runs at `alpha = 1.0`, at which `blend_over`'s interpolation
+     degenerates to a hard stamp (`lerp_color(_, to, 1.0) == to`, glyph
+     and style taken outright from the overlay) — so the assembled
+     showcase never actually exercises real alpha interpolation
+     end-to-end; the visible smooth fade comes entirely from
+     `fade_toward` decaying the trail buffer's own stored colors over
+     time, not from `blend_over`'s blending math (which was validated
+     directly against its own inputs, not through the assembled scene).
+     Second, a sharper instance of the `Color::Reset` limitation above:
+     `ParticleSystem::render` writes particle cells with `bg:
+     Color::Reset`, so on the very first `fade_toward` tick applied to
+     that cell, `lerp_color(Color::Reset, <Rgb target>, factor)` hits
+     the non-Rgb fallback and returns the target color outright — the
+     background channel jumps from `Reset` to fully-opaque-target-color
+     in one tick instead of fading gradually, even though the
+     foreground channel fades smoothly. Wherever a particle trail
+     passes over the colored scene (the gradient ring, the half-block
+     gauge, the braille plot) this punches an instantly-opaque patch
+     through whatever was underneath — invisible against a plain black
+     background, but visible against the scene's actual painted colors,
+     which is exactly where the trail travels. Both findings are
+     additional supporting evidence for the same recommendation above:
+     a real alpha channel on `Cell` is needed for this lever to fully
+     deliver on smooth, gradual blending.
+  5. Particle trails (lever 6) — validated as an application of levers
+     3/5/existing `ParticleSystem`, not a new primitive of its own;
+     no separate Arc needed, it falls out of whichever of 1/4 lands.
