@@ -1,0 +1,20 @@
+[package]
+name = "visual-snapshot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+portable-pty = "0.9"
+vt100 = "0.15"
+image = "0.25"
+font8x8 = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+crossterm = "0.27"
+tempfile = "3"
+
+[[example]]
+name = "echo_key"
