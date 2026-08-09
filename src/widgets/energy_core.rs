@@ -1,11 +1,21 @@
 //! Segmented circular progress ring.
 
 use crate::buffer::{Buffer, Cell};
+use crate::easing::lerp_color;
 use crate::layout::Rect;
 use crossterm::style::Color;
 
+const WHITE: Color = Color::Rgb {
+    r: 255,
+    g: 255,
+    b: 255,
+};
+
 /// A horizontal segmented progress bar filled to `percent` in
-/// `color`.
+/// `color`, brightening toward white across the fill. `color` should
+/// be `Color::Rgb` for the gradient to interpolate — `easing::
+/// lerp_color`'s existing fallback renders every filled cell flat
+/// white for any other color type.
 pub struct EnergyCore {
     percent: u16,
     color: Color,
@@ -29,7 +39,8 @@ impl EnergyCore {
             let (symbol, fg) = if spark {
                 ('✦', Color::White)
             } else if filled {
-                ('▓', self.color)
+                let t = x as f32 / filled_width.max(1) as f32;
+                ('▓', lerp_color(self.color, WHITE, t))
             } else {
                 ('░', self.color)
             };
@@ -50,6 +61,7 @@ impl EnergyCore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::easing::lerp_color;
 
     fn area10x1() -> Rect {
         Rect {
@@ -112,5 +124,22 @@ mod tests {
             height: 1,
         };
         EnergyCore::new(50, Color::Green).render(area, &mut buf);
+    }
+
+    #[test]
+    fn fill_brightens_toward_the_leading_edge() {
+        let mut buf = Buffer::new(10, 1);
+        let base = Color::Rgb { r: 0, g: 100, b: 0 };
+        EnergyCore::new(50, base).render(area10x1(), &mut buf);
+        // t=0 at the first filled column -> exactly the base color.
+        assert_eq!(buf.get(0, 0).fg, base);
+        // t=0.8 at the last filled column (x=4 of a 5-wide fill) ->
+        // partway toward white, neither endpoint exactly.
+        let leading_edge = buf.get(4, 0).fg;
+        assert_eq!(
+            leading_edge,
+            lerp_color(base, Color::Rgb { r: 255, g: 255, b: 255 }, 0.8)
+        );
+        assert_ne!(leading_edge, base);
     }
 }
