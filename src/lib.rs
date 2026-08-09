@@ -7,6 +7,8 @@
 pub mod app;
 /// `AudioSink` trait for optional sound-effect playback.
 pub mod audio;
+/// Alpha-blending prototype — spike prototype, not a committed API.
+pub mod blend;
 /// Cell/`Buffer`/`LayerStack` — the framework's core render target.
 pub mod buffer;
 /// Sub-cell rendering primitive (half-block + braille) — spike
