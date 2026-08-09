@@ -7,5 +7,6 @@ pub mod color;
 pub mod encode;
 pub mod glyph;
 pub mod keys;
+pub mod pty;
 pub mod render;
 pub mod script;
