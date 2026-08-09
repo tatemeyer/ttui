@@ -158,7 +158,10 @@ pub(crate) fn text_center(scene: &mut Buffer, area: Rect, y: u16, s: &str, fg: C
                 symbol: ch,
                 fg,
                 bg: VOID,
-                style: CellStyle { bold, ..Default::default() },
+                style: CellStyle {
+                    bold,
+                    ..Default::default()
+                },
             },
         );
     }

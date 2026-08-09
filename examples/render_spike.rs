@@ -49,8 +49,16 @@ impl RenderSpike {
         for row in 0..filled {
             let t = row as f32 / subpixel_height.max(1) as f32;
             let color = lerp_color(
-                Color::Rgb { r: 220, g: 40, b: 40 },
-                Color::Rgb { r: 40, g: 220, b: 90 },
+                Color::Rgb {
+                    r: 220,
+                    g: 40,
+                    b: 40,
+                },
+                Color::Rgb {
+                    r: 40,
+                    g: 220,
+                    b: 90,
+                },
                 t,
             );
             for col in 0..area.width {
@@ -72,7 +80,17 @@ impl RenderSpike {
             let y0 = grid_h - 1 - ((sample(gx) * 0.5 + 0.5) * (grid_h - 1) as f32).round() as u16;
             let y1 =
                 grid_h - 1 - ((sample(gx + 1) * 0.5 + 0.5) * (grid_h - 1) as f32).round() as u16;
-            canvas.line(gx, y0, gx + 1, y1, Color::Rgb { r: 90, g: 180, b: 255 });
+            canvas.line(
+                gx,
+                y0,
+                gx + 1,
+                y1,
+                Color::Rgb {
+                    r: 90,
+                    g: 180,
+                    b: 255,
+                },
+            );
         }
         canvas.blit(buf, area.x, area.y);
     }
@@ -134,6 +152,10 @@ impl RenderSpike {
     fn blend_trail(&self, buf: &mut LayerStack) {
         let scene = buf.composite();
         let scene = blend_over(&scene, &self.trail, 1.0);
+        // Assumes `buf` is always depth 1 (no `push_layer()` calls) —
+        // if a future edit adds an upper layer, it would get
+        // composited over this blended result and silently undo the
+        // trail blend.
         *buf.layer_mut(0) = scene;
     }
 }

@@ -45,7 +45,10 @@ fn themed(symbol: char) -> Cell {
         symbol,
         fg: Color::Green,
         bg: Color::Reset,
-        style: CellStyle { bold: false, ..Default::default() },
+        style: CellStyle {
+            bold: false,
+            ..Default::default()
+        },
     }
 }
 
