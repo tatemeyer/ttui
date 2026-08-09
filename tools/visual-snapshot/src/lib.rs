@@ -4,6 +4,7 @@
 //! terminal output to a PNG or animated GIF.
 
 pub mod color;
+pub mod encode;
 pub mod glyph;
 pub mod keys;
 pub mod render;
