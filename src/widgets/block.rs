@@ -60,7 +60,10 @@ impl<'a> Block<'a> {
             symbol: ' ',
             fg,
             bg,
-            style: CellStyle { bold: border_bold },
+            style: CellStyle {
+                bold: border_bold,
+                ..Default::default()
+            },
         };
 
         let draw_ring = |ring_area: Rect, buf: &mut Buffer| {

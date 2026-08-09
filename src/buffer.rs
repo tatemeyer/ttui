@@ -9,6 +9,14 @@ use crossterm::style::Color;
 pub struct CellStyle {
     /// Whether the cell renders bold.
     pub bold: bool,
+    /// Whether the cell renders underlined.
+    pub underline: bool,
+    /// Whether the cell renders italic.
+    pub italic: bool,
+    /// Whether fg/bg render swapped.
+    pub reverse: bool,
+    /// Whether the cell renders with a strikethrough.
+    pub strikethrough: bool,
 }
 
 /// One terminal character cell: glyph, foreground/background color,

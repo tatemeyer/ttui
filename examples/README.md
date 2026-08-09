@@ -22,6 +22,11 @@ against a specific vision doc (`TTUI-Ideas/vision/UI/`). Run with
   from `docs/design/specs/launcher/2026-08-08-cross-app-launcher-design.md`.
 - **`demo`** — the original core-framework smoke-test example, predates
   the vision-doc apps above. Retirement tracked in issue #83.
+- **`render_spike`** — a bare showcase proving out six
+  rendering-fidelity levers together; a research-spike prototype, not a
+  themed vision-doc app. Built from
+  `docs/design/specs/core/2026-08-08-rendering-fidelity-spike-design.md`
+  rather than a vision doc.
 
 Each themed app's `App` type lives in `examples/<app>/<app>.rs` and is
 reused by `launcher` via `#[path]`; `examples/<app>/main.rs` is a thin
