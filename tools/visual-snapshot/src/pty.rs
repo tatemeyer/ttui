@@ -1,10 +1,12 @@
 //! Spawns a compiled TTUI example under a real OS pseudo-console
-//! (`portable-pty`, ConPTY on Windows) and captures single frames of its
-//! terminal output as rasterized images. Deliberately does not attempt
-//! multi-step scripted capture — that's Task 9's `run_script`, built on
-//! top of `Session::spawn`/`send`/`capture_frame`.
+//! (`portable-pty`, ConPTY on Windows) and captures frames of its
+//! terminal output as rasterized images, either as a single snapshot
+//! (`Session::capture_frame`) or driven through a scripted sequence of
+//! key presses and waits (`run_script`).
 
+use crate::keys;
 use crate::render::{self, RenderError};
+use crate::script::Step;
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -65,7 +67,7 @@ pub const SETTLE_DELAY: Duration = Duration::from_millis(100);
 /// continuously draining its output into a shared buffer.
 pub struct Session {
     parser: vt100::Parser,
-    writer: Box<dyn std::io::Write + Send>,
+    writer: Arc<Mutex<Box<dyn std::io::Write + Send>>>,
     output: Arc<Mutex<Vec<u8>>>,
     // Never read directly — held purely so the pseudo-console (and the
     // reader/writer handles derived from it) stays open for as long as
@@ -103,6 +105,7 @@ impl Session {
             .master
             .take_writer()
             .map_err(|e| PtyError::Pty(e.to_string()))?;
+        let writer = Arc::new(Mutex::new(writer));
         let mut reader = pair
             .master
             .try_clone_reader()
@@ -110,12 +113,39 @@ impl Session {
 
         let output = Arc::new(Mutex::new(Vec::new()));
         let output_writer = Arc::clone(&output);
+        let dsr_writer = Arc::clone(&writer);
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
-                    Ok(n) => output_writer.lock().unwrap().extend_from_slice(&buf[..n]),
+                    Ok(n) => {
+                        // Windows' ConPTY (conhost) issues a Device Status
+                        // Report cursor-position query (`ESC[6n`) to the
+                        // outer terminal shortly after attaching, as part
+                        // of its own startup handshake — this is separate
+                        // from anything the spawned binary itself writes.
+                        // Until something answers with a Cursor Position
+                        // Report (`ESC[row;colR`) on the input side,
+                        // conhost stalls: it neither forwards the child's
+                        // real output nor delivers further input to the
+                        // child. Confirmed empirically while building
+                        // `run_script` — without this reply, not even a
+                        // single raw byte written via `send` ever reached
+                        // a spawned child's stdin, regardless of encoding
+                        // or wait time. Answering with an arbitrary
+                        // position (`1;1`) is sufficient; nothing in this
+                        // tool's rendering path depends on cursor state
+                        // being accurate. Unix PTYs have no such
+                        // handshake, so this is a no-op there — the query
+                        // byte sequence never appears in that path.
+                        if buf[..n].windows(4).any(|w| w == b"\x1b[6n") {
+                            let mut w = dsr_writer.lock().unwrap();
+                            let _ = w.write_all(b"\x1b[1;1R");
+                            let _ = w.flush();
+                        }
+                        output_writer.lock().unwrap().extend_from_slice(&buf[..n])
+                    }
                     Err(_) => break,
                 }
             }
@@ -145,8 +175,9 @@ impl Session {
 
     /// Writes raw bytes into the pseudo-console's input handle.
     pub fn send(&mut self, bytes: &[u8]) -> Result<(), PtyError> {
-        self.writer.write_all(bytes)?;
-        self.writer.flush()?;
+        let mut writer = self.writer.lock().unwrap();
+        writer.write_all(bytes)?;
+        writer.flush()?;
         Ok(())
     }
 
@@ -163,6 +194,41 @@ impl Session {
         self.child.kill()?;
         Ok(())
     }
+}
+
+const KEY_STEP_DISPLAY_DURATION: Duration = Duration::from_millis(150);
+
+/// Spawns `binary`, drives it through `steps` (real key bytes / real
+/// wall-clock waits), and returns one rendered frame per step plus an
+/// initial frame captured before any step runs.
+pub fn run_script(
+    binary: &Path,
+    rows: u16,
+    cols: u16,
+    steps: &[Step],
+) -> Result<Vec<(image::RgbaImage, Duration)>, PtyError> {
+    let mut session = Session::spawn(binary, rows, cols)?;
+    let mut frames = Vec::with_capacity(steps.len() + 1);
+
+    frames.push((session.capture_frame()?, Duration::from_millis(0)));
+
+    for step in steps {
+        let duration = match step {
+            Step::Wait { wait_ms } => {
+                std::thread::sleep(Duration::from_millis(*wait_ms));
+                Duration::from_millis(*wait_ms)
+            }
+            Step::Key { key } => {
+                let bytes = keys::encode_key(key).map_err(|e| PtyError::Pty(format!("{e:?}")))?;
+                session.send(&bytes)?;
+                KEY_STEP_DISPLAY_DURATION
+            }
+        };
+        frames.push((session.capture_frame()?, duration));
+    }
+
+    session.kill()?;
+    Ok(frames)
 }
 
 impl Drop for Session {
