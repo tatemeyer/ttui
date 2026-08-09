@@ -3,6 +3,7 @@
 //! sequence of key presses and waits, and rasterizes the captured
 //! terminal output to a PNG or animated GIF.
 
-pub mod keys;
 pub mod color;
 pub mod glyph;
+pub mod keys;
+pub mod render;
