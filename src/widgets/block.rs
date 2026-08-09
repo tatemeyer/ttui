@@ -1,7 +1,7 @@
 //! Bordered container, with an optional outward second border ring
 //! for a "glow" look when `Theme.border_thick` is set.
 
-use crate::buffer::{Buffer, Cell, CellStyle};
+use crate::buffer::{Buffer, Cell, CellStyle, Intensity};
 use crate::layout::Rect;
 use crate::theme::{BorderSet, Theme};
 use crossterm::style::Color;
@@ -61,7 +61,11 @@ impl<'a> Block<'a> {
             fg,
             bg,
             style: CellStyle {
-                bold: border_bold,
+                intensity: if border_bold {
+                    Intensity::Bold
+                } else {
+                    Intensity::Normal
+                },
                 ..Default::default()
             },
         };
@@ -193,7 +197,7 @@ impl<'a> Default for Block<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::buffer::Buffer;
+    use crate::buffer::{Buffer, Intensity};
     use crate::layout::Rect;
     use crate::theme::{BorderSet, Theme};
 
@@ -254,7 +258,7 @@ mod tests {
         assert_eq!(buf.get(0, 0).symbol, '+');
         assert_eq!(buf.get(0, 0).fg, Color::Reset);
         assert_eq!(buf.get(0, 0).bg, Color::Reset);
-        assert!(!buf.get(0, 0).style.bold);
+        assert_eq!(buf.get(0, 0).style.intensity, Intensity::Normal);
     }
 
     #[test]
@@ -316,9 +320,9 @@ mod tests {
 
         Block::new().theme(&theme).render(area, &mut buf);
 
-        assert!(buf.get(0, 0).style.bold); // corner
-        assert!(buf.get(1, 0).style.bold); // horizontal edge
-        assert!(buf.get(0, 1).style.bold); // vertical edge
+        assert_eq!(buf.get(0, 0).style.intensity, Intensity::Bold); // corner
+        assert_eq!(buf.get(1, 0).style.intensity, Intensity::Bold); // horizontal edge
+        assert_eq!(buf.get(0, 1).style.intensity, Intensity::Bold); // vertical edge
     }
 
     #[test]
@@ -427,7 +431,7 @@ mod tests {
             .theme(&theme)
             .render(area, &mut buf);
 
-        assert!(!buf.get(1, 0).style.bold); // 'H'
-        assert!(!buf.get(2, 0).style.bold); // 'i'
+        assert_eq!(buf.get(1, 0).style.intensity, Intensity::Normal); // 'H'
+        assert_eq!(buf.get(2, 0).style.intensity, Intensity::Normal); // 'i'
     }
 }

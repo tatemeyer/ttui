@@ -7,7 +7,7 @@ use std::time::Duration;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use ttui::app::{run, App};
-use ttui::buffer::{Buffer, Cell, CellStyle, LayerStack};
+use ttui::buffer::{Buffer, Cell, CellStyle, Intensity, LayerStack};
 use ttui::layout::Rect;
 use ttui::transition::Transition;
 
@@ -159,7 +159,11 @@ pub(crate) fn text_center(scene: &mut Buffer, area: Rect, y: u16, s: &str, fg: C
                 fg,
                 bg: VOID,
                 style: CellStyle {
-                    bold,
+                    intensity: if bold {
+                        Intensity::Bold
+                    } else {
+                        Intensity::Normal
+                    },
                     ..Default::default()
                 },
             },
