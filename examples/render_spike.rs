@@ -158,6 +158,42 @@ fn hue_to_rgb(hue: f32) -> Color {
     }
 }
 
+fn draw_gradient_ring(area: Rect, buf: &mut LayerStack, hue_shift: f32) {
+    use ttui::buffer::CellStyle;
+    if area.width < 2 || area.height < 2 {
+        return;
+    }
+    let ring_cell = |x: u16, y: u16, symbol: char| -> Cell {
+        let t = (x as f32 - area.x as f32) / area.width.max(1) as f32
+            + (y as f32 - area.y as f32) / area.height.max(1) as f32;
+        Cell {
+            symbol,
+            fg: hue_to_rgb(t * 180.0 + hue_shift),
+            bg: Color::Reset,
+            style: CellStyle {
+                bold: true,
+                ..Default::default()
+            },
+        }
+    };
+    for x in area.x..area.x + area.width {
+        buf.set(x, area.y, ring_cell(x, area.y, '▀'));
+        buf.set(
+            x,
+            area.y + area.height - 1,
+            ring_cell(x, area.y + area.height - 1, '▄'),
+        );
+    }
+    for y in area.y..area.y + area.height {
+        buf.set(area.x, y, ring_cell(area.x, y, '█'));
+        buf.set(
+            area.x + area.width - 1,
+            y,
+            ring_cell(area.x + area.width - 1, y, '█'),
+        );
+    }
+}
+
 impl App for RenderSpike {
     fn update(&mut self, event: &Event) {
         let Event::Key(k) = event else { return };
@@ -191,35 +227,31 @@ impl App for RenderSpike {
     }
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
-        // Lever 1: color-depth audit. A smooth 360-degree hue sweep
-        // across the full width, animated by hue_shift. If this bands
-        // into discrete steps instead of a smooth ramp, truecolor
-        // isn't actually reaching the terminal — record that in the
-        // spec's recommendations section (Task 9).
-        for x in 0..area.width {
-            let hue = (x as f32 / area.width.max(1) as f32) * 360.0 + self.hue_shift;
-            let color = hue_to_rgb(hue);
-            for y in 0..area.height {
-                buf.set(
-                    x,
-                    y,
-                    Cell {
-                        symbol: '█',
-                        fg: color,
-                        bg: color,
-                        ..Default::default()
-                    },
-                );
-            }
-        }
-        self.render_gauge(
-            Rect { x: 2, y: 2, width: 10, height: 8 },
-            buf,
-        );
-        self.render_plot(
-            Rect { x: 14, y: 2, width: 30, height: 8 },
-            buf,
-        );
+        draw_gradient_ring(area, buf, self.hue_shift);
+        let inner = Rect {
+            x: area.x + 1,
+            y: area.y + 1,
+            width: area.width.saturating_sub(2),
+            height: area.height.saturating_sub(2),
+        };
+
+        let rows = Layout::new(
+            Direction::Vertical,
+            vec![Constraint::Fixed(1), Constraint::Fill(1)],
+        )
+        .split(inner);
+
+        self.render_attribute_showcase(rows[0], buf);
+
+        let cols = Layout::new(
+            Direction::Horizontal,
+            vec![Constraint::Percentage(50), Constraint::Fill(1)],
+        )
+        .split(rows[1]);
+        self.render_gauge(cols[0], buf);
+        self.render_plot(cols[1], buf);
+
+        self.blend_trail(buf);
     }
 
     fn should_quit(&self) -> bool {
