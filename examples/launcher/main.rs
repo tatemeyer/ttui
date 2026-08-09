@@ -62,7 +62,7 @@ const NEXUS_TICK: Duration = Duration::from_millis(50);
 const RETURN_FADE_MS: u64 = 350;
 const STARFIELD_W: u16 = 250;
 const STARFIELD_H: u16 = 80;
-const TARGET_STAR_COUNT: usize = 60;
+const TARGET_STAR_COUNT: usize = 400;
 const STAR_LIFETIME_SECS: u64 = 30;
 const DIVE_DURATION: Duration = Duration::from_millis(400);
 const DIVE_PARTICLE_COUNT: u32 = 16;
@@ -188,8 +188,8 @@ pub(crate) fn text_center(scene: &mut Buffer, area: Rect, y: u16, s: &str, fg: C
 fn spawn_star(seed: u64) -> Particle {
     let h1 = seed.wrapping_mul(2_654_435_761);
     let h2 = seed.wrapping_mul(2_246_822_519) ^ 0x9E37_79B9;
-    let x = (h1 % STARFIELD_W as u64) as f32;
-    let y = (h2 % STARFIELD_H as u64) as f32;
+    let x = ((h1 ^ (h1 >> 13)) % STARFIELD_W as u64) as f32;
+    let y = ((h2 ^ (h2 >> 17)) % STARFIELD_H as u64) as f32;
     let angle = ((h1 >> 16) % 360) as f32 * std::f32::consts::PI / 180.0;
     let speed = 0.3 + ((h2 >> 8) % 71) as f32 / 100.0; // 0.3..1.0 cells/sec
     let brightness = ((h1 >> 24) % 200) as u8;
@@ -212,7 +212,7 @@ fn spawn_star(seed: u64) -> Particle {
             g: level,
             b: (level as u16 + 30).min(255) as u8,
         },
-        lifetime: Duration::from_secs(STAR_LIFETIME_SECS),
+        lifetime: Duration::from_secs(STAR_LIFETIME_SECS) + Duration::from_millis(h2 % 30_000),
         age: Duration::ZERO,
     }
 }
@@ -288,6 +288,7 @@ impl Launcher {
             Action::ReturnToNexus => {
                 self.active = None;
                 self.location = Location::Nexus;
+                self.diving = None;
                 self.returning = Some(Transition::start(Duration::from_millis(RETURN_FADE_MS)));
             }
             Action::QuitProcess => self.quit = true,
@@ -304,7 +305,17 @@ impl App for Launcher {
 
         if self.location == Location::Nexus {
             if self.diving.is_some() {
-                return; // ignore input mid-dive, same spirit as an app ignoring input during its own boot
+                // Sustained/autorepeat input means on_tick may never fire
+                // (App::on_tick only runs when the poll times out with no
+                // event), which would otherwise freeze the dive forever.
+                // Any keypress mid-dive skips straight to the destination.
+                if key.is_some() {
+                    if let Some((index, _, _)) = self.diving.take() {
+                        self.active = Some(make_app(index));
+                        self.location = location_of(index);
+                    }
+                }
+                return;
             }
             let action = route(Location::Nexus, key, self.selected, false);
             self.apply(action);
@@ -525,6 +536,21 @@ mod tests {
         let mut l = Launcher::new();
         l.apply(Action::Launch(1));
         l.on_tick(DIVE_DURATION + Duration::from_millis(10));
+        assert!(l.active.is_some());
+        assert_eq!(l.location, Location::Tardis);
+        assert!(l.diving.is_none());
+    }
+
+    #[test]
+    fn any_keypress_during_a_dive_completes_it_immediately() {
+        let mut l = Launcher::new();
+        l.apply(Action::Launch(1));
+        assert!(l.diving.is_some());
+        let event = Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Char('x'),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        l.update(&event);
         assert!(l.active.is_some());
         assert_eq!(l.location, Location::Tardis);
         assert!(l.diving.is_none());

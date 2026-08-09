@@ -112,7 +112,7 @@ fn portals(scene: &mut Buffer, selected: usize, phase: f32) {
         let focused = i == selected;
         let box_w = if focused { focus_w } else { base_w };
         let box_h = if focused { focus_h } else { base_h };
-        let slot_x = i as u16 * slot_w + slot_w.saturating_sub(box_w) / 2;
+        let slot_x = (i as u16 * slot_w + slot_w.saturating_sub(box_w) / 2).max(1);
         let top = 4 + h.saturating_sub(8).saturating_sub(box_h) / 2;
         let slot = Rect {
             x: slot_x,
