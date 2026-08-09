@@ -9,6 +9,7 @@ use crossterm::style::Color;
 use ttui::app::{run, App};
 use ttui::buffer::{Buffer, Cell, CellStyle, Intensity, LayerStack};
 use ttui::layout::Rect;
+use ttui::particles::{Particle, ParticleSystem};
 use ttui::transition::Transition;
 
 #[path = "../omnitrix/omnitrix.rs"]
@@ -59,6 +60,14 @@ pub(crate) const VOID: Color = Color::Rgb { r: 6, g: 8, b: 22 };
 
 const NEXUS_TICK: Duration = Duration::from_millis(50);
 const RETURN_FADE_MS: u64 = 350;
+const STARFIELD_W: u16 = 250;
+const STARFIELD_H: u16 = 80;
+const TARGET_STAR_COUNT: usize = 400;
+const STAR_LIFETIME_SECS: u64 = 30;
+const DIVE_DURATION: Duration = Duration::from_millis(400);
+const DIVE_PARTICLE_COUNT: u32 = 16;
+const NOMINAL_CENTER_X: f32 = 40.0;
+const NOMINAL_CENTER_Y: f32 = 12.0;
 
 /// Which app (or the nexus) is currently front-and-center.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -171,6 +180,69 @@ pub(crate) fn text_center(scene: &mut Buffer, area: Rect, y: u16, s: &str, fg: C
     }
 }
 
+/// Spawns one drifting background star at a pseudo-random position and
+/// velocity within the fixed virtual starfield space, derived from
+/// `seed` (a monotonically-increasing counter, not real randomness —
+/// deterministic and dependency-free, matching this codebase's
+/// existing hash-based pseudo-random patterns).
+fn spawn_star(seed: u64) -> Particle {
+    let h1 = seed.wrapping_mul(2_654_435_761);
+    let h2 = seed.wrapping_mul(2_246_822_519) ^ 0x9E37_79B9;
+    let x = ((h1 ^ (h1 >> 13)) % STARFIELD_W as u64) as f32;
+    let y = ((h2 ^ (h2 >> 17)) % STARFIELD_H as u64) as f32;
+    let angle = ((h1 >> 16) % 360) as f32 * std::f32::consts::PI / 180.0;
+    let speed = 0.3 + ((h2 >> 8) % 71) as f32 / 100.0; // 0.3..1.0 cells/sec
+    let brightness = ((h1 >> 24) % 200) as u8;
+    let level = 70u8.saturating_add(brightness);
+    let symbol = if brightness > 150 {
+        '✦'
+    } else if brightness > 80 {
+        '·'
+    } else {
+        '.'
+    };
+    Particle {
+        x,
+        y,
+        vx: angle.cos() * speed,
+        vy: angle.sin() * speed,
+        symbol,
+        color: Color::Rgb {
+            r: level,
+            g: level,
+            b: (level as u16 + 30).min(255) as u8,
+        },
+        lifetime: Duration::from_secs(STAR_LIFETIME_SECS) + Duration::from_millis(h2 % 30_000),
+        age: Duration::ZERO,
+    }
+}
+
+/// Builds a short-lived particle burst approximating an "into the
+/// portal" flourish for launching app `index`. Origin is a fixed
+/// offset from a nominal center point, not the portal's real screen
+/// position — `apply()` (called from `update()`) has no access to the
+/// terminal's actual size, same constraint `spawn_star` works around.
+fn spawn_burst(index: usize) -> ParticleSystem {
+    let mut ps = ParticleSystem::new();
+    let cx = NOMINAL_CENTER_X + (index as f32 - 1.0) * 20.0;
+    let cy = NOMINAL_CENTER_Y;
+    let accent = PORTALS[index].2;
+    for i in 0..DIVE_PARTICLE_COUNT {
+        let angle = i as f32 * (std::f32::consts::TAU / DIVE_PARTICLE_COUNT as f32);
+        ps.spawn(Particle {
+            x: cx,
+            y: cy,
+            vx: angle.cos() * 25.0,
+            vy: angle.sin() * 12.0,
+            symbol: '*',
+            color: accent,
+            lifetime: DIVE_DURATION,
+            age: Duration::ZERO,
+        });
+    }
+    ps
+}
+
 /// The launcher itself — an `App` that either delegates to the active
 /// sub-app or renders the portal nexus.
 struct Launcher {
@@ -178,6 +250,9 @@ struct Launcher {
     active: Option<Box<dyn App>>,
     selected: usize,
     nexus_phase: f32,
+    starfield: ParticleSystem,
+    star_seed: u64,
+    diving: Option<(usize, Transition, ParticleSystem)>,
     returning: Option<Transition>,
     quit: bool,
 }
@@ -189,6 +264,9 @@ impl Launcher {
             active: None,
             selected: 0,
             nexus_phase: 0.0,
+            starfield: ParticleSystem::new(),
+            star_seed: 0,
+            diving: None,
             returning: None,
             quit: false,
         }
@@ -204,13 +282,13 @@ impl Launcher {
                 self.selected = (self.selected + 1) % APP_COUNT;
             }
             Action::Launch(i) => {
-                self.active = Some(make_app(i));
-                self.location = location_of(i);
+                self.diving = Some((i, Transition::start(DIVE_DURATION), spawn_burst(i)));
                 self.returning = None;
             }
             Action::ReturnToNexus => {
                 self.active = None;
                 self.location = Location::Nexus;
+                self.diving = None;
                 self.returning = Some(Transition::start(Duration::from_millis(RETURN_FADE_MS)));
             }
             Action::QuitProcess => self.quit = true,
@@ -226,6 +304,19 @@ impl App for Launcher {
         };
 
         if self.location == Location::Nexus {
+            if self.diving.is_some() {
+                // Sustained/autorepeat input means on_tick may never fire
+                // (App::on_tick only runs when the poll times out with no
+                // event), which would otherwise freeze the dive forever.
+                // Any keypress mid-dive skips straight to the destination.
+                if key.is_some() {
+                    if let Some((index, _, _)) = self.diving.take() {
+                        self.active = Some(make_app(index));
+                        self.location = location_of(index);
+                    }
+                }
+                return;
+            }
             let action = route(Location::Nexus, key, self.selected, false);
             self.apply(action);
             return;
@@ -249,8 +340,37 @@ impl App for Launcher {
         match &self.active {
             Some(app) => app.view(area, buf),
             None => {
-                let fade = self.returning.as_ref().map_or(1.0, |t| t.progress());
-                nexus::render(self.selected, self.nexus_phase, fade, area, buf);
+                if let Some((_, transition, burst)) = &self.diving {
+                    let fade = 1.0 - transition.progress();
+                    nexus::render(
+                        self.selected,
+                        &self.starfield,
+                        self.nexus_phase,
+                        fade,
+                        area,
+                        buf,
+                    );
+                    let mut scene = Buffer::new(area.width, area.height);
+                    burst.render(&mut scene);
+                    for y in 0..scene.height {
+                        for x in 0..scene.width {
+                            let cell = scene.get(x, y);
+                            if *cell != Cell::default() {
+                                buf.set(area.x + x, area.y + y, cell.clone());
+                            }
+                        }
+                    }
+                } else {
+                    let fade = self.returning.as_ref().map_or(1.0, |t| t.progress());
+                    nexus::render(
+                        self.selected,
+                        &self.starfield,
+                        self.nexus_phase,
+                        fade,
+                        area,
+                        buf,
+                    );
+                }
             }
         }
     }
@@ -271,10 +391,29 @@ impl App for Launcher {
             Some(app) => app.on_tick(elapsed),
             None => {
                 self.nexus_phase += elapsed.as_secs_f32();
+                self.starfield.update(elapsed);
+                while self.starfield.len() < TARGET_STAR_COUNT {
+                    self.star_seed = self.star_seed.wrapping_add(1);
+                    self.starfield.spawn(spawn_star(self.star_seed));
+                }
                 if let Some(t) = &mut self.returning {
                     t.tick(elapsed);
                     if t.is_complete() {
                         self.returning = None;
+                    }
+                }
+                if let Some((_, transition, burst)) = &mut self.diving {
+                    transition.tick(elapsed);
+                    burst.update(elapsed);
+                }
+                let dive_complete = self
+                    .diving
+                    .as_ref()
+                    .is_some_and(|(_, t, _)| t.is_complete());
+                if dive_complete {
+                    if let Some((index, _, _)) = self.diving.take() {
+                        self.active = Some(make_app(index));
+                        self.location = location_of(index);
                     }
                 }
             }
@@ -363,16 +502,58 @@ mod tests {
     }
 
     #[test]
-    fn apply_launch_and_return_toggle_location() {
+    fn apply_launch_starts_a_dive_apply_return_resets_to_nexus() {
         let mut l = Launcher::new();
         assert_eq!(l.location, Location::Nexus);
         l.apply(Action::Launch(1));
-        assert_eq!(l.location, Location::Tardis);
-        assert!(l.active.is_some());
+        assert_eq!(
+            l.location,
+            Location::Nexus,
+            "location doesn't change until the dive completes"
+        );
+        assert!(l.diving.is_some());
         l.apply(Action::ReturnToNexus);
         assert_eq!(l.location, Location::Nexus);
         assert!(l.active.is_none());
         assert!(l.returning.is_some());
+    }
+
+    #[test]
+    fn launch_starts_a_dive_before_swapping_active_app() {
+        let mut l = Launcher::new();
+        l.apply(Action::Launch(1));
+        assert!(l.diving.is_some());
+        assert!(l.active.is_none());
+        assert_eq!(
+            l.location,
+            Location::Nexus,
+            "location doesn't change until the dive completes"
+        );
+    }
+
+    #[test]
+    fn dive_completes_into_the_active_app_after_enough_ticks() {
+        let mut l = Launcher::new();
+        l.apply(Action::Launch(1));
+        l.on_tick(DIVE_DURATION + Duration::from_millis(10));
+        assert!(l.active.is_some());
+        assert_eq!(l.location, Location::Tardis);
+        assert!(l.diving.is_none());
+    }
+
+    #[test]
+    fn any_keypress_during_a_dive_completes_it_immediately() {
+        let mut l = Launcher::new();
+        l.apply(Action::Launch(1));
+        assert!(l.diving.is_some());
+        let event = Event::Key(crossterm::event::KeyEvent::new(
+            KeyCode::Char('x'),
+            crossterm::event::KeyModifiers::NONE,
+        ));
+        l.update(&event);
+        assert!(l.active.is_some());
+        assert_eq!(l.location, Location::Tardis);
+        assert!(l.diving.is_none());
     }
 
     #[test]
@@ -386,6 +567,7 @@ mod tests {
 
     #[test]
     fn nexus_render_does_not_panic_across_sizes() {
+        let starfield = ParticleSystem::new();
         for (w, h) in [(12, 10), (40, 15), (80, 24), (120, 40), (200, 60)] {
             let mut stack = LayerStack::new(w, h);
             let area = Rect {
@@ -395,9 +577,19 @@ mod tests {
                 height: h,
             };
             for sel in 0..APP_COUNT {
-                nexus::render(sel, 1.23, 1.0, area, &mut stack);
-                nexus::render(sel, 5.0, 0.4, area, &mut stack);
+                nexus::render(sel, &starfield, 1.23, 1.0, area, &mut stack);
+                nexus::render(sel, &starfield, 5.0, 0.4, area, &mut stack);
             }
         }
+    }
+
+    #[test]
+    fn starfield_tops_up_to_target_count_after_ticking() {
+        let mut l = Launcher::new();
+        assert_eq!(l.starfield.len(), 0);
+        for _ in 0..TARGET_STAR_COUNT {
+            l.on_tick(Duration::from_millis(50));
+        }
+        assert_eq!(l.starfield.len(), TARGET_STAR_COUNT);
     }
 }

@@ -95,11 +95,11 @@ to reach it. Each spawned star gets:
 
 `nexus::render` drops its `starfield(scene, phase)` function entirely
 and instead takes a `&ParticleSystem` parameter, calling
-`starfield.render(&mut scene)` after `fill_void`. `nexus::render`'s
-signature becomes `render(selected, starfield: &ParticleSystem, fade,
-area, buf)` (the unused `phase` parameter it previously used only for
-starfield twinkle is removed from `render` itself; `phase` is still
-threaded to `portals()` for the pulse animation, unchanged).
+`starfield.render(&mut scene)` after `fill_void`. `render`'s `phase`
+parameter is unchanged — it's still needed for `portals()`'s pulse
+animation — only its former use for starfield twinkle is removed,
+since twinkle-via-brightness no longer applies once stars are real
+particles with a fixed per-star color.
 
 ### 2. Real enlarge-on-focus
 
