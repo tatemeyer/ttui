@@ -87,7 +87,7 @@ impl SmashCrabs {
                             fg: self.theme.tertiary,
                             bg: self.theme.primary,
                             style: CellStyle {
-                                bold: true,
+                                intensity: Intensity::Bold,
                                 ..Default::default()
                             },
                         },

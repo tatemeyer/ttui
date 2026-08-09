@@ -10,7 +10,7 @@ use crossterm::style::{
 };
 use crossterm::{cursor, execute, queue, terminal};
 
-use crate::buffer::CellDiff;
+use crate::buffer::{CellDiff, Intensity};
 
 /// A raw-mode, alternate-screen terminal handle. Restores normal
 /// terminal state automatically on drop.
@@ -58,7 +58,7 @@ pub fn render_diff(writer: &mut impl Write, diffs: &[CellDiff]) -> std::io::Resu
     let mut last_pos: Option<(u16, u16)> = None;
     let mut last_fg: Option<Color> = None;
     let mut last_bg: Option<Color> = None;
-    let mut last_bold: Option<bool> = None;
+    let mut last_intensity: Option<Intensity> = None;
     let mut last_underline: Option<bool> = None;
     let mut last_italic: Option<bool> = None;
     let mut last_reverse: Option<bool> = None;
@@ -74,17 +74,17 @@ pub fn render_diff(writer: &mut impl Write, diffs: &[CellDiff]) -> std::io::Resu
             queue!(writer, cursor::MoveTo(d.x, d.y))?;
         }
 
-        // NormalIntensity (not a full SGR reset) clears bold without
+        // NormalIntensity (not a full SGR reset) clears bold/dim without
         // touching color, so fg/bg can be tracked independently.
-        let bold = d.cell.style.bold;
-        if last_bold != Some(bold) {
-            let attr = if bold {
-                Attribute::Bold
-            } else {
-                Attribute::NormalIntensity
+        let intensity = d.cell.style.intensity;
+        if last_intensity != Some(intensity) {
+            let attr = match intensity {
+                Intensity::Normal => Attribute::NormalIntensity,
+                Intensity::Bold => Attribute::Bold,
+                Intensity::Dim => Attribute::Dim,
             };
             queue!(writer, SetAttribute(attr))?;
-            last_bold = Some(bold);
+            last_intensity = Some(intensity);
         }
         let underline = d.cell.style.underline;
         if last_underline != Some(underline) {
@@ -163,10 +163,10 @@ pub fn install_panic_hook() {
 #[cfg(test)]
 mod render_diff_tests {
     use super::*;
-    use crate::buffer::{Cell, CellDiff, CellStyle};
+    use crate::buffer::{Cell, CellDiff, CellStyle, Intensity};
     use crossterm::style::Color;
 
-    fn d(x: u16, y: u16, symbol: char, fg: Color, bg: Color, bold: bool) -> CellDiff {
+    fn d(x: u16, y: u16, symbol: char, fg: Color, bg: Color, intensity: Intensity) -> CellDiff {
         CellDiff {
             x,
             y,
@@ -175,9 +175,22 @@ mod render_diff_tests {
                 fg,
                 bg,
                 style: CellStyle {
-                    bold,
+                    intensity,
                     ..Default::default()
                 },
+            },
+        }
+    }
+
+    fn styled(x: u16, y: u16, symbol: char, style: CellStyle) -> CellDiff {
+        CellDiff {
+            x,
+            y,
+            cell: Cell {
+                symbol,
+                fg: Color::Reset,
+                bg: Color::Reset,
+                style,
             },
         }
     }
@@ -216,7 +229,7 @@ mod render_diff_tests {
 
     #[test]
     fn single_diff_emits_move_colors_intensity_and_glyph() {
-        let out = render(&[d(3, 2, 'A', Color::Reset, Color::Reset, false)]);
+        let out = render(&[d(3, 2, 'A', Color::Reset, Color::Reset, Intensity::Normal)]);
         assert_eq!(move_count(&out), 1);
         assert!(out.contains(&b'A'));
         assert_eq!(count(&out, &encode(SetForegroundColor(Color::Reset))), 1);
@@ -230,8 +243,8 @@ mod render_diff_tests {
     #[test]
     fn contiguous_same_styled_run_moves_once_and_sets_style_once() {
         let out = render(&[
-            d(3, 2, 'A', Color::Reset, Color::Reset, false),
-            d(4, 2, 'B', Color::Reset, Color::Reset, false),
+            d(3, 2, 'A', Color::Reset, Color::Reset, Intensity::Normal),
+            d(4, 2, 'B', Color::Reset, Color::Reset, Intensity::Normal),
         ]);
         assert_eq!(move_count(&out), 1, "contiguous run needs one MoveTo");
         assert_eq!(count(&out, &encode(SetForegroundColor(Color::Reset))), 1);
@@ -246,8 +259,8 @@ mod render_diff_tests {
     #[test]
     fn positional_gap_forces_a_second_move() {
         let out = render(&[
-            d(3, 2, 'A', Color::Reset, Color::Reset, false),
-            d(6, 2, 'B', Color::Reset, Color::Reset, false),
+            d(3, 2, 'A', Color::Reset, Color::Reset, Intensity::Normal),
+            d(6, 2, 'B', Color::Reset, Color::Reset, Intensity::Normal),
         ]);
         assert_eq!(move_count(&out), 2);
     }
@@ -255,8 +268,8 @@ mod render_diff_tests {
     #[test]
     fn new_row_forces_a_second_move() {
         let out = render(&[
-            d(3, 2, 'A', Color::Reset, Color::Reset, false),
-            d(4, 3, 'B', Color::Reset, Color::Reset, false),
+            d(3, 2, 'A', Color::Reset, Color::Reset, Intensity::Normal),
+            d(4, 3, 'B', Color::Reset, Color::Reset, Intensity::Normal),
         ]);
         assert_eq!(move_count(&out), 2);
     }
@@ -264,8 +277,8 @@ mod render_diff_tests {
     #[test]
     fn color_change_mid_run_re_emits_that_color_only() {
         let out = render(&[
-            d(3, 2, 'A', Color::Reset, Color::Reset, false),
-            d(4, 2, 'B', Color::Red, Color::Reset, false),
+            d(3, 2, 'A', Color::Reset, Color::Reset, Intensity::Normal),
+            d(4, 2, 'B', Color::Red, Color::Reset, Intensity::Normal),
         ]);
         assert_eq!(move_count(&out), 1, "still contiguous");
         assert_eq!(count(&out, &encode(SetForegroundColor(Color::Reset))), 1);
@@ -280,9 +293,9 @@ mod render_diff_tests {
     #[test]
     fn bold_toggle_emits_intensity_transitions() {
         let out = render(&[
-            d(3, 2, 'A', Color::Reset, Color::Reset, false),
-            d(4, 2, 'B', Color::Reset, Color::Reset, true),
-            d(5, 2, 'C', Color::Reset, Color::Reset, false),
+            d(3, 2, 'A', Color::Reset, Color::Reset, Intensity::Normal),
+            d(4, 2, 'B', Color::Reset, Color::Reset, Intensity::Bold),
+            d(5, 2, 'C', Color::Reset, Color::Reset, Intensity::Normal),
         ]);
         assert_eq!(count(&out, &encode(SetAttribute(Attribute::Bold))), 1);
         assert_eq!(
@@ -290,6 +303,136 @@ mod render_diff_tests {
             2,
             "first cell + bold-off transition"
         );
+    }
+
+    #[test]
+    fn intensity_cycles_through_all_three_states() {
+        let out = render(&[
+            d(3, 2, 'A', Color::Reset, Color::Reset, Intensity::Normal),
+            d(4, 2, 'B', Color::Reset, Color::Reset, Intensity::Bold),
+            d(5, 2, 'C', Color::Reset, Color::Reset, Intensity::Dim),
+            d(6, 2, 'D', Color::Reset, Color::Reset, Intensity::Normal),
+        ]);
+        assert_eq!(
+            count(&out, &encode(SetAttribute(Attribute::NormalIntensity))),
+            2,
+            "first cell (Normal) + final Normal transition"
+        );
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Bold))), 1);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Dim))), 1);
+    }
+
+    #[test]
+    fn underline_toggle_emits_underlined_and_no_underline() {
+        let out = render(&[
+            styled(3, 2, 'A', CellStyle::default()),
+            styled(
+                4,
+                2,
+                'B',
+                CellStyle {
+                    underline: true,
+                    ..Default::default()
+                },
+            ),
+            styled(5, 2, 'C', CellStyle::default()),
+        ]);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Underlined))), 1);
+        assert_eq!(
+            count(&out, &encode(SetAttribute(Attribute::NoUnderline))),
+            2,
+            "first cell + underline-off transition"
+        );
+    }
+
+    #[test]
+    fn italic_toggle_emits_italic_and_no_italic() {
+        let out = render(&[
+            styled(3, 2, 'A', CellStyle::default()),
+            styled(
+                4,
+                2,
+                'B',
+                CellStyle {
+                    italic: true,
+                    ..Default::default()
+                },
+            ),
+            styled(5, 2, 'C', CellStyle::default()),
+        ]);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Italic))), 1);
+        assert_eq!(
+            count(&out, &encode(SetAttribute(Attribute::NoItalic))),
+            2,
+            "first cell + italic-off transition"
+        );
+    }
+
+    #[test]
+    fn reverse_toggle_emits_reverse_and_no_reverse() {
+        let out = render(&[
+            styled(3, 2, 'A', CellStyle::default()),
+            styled(
+                4,
+                2,
+                'B',
+                CellStyle {
+                    reverse: true,
+                    ..Default::default()
+                },
+            ),
+            styled(5, 2, 'C', CellStyle::default()),
+        ]);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Reverse))), 1);
+        assert_eq!(
+            count(&out, &encode(SetAttribute(Attribute::NoReverse))),
+            2,
+            "first cell + reverse-off transition"
+        );
+    }
+
+    #[test]
+    fn strikethrough_toggle_emits_crossed_out_and_not_crossed_out() {
+        let out = render(&[
+            styled(3, 2, 'A', CellStyle::default()),
+            styled(
+                4,
+                2,
+                'B',
+                CellStyle {
+                    strikethrough: true,
+                    ..Default::default()
+                },
+            ),
+            styled(5, 2, 'C', CellStyle::default()),
+        ]);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::CrossedOut))), 1);
+        assert_eq!(
+            count(&out, &encode(SetAttribute(Attribute::NotCrossedOut))),
+            2,
+            "first cell + strikethrough-off transition"
+        );
+    }
+
+    #[test]
+    fn all_five_style_axes_combine_independently_in_one_cell() {
+        let out = render(&[styled(
+            3,
+            2,
+            'A',
+            CellStyle {
+                intensity: Intensity::Bold,
+                underline: true,
+                italic: true,
+                reverse: true,
+                strikethrough: true,
+            },
+        )]);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Bold))), 1);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Underlined))), 1);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Italic))), 1);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::Reverse))), 1);
+        assert_eq!(count(&out, &encode(SetAttribute(Attribute::CrossedOut))), 1);
     }
 }
 

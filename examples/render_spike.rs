@@ -193,7 +193,7 @@ fn draw_gradient_ring(area: Rect, buf: &mut LayerStack, hue_shift: f32) {
             fg: hue_to_rgb(t * 180.0 + hue_shift),
             bg: Color::Reset,
             style: CellStyle {
-                bold: true,
+                intensity: ttui::buffer::Intensity::Bold,
                 ..Default::default()
             },
         }

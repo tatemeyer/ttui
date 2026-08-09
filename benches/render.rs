@@ -12,7 +12,7 @@ use crossterm::style::{
 };
 use crossterm::{cursor, queue};
 
-use ttui::buffer::{diff, Buffer, Cell, CellDiff, CellStyle};
+use ttui::buffer::{diff, Buffer, Cell, CellDiff, CellStyle, Intensity};
 use ttui::terminal::render_diff;
 
 const WIDTH: u16 = 120;
@@ -22,7 +22,7 @@ const HEIGHT: u16 = 40;
 /// both colors for every cell. Kept here as the before/after baseline.
 fn render_diff_naive(writer: &mut impl Write, diffs: &[CellDiff]) -> io::Result<()> {
     for d in diffs {
-        let attr = if d.cell.style.bold {
+        let attr = if d.cell.style.intensity == Intensity::Bold {
             Attribute::Bold
         } else {
             Attribute::Reset
@@ -46,7 +46,7 @@ fn themed(symbol: char) -> Cell {
         fg: Color::Green,
         bg: Color::Reset,
         style: CellStyle {
-            bold: false,
+            intensity: Intensity::Normal,
             ..Default::default()
         },
     }

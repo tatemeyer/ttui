@@ -5,7 +5,7 @@ use rodio::Source;
 use std::time::Duration;
 use ttui::app::App;
 use ttui::audio::AudioSink;
-use ttui::buffer::{Buffer, Cell, CellStyle, LayerStack};
+use ttui::buffer::{Buffer, Cell, CellStyle, Intensity, LayerStack};
 use ttui::camera;
 use ttui::easing;
 use ttui::effects;
@@ -113,6 +113,7 @@ fn arena_theme() -> Theme {
         secondary: Color::Cyan, // water
         tertiary: Color::White,
         accent: Color::Yellow,
+        primary_end: None,
         border: BorderSet {
             horizontal: '=',
             vertical: '|',
@@ -334,7 +335,7 @@ impl SmashCrabs {
                         fg: Color::White,
                         bg: Color::Black,
                         style: CellStyle {
-                            bold: true,
+                            intensity: Intensity::Bold,
                             ..Default::default()
                         },
                     },

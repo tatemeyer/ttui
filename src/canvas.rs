@@ -1,8 +1,10 @@
-//! Sub-cell rendering primitive (half-block + braille) — SPIKE
-//! PROTOTYPE for the rendering-fidelity spike
-//! (docs/design/specs/core/2026-08-08-rendering-fidelity-spike-design.md).
-//! Not a committed, stable API: expect this to be rewritten once the
-//! spike's recommendations are acted on.
+//! Sub-cell rendering primitive: `HalfBlock` mode gives 2x vertical
+//! resolution with full 2-color fidelity per cell; `Braille` mode
+//! gives 4x resolution with one fg color per cell. Graduated from the
+//! rendering-fidelity spike
+//! (docs/design/specs/core/2026-08-08-rendering-fidelity-spike-design.md)
+//! per
+//! docs/design/specs/core/2026-08-08-rendering-primitives-graduation-design.md.
 
 use crate::buffer::{Buffer, Cell, CellStyle};
 use crossterm::style::Color;
@@ -17,8 +19,8 @@ pub enum CanvasMode {
 }
 
 /// A higher-resolution drawing surface that rasterizes into ordinary
-/// `Cell`s via `blit`. See module docs — spike prototype, not a
-/// committed API.
+/// `Cell`s via `blit`. See module docs for `HalfBlock` vs `Braille`
+/// mode details.
 pub struct Canvas {
     width: u16,  // in cells
     height: u16, // in cells
@@ -201,19 +203,288 @@ impl Canvas {
         if w == 0 || h == 0 {
             return;
         }
-        self.line(x, y, x + w - 1, y, color);
-        self.line(x, y + h - 1, x + w - 1, y + h - 1, color);
-        self.line(x, y, x, y + h - 1, color);
-        self.line(x + w - 1, y, x + w - 1, y + h - 1, color);
+        let x1 = x.saturating_add(w).saturating_sub(1);
+        let y1 = y.saturating_add(h).saturating_sub(1);
+        self.line(x, y, x1, y, color);
+        self.line(x, y1, x1, y1, color);
+        self.line(x, y, x, y1, color);
+        self.line(x1, y, x1, y1, color);
     }
 
     /// Fills a solid rectangle with top-left at `(x, y)` (subpixel
     /// coordinates).
     pub fn fill_rect(&mut self, x: u16, y: u16, w: u16, h: u16, color: Color) {
-        for row in y..y + h {
-            for col in x..x + w {
+        for row in y..y.saturating_add(h) {
+            for col in x..x.saturating_add(w) {
                 self.set_pixel(col, row, color);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::buffer::Cell;
+
+    fn red() -> Color {
+        Color::Rgb { r: 255, g: 0, b: 0 }
+    }
+    fn blue() -> Color {
+        Color::Rgb { r: 0, g: 0, b: 255 }
+    }
+
+    #[test]
+    fn half_block_top_only_produces_upper_half_block_with_reset_bg() {
+        let mut c = Canvas::new(1, 1, CanvasMode::HalfBlock);
+        c.set_pixel(0, 0, red());
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(
+            *buf.get(0, 0),
+            Cell {
+                symbol: '▀',
+                fg: red(),
+                bg: Color::Reset,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn half_block_bottom_only_produces_lower_half_block_with_reset_bg() {
+        let mut c = Canvas::new(1, 1, CanvasMode::HalfBlock);
+        c.set_pixel(0, 1, blue());
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(
+            *buf.get(0, 0),
+            Cell {
+                symbol: '▄',
+                fg: blue(),
+                bg: Color::Reset,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn half_block_both_equal_produces_solid_block() {
+        let mut c = Canvas::new(1, 1, CanvasMode::HalfBlock);
+        c.set_pixel(0, 0, red());
+        c.set_pixel(0, 1, red());
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(
+            *buf.get(0, 0),
+            Cell {
+                symbol: '█',
+                fg: red(),
+                bg: red(),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn half_block_both_different_splits_fg_and_bg() {
+        let mut c = Canvas::new(1, 1, CanvasMode::HalfBlock);
+        c.set_pixel(0, 0, red());
+        c.set_pixel(0, 1, blue());
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(
+            *buf.get(0, 0),
+            Cell {
+                symbol: '▀',
+                fg: red(),
+                bg: blue(),
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn half_block_unset_cell_leaves_target_buffer_untouched() {
+        let c = Canvas::new(1, 1, CanvasMode::HalfBlock);
+        let mut buf = Buffer::new(1, 1);
+        let sentinel = Cell {
+            symbol: 'X',
+            fg: Color::Green,
+            bg: Color::Yellow,
+            ..Default::default()
+        };
+        buf.set(0, 0, sentinel.clone());
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(*buf.get(0, 0), sentinel);
+    }
+
+    #[test]
+    fn set_pixel_out_of_bounds_is_silently_ignored() {
+        let mut c = Canvas::new(1, 1, CanvasMode::HalfBlock);
+        c.set_pixel(99, 99, red()); // grid is only 1x2 for a 1x1 half-block canvas
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(*buf.get(0, 0), Cell::default());
+    }
+
+    #[test]
+    fn clear_pixel_removes_a_previously_set_pixel() {
+        let mut c = Canvas::new(1, 1, CanvasMode::HalfBlock);
+        c.set_pixel(0, 0, red());
+        c.clear_pixel(0, 0);
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(*buf.get(0, 0), Cell::default());
+    }
+
+    #[test]
+    fn braille_single_dot_produces_the_correct_glyph_and_color() {
+        let mut c = Canvas::new(1, 1, CanvasMode::Braille);
+        c.set_pixel(0, 0, red()); // top-left dot: bit 0x01
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        let expected_symbol = char::from_u32(0x2800 + 0x01).unwrap();
+        assert_eq!(
+            *buf.get(0, 0),
+            Cell {
+                symbol: expected_symbol,
+                fg: red(),
+                bg: Color::Reset,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn braille_two_dots_combine_their_bits_into_one_glyph() {
+        let mut c = Canvas::new(1, 1, CanvasMode::Braille);
+        c.set_pixel(0, 0, red()); // bit 0x01
+        c.set_pixel(1, 0, red()); // bit 0x08
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        let expected_symbol = char::from_u32(0x2800 + 0x01 + 0x08).unwrap();
+        assert_eq!(buf.get(0, 0).symbol, expected_symbol);
+    }
+
+    #[test]
+    fn braille_last_written_dot_wins_the_cells_color() {
+        let mut c = Canvas::new(1, 1, CanvasMode::Braille);
+        c.set_pixel(0, 0, red());
+        c.set_pixel(1, 0, blue());
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(buf.get(0, 0).fg, blue());
+    }
+
+    #[test]
+    fn braille_unset_cell_leaves_target_buffer_untouched() {
+        let c = Canvas::new(1, 1, CanvasMode::Braille);
+        let mut buf = Buffer::new(1, 1);
+        let sentinel = Cell {
+            symbol: 'X',
+            fg: Color::Green,
+            bg: Color::Yellow,
+            ..Default::default()
+        };
+        buf.set(0, 0, sentinel.clone());
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(*buf.get(0, 0), sentinel);
+    }
+
+    #[test]
+    fn line_draws_a_horizontal_run_of_pixels() {
+        let mut c = Canvas::new(3, 1, CanvasMode::HalfBlock);
+        c.line(0, 0, 2, 0, red()); // top row of a 3-wide, 1-tall (2-subpixel-tall) canvas
+        let mut buf = Buffer::new(3, 1);
+        c.blit(&mut buf, 0, 0);
+        for x in 0..3 {
+            assert_eq!(
+                buf.get(x, 0).symbol,
+                '▀',
+                "cell {x} should show the top-only half-block"
+            );
+            assert_eq!(buf.get(x, 0).fg, red());
+        }
+    }
+
+    #[test]
+    fn line_draws_a_diagonal_run_via_the_bresenham_error_term_branches() {
+        // 3x3-cell HalfBlock canvas -> 3x6 subpixel grid. A 45-degree
+        // diagonal (dx == -dy) exercises both the `e2 >= dy` and
+        // `e2 <= dx` branches every step, unlike the dy == 0 horizontal
+        // case covered above.
+        //
+        // Hand-traced Bresenham for line(0,0,2,2): dx=2, dy=-2, err=0.
+        //   step 0: plot (0,0); e2=0 >= -2 -> x=1; e2=0 <= 2 -> y=1
+        //   step 1: plot (1,1); e2=0 >= -2 -> x=2; e2=0 <= 2 -> y=2
+        //   step 2: plot (2,2); x==x1 && y==y1 -> stop
+        // Subpixel (0,0) -> cell (0,0) top row -> '▀'.
+        // Subpixel (1,1) -> cell (1,0) bottom row -> '▄'.
+        // Subpixel (2,2) -> cell (2,1) top row -> '▀'.
+        let mut c = Canvas::new(3, 3, CanvasMode::HalfBlock);
+        c.line(0, 0, 2, 2, red());
+        let mut buf = Buffer::new(3, 3);
+        c.blit(&mut buf, 0, 0);
+
+        assert_eq!(buf.get(0, 0).symbol, '▀');
+        assert_eq!(buf.get(0, 0).fg, red());
+        assert_eq!(buf.get(1, 0).symbol, '▄');
+        assert_eq!(buf.get(1, 0).fg, red());
+        assert_eq!(buf.get(2, 1).symbol, '▀');
+        assert_eq!(buf.get(2, 1).fg, red());
+
+        // Everything off the diagonal stays untouched.
+        assert_eq!(*buf.get(1, 1), Cell::default());
+        assert_eq!(*buf.get(2, 0), Cell::default());
+        assert_eq!(*buf.get(0, 1), Cell::default());
+        assert_eq!(*buf.get(0, 2), Cell::default());
+        assert_eq!(*buf.get(1, 2), Cell::default());
+    }
+
+    #[test]
+    fn rect_draws_all_four_edges_of_the_outline() {
+        let mut c = Canvas::new(3, 3, CanvasMode::HalfBlock); // grid 3x6
+        c.rect(0, 0, 3, 6, red());
+        let mut buf = Buffer::new(3, 3);
+        c.blit(&mut buf, 0, 0);
+        // Every perimeter cell should have picked up red on at least one subpixel;
+        // the center cell (1,1) should remain untouched (default).
+        assert_ne!(*buf.get(0, 0), Cell::default());
+        assert_ne!(*buf.get(1, 0), Cell::default());
+        assert_ne!(*buf.get(2, 0), Cell::default());
+        assert_ne!(*buf.get(0, 1), Cell::default());
+        assert_ne!(*buf.get(2, 1), Cell::default());
+        assert_ne!(*buf.get(0, 2), Cell::default());
+        assert_ne!(*buf.get(1, 2), Cell::default());
+        assert_ne!(*buf.get(2, 2), Cell::default());
+        assert_eq!(*buf.get(1, 1), Cell::default());
+    }
+
+    #[test]
+    fn fill_rect_fills_every_pixel_in_the_region() {
+        let mut c = Canvas::new(2, 1, CanvasMode::HalfBlock); // grid 2x2
+        c.fill_rect(0, 0, 2, 2, red());
+        let mut buf = Buffer::new(2, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(buf.get(0, 0).symbol, '█');
+        assert_eq!(buf.get(1, 0).symbol, '█');
+    }
+
+    #[test]
+    fn blit_clips_to_the_target_buffers_bounds_without_panicking() {
+        let mut c = Canvas::new(3, 3, CanvasMode::HalfBlock);
+        c.fill_rect(0, 0, 3, 6, red());
+        let mut buf = Buffer::new(2, 2); // smaller than the canvas
+        c.blit(&mut buf, 0, 0); // must not panic
+        assert_eq!(buf.get(0, 0).symbol, '█');
+        assert_eq!(buf.get(1, 1).symbol, '█');
+    }
+
+    #[test]
+    fn rect_and_fill_rect_near_u16_max_do_not_panic() {
+        let mut c = Canvas::new(4, 4, CanvasMode::HalfBlock);
+        c.rect(u16::MAX - 2, u16::MAX - 2, 10, 10, red()); // must not panic on overflow
+        c.fill_rect(u16::MAX - 2, u16::MAX - 2, 10, 10, red()); // must not panic on overflow
     }
 }
