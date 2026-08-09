@@ -333,7 +333,7 @@ impl SmashCrabs {
                         symbol: ch,
                         fg: Color::White,
                         bg: Color::Black,
-                        style: CellStyle { bold: true },
+                        style: CellStyle { bold: true, ..Default::default() },
                     },
                 );
             }

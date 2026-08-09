@@ -70,6 +70,60 @@ impl RenderSpike {
         }
         canvas.blit(buf, area.x, area.y);
     }
+
+    fn render_attribute_showcase(&self, area: Rect, buf: &mut LayerStack) {
+        use ttui::buffer::CellStyle;
+        let words: [(&str, CellStyle); 4] = [
+            (
+                "UNDERLINE",
+                CellStyle {
+                    underline: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "ITALIC",
+                CellStyle {
+                    italic: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "REVERSE",
+                CellStyle {
+                    reverse: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "STRIKETHROUGH",
+                CellStyle {
+                    strikethrough: true,
+                    ..Default::default()
+                },
+            ),
+        ];
+        let mut x = area.x;
+        for (word, style) in words {
+            for ch in word.chars() {
+                if x >= area.x + area.width {
+                    break;
+                }
+                buf.set(
+                    x,
+                    area.y,
+                    Cell {
+                        symbol: ch,
+                        fg: Color::Reset,
+                        bg: Color::Reset,
+                        style,
+                    },
+                );
+                x += 1;
+            }
+            x += 2; // gap between words
+        }
+    }
 }
 
 /// Cheap HSV(hue, 1.0, 1.0)->RGB — used only to paint smooth test

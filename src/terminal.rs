@@ -59,19 +59,18 @@ pub fn render_diff(writer: &mut impl Write, diffs: &[CellDiff]) -> std::io::Resu
     let mut last_fg: Option<Color> = None;
     let mut last_bg: Option<Color> = None;
     let mut last_bold: Option<bool> = None;
+    let mut last_underline: Option<bool> = None;
+    let mut last_italic: Option<bool> = None;
+    let mut last_reverse: Option<bool> = None;
+    let mut last_strikethrough: Option<bool> = None;
 
     for d in diffs {
-        // Move only when this cell isn't the previous cell's right
-        // neighbor — after Print the cursor already sits there. A run
-        // can't cross a row end, so autowrap is never relied upon.
         let contiguous =
             matches!(last_pos, Some((px, py)) if py == d.y && d.x.checked_sub(1) == Some(px));
         if !contiguous {
             queue!(writer, cursor::MoveTo(d.x, d.y))?;
         }
 
-        // NormalIntensity (not a full SGR reset) clears bold without
-        // touching color, so fg/bg can be tracked independently.
         let bold = d.cell.style.bold;
         if last_bold != Some(bold) {
             let attr = if bold {
@@ -81,6 +80,46 @@ pub fn render_diff(writer: &mut impl Write, diffs: &[CellDiff]) -> std::io::Resu
             };
             queue!(writer, SetAttribute(attr))?;
             last_bold = Some(bold);
+        }
+        let underline = d.cell.style.underline;
+        if last_underline != Some(underline) {
+            let attr = if underline {
+                Attribute::Underlined
+            } else {
+                Attribute::NoUnderline
+            };
+            queue!(writer, SetAttribute(attr))?;
+            last_underline = Some(underline);
+        }
+        let italic = d.cell.style.italic;
+        if last_italic != Some(italic) {
+            let attr = if italic {
+                Attribute::Italic
+            } else {
+                Attribute::NoItalic
+            };
+            queue!(writer, SetAttribute(attr))?;
+            last_italic = Some(italic);
+        }
+        let reverse = d.cell.style.reverse;
+        if last_reverse != Some(reverse) {
+            let attr = if reverse {
+                Attribute::Reverse
+            } else {
+                Attribute::NoReverse
+            };
+            queue!(writer, SetAttribute(attr))?;
+            last_reverse = Some(reverse);
+        }
+        let strikethrough = d.cell.style.strikethrough;
+        if last_strikethrough != Some(strikethrough) {
+            let attr = if strikethrough {
+                Attribute::CrossedOut
+            } else {
+                Attribute::NotCrossedOut
+            };
+            queue!(writer, SetAttribute(attr))?;
+            last_strikethrough = Some(strikethrough);
         }
         if last_fg != Some(d.cell.fg) {
             queue!(writer, SetForegroundColor(d.cell.fg))?;
@@ -130,7 +169,7 @@ mod render_diff_tests {
                 symbol,
                 fg,
                 bg,
-                style: CellStyle { bold },
+                style: CellStyle { bold, ..Default::default() },
             },
         }
     }
