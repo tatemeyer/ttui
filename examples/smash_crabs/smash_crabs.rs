@@ -113,6 +113,7 @@ fn arena_theme() -> Theme {
         secondary: Color::Cyan, // water
         tertiary: Color::White,
         accent: Color::Yellow,
+        primary_end: None,
         border: BorderSet {
             horizontal: '=',
             vertical: '|',

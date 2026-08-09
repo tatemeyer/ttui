@@ -269,6 +269,7 @@ mod tests {
             secondary: Color::Reset,
             tertiary: Color::Reset,
             accent: Color::Reset,
+            primary_end: None,
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
@@ -302,6 +303,7 @@ mod tests {
             secondary: Color::Reset,
             tertiary: Color::Reset,
             accent: Color::Reset,
+            primary_end: None,
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
@@ -333,6 +335,7 @@ mod tests {
             secondary: Color::Reset,
             tertiary: Color::Reset,
             accent: Color::Reset,
+            primary_end: None,
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
@@ -366,6 +369,7 @@ mod tests {
             secondary: Color::Reset,
             tertiary: Color::Reset,
             accent: Color::Reset,
+            primary_end: None,
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
@@ -410,6 +414,7 @@ mod tests {
             secondary: Color::Reset,
             tertiary: Color::Reset,
             accent: Color::Reset,
+            primary_end: None,
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',

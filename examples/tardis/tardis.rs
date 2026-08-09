@@ -78,6 +78,7 @@ fn tardis_theme() -> Theme {
             g: 191,
             b: 0,
         },
+        primary_end: None,
         border: BorderSet {
             horizontal: '=',
             vertical: '#',

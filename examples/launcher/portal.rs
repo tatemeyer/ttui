@@ -31,6 +31,7 @@ pub(crate) fn draw(
         secondary: accent,
         tertiary: accent,
         accent,
+        primary_end: None,
         border: BorderSet {
             horizontal: '─',
             vertical: '│',

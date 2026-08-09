@@ -137,6 +137,7 @@ impl Omnitrix {
             secondary: Color::DarkGreen,
             tertiary: Color::Red,
             accent: Color::White,
+            primary_end: None,
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',

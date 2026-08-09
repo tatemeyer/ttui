@@ -150,6 +150,7 @@ mod tests {
             secondary: Color::Reset,
             tertiary: Color::White,
             accent: Color::Yellow,
+            primary_end: None,
             border: BorderSet {
                 horizontal: '=',
                 vertical: '|',

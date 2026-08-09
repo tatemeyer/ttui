@@ -39,6 +39,9 @@ pub struct Theme {
     pub tertiary: Color,
     /// Highlight/selection color.
     pub accent: Color,
+    /// When set, `Block` lerps the border ring's color from `primary`
+    /// to this across the ring's perimeter instead of a flat color.
+    pub primary_end: Option<Color>,
     /// Border glyph set.
     pub border: BorderSet,
     /// Whether borders render bold.
@@ -55,6 +58,7 @@ impl Default for Theme {
             secondary: Color::Reset,
             tertiary: Color::Reset,
             accent: Color::Reset,
+            primary_end: None,
             border: BorderSet::default(),
             border_bold: false,
             border_thick: false,
@@ -93,5 +97,10 @@ mod tests {
     #[test]
     fn default_theme_border_thick_is_false() {
         assert!(!Theme::default().border_thick);
+    }
+
+    #[test]
+    fn default_theme_primary_end_is_none() {
+        assert_eq!(Theme::default().primary_end, None);
     }
 }
