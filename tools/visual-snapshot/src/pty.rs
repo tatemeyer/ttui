@@ -39,6 +39,13 @@ impl From<RenderError> for PtyError {
     }
 }
 
+impl std::fmt::Display for PtyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl std::error::Error for PtyError {}
+
 /// Builds `cargo build --example <name>` and returns the resulting
 /// binary's path (relative to the workspace's shared `target/` dir).
 pub fn build_example(name: &str) -> Result<PathBuf, PtyError> {

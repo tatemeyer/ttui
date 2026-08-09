@@ -26,6 +26,13 @@ impl From<serde_json::Error> for ScriptError {
     }
 }
 
+impl std::fmt::Display for ScriptError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl std::error::Error for ScriptError {}
+
 /// Reads and parses a snapshot script: a flat JSON array of `{"wait_ms": N}`
 /// and `{"key": "Name"}` steps.
 pub fn parse_script(path: &Path) -> Result<Vec<Step>, ScriptError> {

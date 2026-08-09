@@ -28,6 +28,13 @@ impl From<image::ImageError> for EncodeError {
     }
 }
 
+impl std::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl std::error::Error for EncodeError {}
+
 /// Writes a single frame as a PNG.
 pub fn write_png(img: &RgbaImage, path: &Path) -> Result<(), EncodeError> {
     img.save(path)?;
