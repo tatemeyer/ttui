@@ -21,6 +21,12 @@ impl<'a> Text<'a> {
         }
     }
 
+    /// Overrides the background color (default: `Color::Reset`).
+    pub fn bg(mut self, color: Color) -> Self {
+        self.bg = color;
+        self
+    }
+
     /// Renders the text left-aligned, truncated to `area`'s width.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
@@ -107,5 +113,31 @@ mod tests {
 
         Text::new("hello").render(area, &mut buf);
         // Should return without panicking; buffer is untouched
+    }
+
+    #[test]
+    fn bg_overrides_the_background_color_even_for_space_characters() {
+        let mut buf = Buffer::new(5, 1);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 5,
+            height: 1,
+        };
+        let themed_bg = Color::Rgb {
+            r: 210,
+            g: 180,
+            b: 90,
+        };
+
+        Text::new("hi there").bg(themed_bg).render(area, &mut buf);
+
+        // 'h' and 'i' are non-space characters; the space between "hi" and
+        // "there" (index 2) is exactly the case that used to punch a
+        // Color::Reset hole through a themed background beneath it.
+        assert_eq!(buf.get(0, 0).bg, themed_bg);
+        assert_eq!(buf.get(1, 0).bg, themed_bg);
+        assert_eq!(buf.get(2, 0).symbol, ' ');
+        assert_eq!(buf.get(2, 0).bg, themed_bg);
     }
 }

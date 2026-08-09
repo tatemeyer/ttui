@@ -199,7 +199,15 @@ impl LayerStack {
     /// compositing: alpha-weighted top-to-bottom accumulation.
     pub fn composite(&self) -> Buffer {
         if self.layers.len() == 1 {
-            return self.layers[0].clone();
+            let mut out = self.layers[0].clone();
+            let width = out.width;
+            let height = out.height;
+            for y in 0..height {
+                for x in 0..width {
+                    out.set(x, y, normalize_alpha(out.get(x, y).clone()));
+                }
+            }
+            return out;
         }
         let width = self.layers[0].width;
         let height = self.layers[0].height;
@@ -210,6 +218,19 @@ impl LayerStack {
             }
         }
         out
+    }
+}
+
+// Single-layer fast path helper: applies the same "alpha decides the
+// output, not the raw value" rule composite_cell enforces for multi-layer
+// stacks, without the accumulation loop a lone layer never needs. Keeps
+// the `Cell.alpha` doc contract (every cell leaving `composite()` carries
+// alpha 0.0 or 1.0) true for single-layer stacks too.
+fn normalize_alpha(cell: Cell) -> Cell {
+    if cell.alpha <= 0.0 {
+        Cell::default()
+    } else {
+        Cell { alpha: 1.0, ..cell }
     }
 }
 
@@ -355,6 +376,50 @@ mod tests {
         // other 0.5 (remaining after top). Exact midpoint.
         assert_eq!(
             out.get(0, 0).fg,
+            Color::Rgb {
+                r: 100,
+                g: 50,
+                b: 25
+            }
+        );
+        assert_eq!(out.get(0, 0).symbol, 'b'); // top's contribution (0.5) meets the >= 0.5 threshold
+        assert_eq!(out.get(0, 0).alpha, 1.0);
+    }
+
+    #[test]
+    fn composite_blends_bg_partial_alpha_between_two_layers() {
+        // Mirrors composite_blends_partial_alpha_between_two_layers but
+        // exercises the bg accumulation branch (structurally identical to
+        // fg's) with real Rgb values — previously only ever tested with
+        // bg: Color::Reset.
+        let mut stack = LayerStack::new(1, 1);
+        let base = Cell {
+            symbol: 'a',
+            fg: Color::Reset,
+            bg: Color::Rgb { r: 0, g: 0, b: 0 },
+            alpha: 1.0,
+            ..Default::default()
+        };
+        stack.set(0, 0, base);
+        let top = Cell {
+            symbol: 'b',
+            fg: Color::Reset,
+            bg: Color::Rgb {
+                r: 200,
+                g: 100,
+                b: 50,
+            },
+            alpha: 0.5,
+            ..Default::default()
+        };
+        stack.push_layer().set(0, 0, top);
+
+        let out = stack.composite();
+
+        // top's contribution = 0.5 * remaining(1.0) = 0.5; base's is the
+        // other 0.5 (remaining after top). Exact midpoint.
+        assert_eq!(
+            out.get(0, 0).bg,
             Color::Rgb {
                 r: 100,
                 g: 50,
@@ -677,7 +742,103 @@ mod tests {
     }
 
     #[test]
-    fn composite_of_a_three_layer_stack_lets_topmost_non_default_cell_win() {
+    fn composite_of_a_single_layer_stack_normalizes_zero_alpha_to_default() {
+        let mut stack = LayerStack::new(1, 1);
+        // A cell that isn't Cell::default() but carries alpha: 0.0 — per
+        // the Cell.alpha doc contract, composite() must still output it as
+        // untouched (Cell::default()), even on the single-layer fast path.
+        stack.set(
+            0,
+            0,
+            Cell {
+                symbol: 'x',
+                fg: Color::Rgb { r: 1, g: 2, b: 3 },
+                bg: Color::Reset,
+                alpha: 0.0,
+                ..Default::default()
+            },
+        );
+
+        let out = stack.composite();
+
+        assert_eq!(*out.get(0, 0), Cell::default());
+    }
+
+    #[test]
+    fn composite_of_a_single_layer_stack_forces_fractional_alpha_to_one() {
+        let mut stack = LayerStack::new(1, 1);
+        let cell = Cell {
+            symbol: 'x',
+            fg: Color::Rgb {
+                r: 10,
+                g: 20,
+                b: 30,
+            },
+            bg: Color::Reset,
+            alpha: 0.3,
+            ..Default::default()
+        };
+        stack.set(0, 0, cell.clone());
+
+        let out = stack.composite();
+
+        // Per the Cell.alpha doc contract, every cell leaving composite()
+        // carries alpha 0.0 or 1.0 — the raw 0.3 must not pass through
+        // unchanged, even though this is the single-layer fast path.
+        assert_eq!(out.get(0, 0).symbol, cell.symbol);
+        assert_eq!(out.get(0, 0).fg, cell.fg);
+        assert_eq!(out.get(0, 0).bg, cell.bg);
+        assert_eq!(out.get(0, 0).style, cell.style);
+        assert_eq!(out.get(0, 0).alpha, 1.0);
+    }
+
+    #[test]
+    fn a_visually_blank_but_alpha_1_cell_occludes_what_is_beneath_it() {
+        // Post-migration: alpha (not "looks like Cell::default()") determines
+        // transparency. A painted blank space is real content, not an
+        // untouched position — see docs/design/specs/core/2026-08-09-cell-alpha-compositing-design.md's
+        // addendum for the concrete regression this documents.
+        let mut stack = LayerStack::new(1, 1);
+        stack.set(
+            0,
+            0,
+            Cell {
+                symbol: 'x',
+                fg: Color::Rgb {
+                    r: 10,
+                    g: 20,
+                    b: 30,
+                },
+                bg: Color::Rgb {
+                    r: 40,
+                    g: 50,
+                    b: 60,
+                },
+                alpha: 1.0,
+                ..Default::default()
+            },
+        );
+        stack.push_layer().set(
+            0,
+            0,
+            Cell {
+                symbol: ' ',
+                fg: Color::Reset,
+                bg: Color::Reset,
+                alpha: 1.0,
+                ..Default::default()
+            },
+        );
+
+        let out = stack.composite();
+
+        assert_eq!(out.get(0, 0).symbol, ' ');
+        assert_eq!(out.get(0, 0).fg, Color::Reset);
+        assert_eq!(out.get(0, 0).bg, Color::Reset);
+    }
+
+    #[test]
+    fn composite_early_exits_once_a_layer_reaches_full_opacity() {
         let mut stack = LayerStack::new(3, 1);
         let a = Cell {
             symbol: 'a',
