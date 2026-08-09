@@ -4,11 +4,24 @@
 
 use crossterm::style::Color;
 
+/// Text intensity — a single SGR axis; a cell is bold, dim, or
+/// neither, never more than one at once.
+#[derive(Clone, Copy, PartialEq, Debug, Default)]
+pub enum Intensity {
+    /// No intensity styling.
+    #[default]
+    Normal,
+    /// Bold (increased intensity).
+    Bold,
+    /// Dim (decreased intensity).
+    Dim,
+}
+
 /// Text styling flags for a single `Cell`, beyond color.
 #[derive(Clone, Copy, PartialEq, Debug, Default)]
 pub struct CellStyle {
-    /// Whether the cell renders bold.
-    pub bold: bool,
+    /// Bold/dim/neither — mutually exclusive by construction.
+    pub intensity: Intensity,
     /// Whether the cell renders underlined.
     pub underline: bool,
     /// Whether the cell renders italic.
@@ -215,8 +228,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cell_style_default_bold_is_false() {
-        assert!(!CellStyle::default().bold);
+    fn intensity_default_is_normal() {
+        assert_eq!(Intensity::default(), Intensity::Normal);
+    }
+
+    #[test]
+    fn cell_style_default_intensity_is_normal() {
+        assert_eq!(CellStyle::default().intensity, Intensity::Normal);
     }
 
     #[test]
@@ -225,11 +243,18 @@ mod tests {
     }
 
     #[test]
-    fn cells_identical_except_bold_are_unequal() {
+    fn cells_identical_except_intensity_are_unequal() {
         let cell1 = Cell::default();
         let mut cell2 = Cell::default();
-        cell2.style.bold = true;
+        cell2.style.intensity = Intensity::Bold;
         assert_ne!(cell1, cell2);
+    }
+
+    #[test]
+    fn bold_dim_and_normal_are_pairwise_distinct() {
+        assert_ne!(Intensity::Normal, Intensity::Bold);
+        assert_ne!(Intensity::Bold, Intensity::Dim);
+        assert_ne!(Intensity::Normal, Intensity::Dim);
     }
 
     #[test]
