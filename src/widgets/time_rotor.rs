@@ -54,6 +54,7 @@ impl TimeRotor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::Cell;
 
     fn area() -> Rect {
         Rect {
@@ -114,6 +115,27 @@ mod tests {
             any_different,
             "expected a visibly different rotation angle between speed 1.0 and 8.0 at tick 10"
         );
+    }
+
+    #[test]
+    fn tick_zero_draws_a_horizontal_line_through_the_areas_center_row() {
+        let mut buf = Buffer::new(5, 4);
+        TimeRotor::new(1.0).render(area(), 0, &mut buf);
+        for x in 0..5 {
+            assert!(
+                is_braille(buf.get(x, 2).symbol),
+                "expected a braille glyph in the center row at column {x}"
+            );
+        }
+        for y in [0u16, 1, 3] {
+            for x in 0..5 {
+                assert_eq!(
+                    *buf.get(x, y),
+                    Cell::default(),
+                    "row {y} should be untouched by a horizontal center-row line"
+                );
+            }
+        }
     }
 
     #[test]

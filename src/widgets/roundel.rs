@@ -209,6 +209,41 @@ mod tests {
     }
 
     #[test]
+    fn larger_radius_marks_strictly_more_cells_than_a_smaller_one() {
+        let mut small = Buffer::new(5, 5);
+        let mut large = Buffer::new(5, 5);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 5,
+            height: 5,
+        };
+        let color = Color::Rgb {
+            r: 200,
+            g: 100,
+            b: 50,
+        };
+        Roundel::new(1.0, color, 1).render(area, &mut small);
+        Roundel::new(1.0, color, 2).render(area, &mut large);
+
+        let count = |buf: &Buffer| -> usize {
+            let mut n = 0;
+            for y in 0..5 {
+                for x in 0..5 {
+                    if *buf.get(x, y) != Cell::default() {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+        assert!(
+            count(&large) > count(&small),
+            "radius 2 should mark more cells than radius 1"
+        );
+    }
+
+    #[test]
     fn radius_one_zero_intensity_still_renders_near_black() {
         let mut buf = Buffer::new(3, 3);
         Roundel::new(
