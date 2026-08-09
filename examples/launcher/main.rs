@@ -64,6 +64,10 @@ const STARFIELD_W: u16 = 250;
 const STARFIELD_H: u16 = 80;
 const TARGET_STAR_COUNT: usize = 60;
 const STAR_LIFETIME_SECS: u64 = 30;
+const DIVE_DURATION: Duration = Duration::from_millis(400);
+const DIVE_PARTICLE_COUNT: u32 = 16;
+const NOMINAL_CENTER_X: f32 = 40.0;
+const NOMINAL_CENTER_Y: f32 = 12.0;
 
 /// Which app (or the nexus) is currently front-and-center.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -213,6 +217,32 @@ fn spawn_star(seed: u64) -> Particle {
     }
 }
 
+/// Builds a short-lived particle burst approximating an "into the
+/// portal" flourish for launching app `index`. Origin is a fixed
+/// offset from a nominal center point, not the portal's real screen
+/// position — `apply()` (called from `update()`) has no access to the
+/// terminal's actual size, same constraint `spawn_star` works around.
+fn spawn_burst(index: usize) -> ParticleSystem {
+    let mut ps = ParticleSystem::new();
+    let cx = NOMINAL_CENTER_X + (index as f32 - 1.0) * 20.0;
+    let cy = NOMINAL_CENTER_Y;
+    let accent = PORTALS[index].2;
+    for i in 0..DIVE_PARTICLE_COUNT {
+        let angle = i as f32 * (std::f32::consts::TAU / DIVE_PARTICLE_COUNT as f32);
+        ps.spawn(Particle {
+            x: cx,
+            y: cy,
+            vx: angle.cos() * 25.0,
+            vy: angle.sin() * 12.0,
+            symbol: '*',
+            color: accent,
+            lifetime: DIVE_DURATION,
+            age: Duration::ZERO,
+        });
+    }
+    ps
+}
+
 /// The launcher itself — an `App` that either delegates to the active
 /// sub-app or renders the portal nexus.
 struct Launcher {
@@ -222,6 +252,7 @@ struct Launcher {
     nexus_phase: f32,
     starfield: ParticleSystem,
     star_seed: u64,
+    diving: Option<(usize, Transition, ParticleSystem)>,
     returning: Option<Transition>,
     quit: bool,
 }
@@ -235,6 +266,7 @@ impl Launcher {
             nexus_phase: 0.0,
             starfield: ParticleSystem::new(),
             star_seed: 0,
+            diving: None,
             returning: None,
             quit: false,
         }
@@ -250,8 +282,7 @@ impl Launcher {
                 self.selected = (self.selected + 1) % APP_COUNT;
             }
             Action::Launch(i) => {
-                self.active = Some(make_app(i));
-                self.location = location_of(i);
+                self.diving = Some((i, Transition::start(DIVE_DURATION), spawn_burst(i)));
                 self.returning = None;
             }
             Action::ReturnToNexus => {
@@ -272,6 +303,9 @@ impl App for Launcher {
         };
 
         if self.location == Location::Nexus {
+            if self.diving.is_some() {
+                return; // ignore input mid-dive, same spirit as an app ignoring input during its own boot
+            }
             let action = route(Location::Nexus, key, self.selected, false);
             self.apply(action);
             return;
@@ -295,15 +329,37 @@ impl App for Launcher {
         match &self.active {
             Some(app) => app.view(area, buf),
             None => {
-                let fade = self.returning.as_ref().map_or(1.0, |t| t.progress());
-                nexus::render(
-                    self.selected,
-                    &self.starfield,
-                    self.nexus_phase,
-                    fade,
-                    area,
-                    buf,
-                );
+                if let Some((_, transition, burst)) = &self.diving {
+                    let fade = 1.0 - transition.progress();
+                    nexus::render(
+                        self.selected,
+                        &self.starfield,
+                        self.nexus_phase,
+                        fade,
+                        area,
+                        buf,
+                    );
+                    let mut scene = Buffer::new(area.width, area.height);
+                    burst.render(&mut scene);
+                    for y in 0..scene.height {
+                        for x in 0..scene.width {
+                            let cell = scene.get(x, y);
+                            if *cell != Cell::default() {
+                                buf.set(area.x + x, area.y + y, cell.clone());
+                            }
+                        }
+                    }
+                } else {
+                    let fade = self.returning.as_ref().map_or(1.0, |t| t.progress());
+                    nexus::render(
+                        self.selected,
+                        &self.starfield,
+                        self.nexus_phase,
+                        fade,
+                        area,
+                        buf,
+                    );
+                }
             }
         }
     }
@@ -333,6 +389,20 @@ impl App for Launcher {
                     t.tick(elapsed);
                     if t.is_complete() {
                         self.returning = None;
+                    }
+                }
+                if let Some((_, transition, burst)) = &mut self.diving {
+                    transition.tick(elapsed);
+                    burst.update(elapsed);
+                }
+                let dive_complete = self
+                    .diving
+                    .as_ref()
+                    .is_some_and(|(_, t, _)| t.is_complete());
+                if dive_complete {
+                    if let Some((index, _, _)) = self.diving.take() {
+                        self.active = Some(make_app(index));
+                        self.location = location_of(index);
                     }
                 }
             }
@@ -421,16 +491,43 @@ mod tests {
     }
 
     #[test]
-    fn apply_launch_and_return_toggle_location() {
+    fn apply_launch_starts_a_dive_apply_return_resets_to_nexus() {
         let mut l = Launcher::new();
         assert_eq!(l.location, Location::Nexus);
         l.apply(Action::Launch(1));
-        assert_eq!(l.location, Location::Tardis);
-        assert!(l.active.is_some());
+        assert_eq!(
+            l.location,
+            Location::Nexus,
+            "location doesn't change until the dive completes"
+        );
+        assert!(l.diving.is_some());
         l.apply(Action::ReturnToNexus);
         assert_eq!(l.location, Location::Nexus);
         assert!(l.active.is_none());
         assert!(l.returning.is_some());
+    }
+
+    #[test]
+    fn launch_starts_a_dive_before_swapping_active_app() {
+        let mut l = Launcher::new();
+        l.apply(Action::Launch(1));
+        assert!(l.diving.is_some());
+        assert!(l.active.is_none());
+        assert_eq!(
+            l.location,
+            Location::Nexus,
+            "location doesn't change until the dive completes"
+        );
+    }
+
+    #[test]
+    fn dive_completes_into_the_active_app_after_enough_ticks() {
+        let mut l = Launcher::new();
+        l.apply(Action::Launch(1));
+        l.on_tick(DIVE_DURATION + Duration::from_millis(10));
+        assert!(l.active.is_some());
+        assert_eq!(l.location, Location::Tardis);
+        assert!(l.diving.is_none());
     }
 
     #[test]
