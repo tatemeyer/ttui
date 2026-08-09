@@ -340,6 +340,7 @@ impl SmashCrabs {
                             intensity: Intensity::Bold,
                             ..Default::default()
                         },
+                        alpha: 1.0,
                     },
                 );
             }

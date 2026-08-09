@@ -99,24 +99,28 @@ impl Canvas {
                         fg: t,
                         bg: Color::Reset,
                         style: CellStyle::default(),
+                        alpha: 1.0,
                     },
                     (None, Some(b)) => Cell {
                         symbol: '▄',
                         fg: b,
                         bg: Color::Reset,
                         style: CellStyle::default(),
+                        alpha: 1.0,
                     },
                     (Some(t), Some(b)) if t == b => Cell {
                         symbol: '█',
                         fg: t,
                         bg: t,
                         style: CellStyle::default(),
+                        alpha: 1.0,
                     },
                     (Some(t), Some(b)) => Cell {
                         symbol: '▀',
                         fg: t,
                         bg: b,
                         style: CellStyle::default(),
+                        alpha: 1.0,
                     },
                 };
                 let bx = ox + cx;
@@ -162,6 +166,7 @@ impl Canvas {
                             fg: color.unwrap(),
                             bg: Color::Reset,
                             style: CellStyle::default(),
+                            alpha: 1.0,
                         },
                     );
                 }

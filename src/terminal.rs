@@ -178,6 +178,7 @@ mod render_diff_tests {
                     intensity,
                     ..Default::default()
                 },
+                alpha: 1.0,
             },
         }
     }
@@ -191,6 +192,7 @@ mod render_diff_tests {
                 fg: Color::Reset,
                 bg: Color::Reset,
                 style,
+                alpha: 1.0,
             },
         }
     }

@@ -62,6 +62,7 @@ fn fill_void(scene: &mut Buffer) {
                     fg: Color::Reset,
                     bg: VOID,
                     style: CellStyle::default(),
+                    alpha: 1.0,
                 },
             );
         }

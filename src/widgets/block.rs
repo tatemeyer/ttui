@@ -81,6 +81,7 @@ impl<'a> Block<'a> {
                 },
                 ..Default::default()
             },
+            alpha: 1.0,
         };
 
         let draw_ring = |ring_area: Rect, buf: &mut Buffer| {

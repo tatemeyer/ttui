@@ -29,6 +29,7 @@ pub fn blend_over(base: &Buffer, overlay: &Buffer, alpha: f32) -> Buffer {
                 fg: lerp_color(b.fg, ov.fg, alpha),
                 bg: lerp_color(b.bg, ov.bg, alpha),
                 style: if alpha >= 0.5 { ov.style } else { b.style },
+                alpha: 1.0,
             };
             out.set(x, y, blended);
         }

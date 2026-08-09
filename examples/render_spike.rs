@@ -141,6 +141,7 @@ impl RenderSpike {
                         fg: Color::Reset,
                         bg: Color::Reset,
                         style,
+                        alpha: 1.0,
                     },
                 );
                 x += 1;
@@ -196,6 +197,7 @@ fn draw_gradient_ring(area: Rect, buf: &mut LayerStack, hue_shift: f32) {
                 intensity: ttui::buffer::Intensity::Bold,
                 ..Default::default()
             },
+            alpha: 1.0,
         }
     };
     for x in area.x..area.x + area.width {

@@ -49,6 +49,7 @@ fn themed(symbol: char) -> Cell {
             intensity: Intensity::Normal,
             ..Default::default()
         },
+        alpha: 1.0,
     }
 }
 
