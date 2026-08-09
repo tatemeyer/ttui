@@ -4,3 +4,4 @@
 //! terminal output to a PNG or animated GIF.
 
 pub mod keys;
+pub mod color;
