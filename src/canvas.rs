@@ -409,6 +409,40 @@ mod tests {
     }
 
     #[test]
+    fn line_draws_a_diagonal_run_via_the_bresenham_error_term_branches() {
+        // 3x3-cell HalfBlock canvas -> 3x6 subpixel grid. A 45-degree
+        // diagonal (dx == -dy) exercises both the `e2 >= dy` and
+        // `e2 <= dx` branches every step, unlike the dy == 0 horizontal
+        // case covered above.
+        //
+        // Hand-traced Bresenham for line(0,0,2,2): dx=2, dy=-2, err=0.
+        //   step 0: plot (0,0); e2=0 >= -2 -> x=1; e2=0 <= 2 -> y=1
+        //   step 1: plot (1,1); e2=0 >= -2 -> x=2; e2=0 <= 2 -> y=2
+        //   step 2: plot (2,2); x==x1 && y==y1 -> stop
+        // Subpixel (0,0) -> cell (0,0) top row -> '▀'.
+        // Subpixel (1,1) -> cell (1,0) bottom row -> '▄'.
+        // Subpixel (2,2) -> cell (2,1) top row -> '▀'.
+        let mut c = Canvas::new(3, 3, CanvasMode::HalfBlock);
+        c.line(0, 0, 2, 2, red());
+        let mut buf = Buffer::new(3, 3);
+        c.blit(&mut buf, 0, 0);
+
+        assert_eq!(buf.get(0, 0).symbol, '▀');
+        assert_eq!(buf.get(0, 0).fg, red());
+        assert_eq!(buf.get(1, 0).symbol, '▄');
+        assert_eq!(buf.get(1, 0).fg, red());
+        assert_eq!(buf.get(2, 1).symbol, '▀');
+        assert_eq!(buf.get(2, 1).fg, red());
+
+        // Everything off the diagonal stays untouched.
+        assert_eq!(*buf.get(1, 1), Cell::default());
+        assert_eq!(*buf.get(2, 0), Cell::default());
+        assert_eq!(*buf.get(0, 1), Cell::default());
+        assert_eq!(*buf.get(0, 2), Cell::default());
+        assert_eq!(*buf.get(1, 2), Cell::default());
+    }
+
+    #[test]
     fn rect_draws_all_four_edges_of_the_outline() {
         let mut c = Canvas::new(3, 3, CanvasMode::HalfBlock); // grid 3x6
         c.rect(0, 0, 3, 6, red());

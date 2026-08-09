@@ -28,7 +28,7 @@
 - Consumes: nothing new.
 - Produces: `pub enum Intensity { Normal, Bold, Dim }`, `CellStyle.intensity: Intensity` (replaces `CellStyle.bold: bool`) — every later task in this plan constructs/reads this field.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `src/buffer.rs`'s existing `#[cfg(test)] mod tests`, replace:
 
@@ -80,12 +80,12 @@ with:
 
 Leave `cell_default_style_equals_cell_style_default` unchanged — it doesn't reference `bold` directly.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --lib buffer::tests`
 Expected: FAIL to compile — `Intensity` doesn't exist yet, `CellStyle` has no `intensity` field.
 
-- [ ] **Step 3: Implement `Intensity` and migrate `CellStyle`**
+- [x] **Step 3: Implement `Intensity` and migrate `CellStyle`**
 
 Change:
 
@@ -138,12 +138,12 @@ pub struct CellStyle {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --lib buffer::tests`
 Expected: PASS (this task's own tests). The crate as a whole will NOT compile yet — every other file constructing `CellStyle { bold: ... }` or reading `.style.bold` is now broken. That's expected; Tasks 2-3 fix each site. Do not attempt to fix other files in this task.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/buffer.rs
@@ -166,7 +166,7 @@ follow-up commits on this branch."
 - Consumes: `Intensity` (Task 1).
 - Produces: nothing new downstream — this is a leaf consumer of `CellStyle.intensity`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `src/terminal.rs`'s `render_diff_tests` module, change the `d()` helper's signature and every call site's last argument, then add one new test. First, the helper:
 
@@ -343,12 +343,12 @@ The spike shipped `render_diff`'s underline/italic/reverse/strikethrough wiring 
     }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --lib terminal::render_diff_tests`
 Expected: FAIL to compile — `render_diff` still reads `d.cell.style.bold`, which no longer exists, and the underline/italic/reverse/strikethrough assertions above fail against the current (already-shipped, spike-era) wiring is not the point here since that wiring already exists unchanged from the spike; the actual failure is the compile error from `d.cell.style.bold`. Once Step 3 fixes that, these five new tests should already pass against the spike's existing (untested until now) attribute wiring — they exist to close the coverage gap, not to change behavior.
 
-- [ ] **Step 3: Implement the three-way intensity wiring**
+- [x] **Step 3: Implement the three-way intensity wiring**
 
 In `render_diff`, change:
 
@@ -398,12 +398,12 @@ to:
 
 Add `Intensity` to the top-of-file import: change `use crate::buffer::CellDiff;` to `use crate::buffer::{CellDiff, Intensity};`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --lib terminal::render_diff_tests`
 Expected: PASS, all 7 tests (6 migrated + 1 new).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/terminal.rs
@@ -428,7 +428,7 @@ git commit -m "feat(core): wire render_diff for three-state Intensity"
 
 This task is `coding`-tagged but every change is a mechanical field-rename at an already-tested call site (block.rs's render logic and its own tests are exercised by Task 6, not here) — no new test-first cycle applies to a pure rename; the existing tests **at each site** are the regression check. Do not skip re-running them.
 
-- [ ] **Step 1: `src/widgets/block.rs` — construction site**
+- [x] **Step 1: `src/widgets/block.rs` — construction site**
 
 Change:
 
@@ -464,7 +464,7 @@ to:
 
 Add `Intensity` to the top-of-file import: change `use crate::buffer::{Buffer, Cell, CellStyle};` to `use crate::buffer::{Buffer, Cell, CellStyle, Intensity};`.
 
-- [ ] **Step 2: `src/widgets/block.rs` — test assertions**
+- [x] **Step 2: `src/widgets/block.rs` — test assertions**
 
 In the `tests` module, change `use crate::buffer::Buffer;` to `use crate::buffer::{Buffer, Intensity};`. Then change these five assertions:
 
@@ -474,7 +474,7 @@ In the `tests` module, change `use crate::buffer::Buffer;` to `use crate::buffer
 
 `title_cells_are_not_bold_even_when_theme_border_bold_is_true` (both lines): `assert!(!buf.get(1, 0).style.bold);` / `assert!(!buf.get(2, 0).style.bold);` → `assert_eq!(buf.get(1, 0).style.intensity, Intensity::Normal);` / `assert_eq!(buf.get(2, 0).style.intensity, Intensity::Normal);`
 
-- [ ] **Step 3: `benches/render.rs`**
+- [x] **Step 3: `benches/render.rs`**
 
 Change:
 
@@ -530,7 +530,7 @@ fn themed(symbol: char) -> Cell {
 
 (Fully-qualifying `ttui::buffer::Intensity` here matches this file's existing style of fully-qualifying `ttui::buffer::*`/`ttui::terminal::*` rather than adding a new `use` line, consistent with how `diff`/`Buffer`/`Cell`/`CellDiff`/`CellStyle` are already imported via one `use ttui::buffer::{...}` line — add `Intensity` to that existing import list instead if you prefer; either is fine, pick one and use it consistently in this file.)
 
-- [ ] **Step 4: `examples/launcher/main.rs`**
+- [x] **Step 4: `examples/launcher/main.rs`**
 
 Change:
 
@@ -556,7 +556,7 @@ Change:
 
 (Same fully-qualification note as Step 3 applies — use whichever import style this file already uses elsewhere.)
 
-- [ ] **Step 5: `examples/smash_crabs/smash_crabs.rs`**
+- [x] **Step 5: `examples/smash_crabs/smash_crabs.rs`**
 
 Change:
 
@@ -576,7 +576,7 @@ Change:
                         },
 ```
 
-- [ ] **Step 6: `examples/smash_crabs/target_smash.rs`**
+- [x] **Step 6: `examples/smash_crabs/target_smash.rs`**
 
 Change:
 
@@ -596,7 +596,7 @@ Change:
                             },
 ```
 
-- [ ] **Step 7: `examples/render_spike.rs`**
+- [x] **Step 7: `examples/render_spike.rs`**
 
 Change (inside `draw_gradient_ring`'s `ring_cell` closure):
 
@@ -626,7 +626,7 @@ to:
         }
 ```
 
-- [ ] **Step 8: Build and test the whole workspace**
+- [x] **Step 8: Build and test the whole workspace**
 
 Run: `cargo build --all-targets`
 Expected: succeeds — this is the first point since Task 1 the whole workspace compiles.
@@ -634,7 +634,7 @@ Expected: succeeds — this is the first point since Task 1 the whole workspace 
 Run: `cargo test`
 Expected: full suite passes, including every test touched in Steps 1-2.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/widgets/block.rs benches/render.rs examples/launcher/main.rs \
@@ -654,7 +654,7 @@ git commit -m "fix(core): migrate remaining CellStyle.bold call sites to Intensi
 - Consumes: `Canvas`, `CanvasMode` (unchanged public signatures from the spike).
 - Produces: nothing new downstream in this plan — Task 6/a future Arc B are the first real consumers.
 
-- [ ] **Step 1: Update the module doc comment**
+- [x] **Step 1: Update the module doc comment**
 
 Change:
 
@@ -678,7 +678,7 @@ to:
 //! docs/design/specs/core/2026-08-08-rendering-primitives-graduation-design.md.
 ```
 
-- [ ] **Step 2: `saturating_add` fix in `rect`/`fill_rect`**
+- [x] **Step 2: `saturating_add` fix in `rect`/`fill_rect`**
 
 Change:
 
@@ -734,7 +734,7 @@ to:
     }
 ```
 
-- [ ] **Step 3: Write the failing tests**
+- [x] **Step 3: Write the failing tests**
 
 Add a `#[cfg(test)] mod tests` block at the end of `src/canvas.rs`:
 
@@ -969,17 +969,17 @@ mod tests {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they fail, then pass**
+- [x] **Step 4: Run tests to verify they fail, then pass**
 
 Run: `cargo test --lib canvas::tests`
 Expected: with `Step 1-2`'s code already in place before writing tests would normally invert red/green — for this task, since `Canvas`'s logic is unchanged from the spike except the `saturating_add` fix, write the tests first per the checklist above, confirm they compile against the *current* (spike) code and pass for everything except the two new `rect`/`fill_rect` overflow-safety tests, THEN apply Step 2's fix, then re-run to confirm all pass. If you already applied Step 2 before writing tests, that's fine too — just ensure the final `cargo test --lib canvas::tests` run shows all tests passing, and that `rect_and_fill_rect_near_u16_max_do_not_panic` would have failed (panicked) against the pre-Step-2 code, confirmed by temporarily reverting Step 2 and re-running just that one test if you want the RED evidence explicitly.
 
-- [ ] **Step 5: Run clippy and fmt**
+- [x] **Step 5: Run clippy and fmt**
 
 Run: `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`
 Expected: both clean (hard gates now, per Global Constraints).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/canvas.rs
@@ -1009,7 +1009,7 @@ near u16::MAX now that this is committed code."
 
 `Theme` is `#[derive(Clone, Copy, Debug, PartialEq)]` with no `Default` shortcut used at any of its 9 construction sites in the codebase (all are fully exhaustive literals) — adding a field breaks every one of them, same exhaustiveness rule as `CellStyle`. Every site below already has an `accent:`/`accent,` field; insert the new field immediately after it.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `src/theme.rs`'s `tests` module, add:
 
@@ -1020,12 +1020,12 @@ In `src/theme.rs`'s `tests` module, add:
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cargo test --lib theme::tests`
 Expected: FAIL to compile — `Theme` has no `primary_end` field yet.
 
-- [ ] **Step 3: Add the field**
+- [x] **Step 3: Add the field**
 
 In `src/theme.rs`, change:
 
@@ -1078,7 +1078,7 @@ pub struct Theme {
 
 and in `impl Default for Theme`, add `primary_end: None,` immediately after `accent: Color::Reset,`.
 
-- [ ] **Step 4: Fix the eight remaining exhaustive `Theme { ... }` literals**
+- [x] **Step 4: Fix the eight remaining exhaustive `Theme { ... }` literals**
 
 In each file below, insert `primary_end: None,` immediately after the existing `accent:`/`accent,` line:
 
@@ -1091,12 +1091,12 @@ In each file below, insert `primary_end: None,` immediately after the existing `
 
 Read each file's actual current content before editing — do not guess at exact surrounding formatting; insert the one line in the right place per file's real layout.
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `cargo build --all-targets && cargo test`
 Expected: workspace compiles, full test suite passes (including the new test from Step 1).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/theme.rs src/widgets/smash_border.rs src/widgets/block.rs \
@@ -1116,7 +1116,7 @@ git commit -m "feat(core): add Theme.primary_end for optional gradient borders"
 - Consumes: `Theme.primary_end` (Task 5), `easing::lerp_color` (existing, unchanged).
 - Produces: nothing new downstream in this plan.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add to `src/widgets/block.rs`'s `tests` module:
 
@@ -1217,12 +1217,12 @@ Add to `src/widgets/block.rs`'s `tests` module:
     }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test --lib widgets::block::tests`
 Expected: FAIL — `Theme` literals in the new tests won't compile until Task 5 has landed (it has, by this point in the plan), and `primary_end_some_lerps_color_across_the_border_ring` fails its assertions since `Block::render` doesn't read `primary_end` yet.
 
-- [ ] **Step 3: Implement gradient-ring rendering**
+- [x] **Step 3: Implement gradient-ring rendering**
 
 Replace the theme-resolution and `plain`/`draw_ring` closures with:
 
@@ -1385,17 +1385,17 @@ to:
 
 Add `Intensity` to the top-of-file import: change `use crate::buffer::{Buffer, Cell, CellStyle};` to `use crate::buffer::{Buffer, Cell, CellStyle, Intensity};`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cargo test --lib widgets::block::tests`
 Expected: PASS, all tests including the two new ones and every pre-existing test (`draws_border_and_returns_inner_area`, `title_is_drawn_on_the_top_border`, etc.) — the pre-existing tests never set `primary_end`, so `Theme::default()`/explicit-`None`-equivalent construction means `ring_fg` degenerates to the flat `fg` they already assert on.
 
-- [ ] **Step 5: Run clippy and fmt**
+- [x] **Step 5: Run clippy and fmt**
 
 Run: `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`
 Expected: both clean.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/widgets/block.rs
@@ -1408,27 +1408,27 @@ git commit -m "feat(core): gradient border rendering when Theme.primary_end is s
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Full test suite**
+- [x] **Step 1: Full test suite**
 
 Run: `cargo test`
 Expected: full suite green, including every test added/changed across Tasks 1-6.
 
-- [ ] **Step 2: Lint and format**
+- [x] **Step 2: Lint and format**
 
 Run: `cargo clippy --all-targets -- -D warnings` and `cargo fmt --check`
 Expected: both clean.
 
-- [ ] **Step 3: Build every target**
+- [x] **Step 3: Build every target**
 
 Run: `cargo build --all-targets`
 Expected: succeeds — library, all examples, benches.
 
-- [ ] **Step 4: Manual visual regression check**
+- [x] **Step 4: Manual visual regression check**
 
 Run: `cargo run --example omnitrix`, `cargo run --example tardis`, `cargo run --example smash_crabs` in turn.
 Expected: every border that was bold before this Arc (via `Theme.border_bold`) still renders bold — `Intensity::Bold` is a drop-in replacement for `bold: true`, and no example sets `primary_end` yet, so every border stays flat-colored exactly as before. No visual regression anywhere. Press `q` to quit each.
 
-- [ ] **Step 5: Commit (if Step 4 required any fix) or proceed**
+- [x] **Step 5: Commit (if Step 4 required any fix) or proceed**
 
 If Step 4 surfaces no issues, there is nothing to commit for this task — it's a verification gate, not a code change.
 
@@ -1436,8 +1436,8 @@ If Step 4 surfaces no issues, there is nothing to commit for this task — it's 
 
 ## Final verification (whole plan)
 
-- [ ] `cargo test` — full suite green.
-- [ ] `cargo clippy --all-targets -- -D warnings` / `cargo fmt --check` — clean (hard gates, unlike the spike this Arc graduates from).
-- [ ] `cargo build --all-targets` — library, examples, benches all compile.
-- [ ] Manual visual check on Omnitrix/TARDIS/Smash Crabs confirms zero regression — every prior `bold` usage still renders bold, no theme accidentally shows a gradient it didn't opt into.
-- [ ] Per `.claude/rules/git-github-standards.md`: open a PR from this Arc's worktree branch to `main`, wait for all four required checks green, squash-merge, then remove the worktree via `ExitWorktree`.
+- [x] `cargo test` — full suite green.
+- [x] `cargo clippy --all-targets -- -D warnings` / `cargo fmt --check` — clean (hard gates, unlike the spike this Arc graduates from).
+- [x] `cargo build --all-targets` — library, examples, benches all compile.
+- [x] Manual visual check on Omnitrix/TARDIS/Smash Crabs confirms zero regression — every prior `bold` usage still renders bold, no theme accidentally shows a gradient it didn't opt into.
+- [x] Per `.claude/rules/git-github-standards.md`: open a PR from this Arc's worktree branch to `main`, wait for all four required checks green, squash-merge, then remove the worktree via `ExitWorktree`.

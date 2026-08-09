@@ -39,8 +39,17 @@ pub struct Theme {
     pub tertiary: Color,
     /// Highlight/selection color.
     pub accent: Color,
-    /// When set, `Block` lerps the border ring's color from `primary`
-    /// to this across the ring's perimeter instead of a flat color.
+    /// When set, `Block` ramps the border ring's color from `primary`
+    /// toward this along a top-left-to-bottom-right diagonal across
+    /// the border's bounding box, clamping to this color past the
+    /// diagonal — NOT a true perimeter/arc-length gradient, so
+    /// roughly the bottom-right half of a typical ring renders as a
+    /// flat `primary_end` rather than a visible ramp. Both `primary`
+    /// and this color must be `Color::Rgb` for the lerp to actually
+    /// interpolate; `easing::lerp_color`'s existing fallback returns
+    /// the target color outright for any other color type, so a
+    /// non-`Rgb` `primary`/`primary_end` pair renders as a flat
+    /// `primary_end` color, not a gradient.
     pub primary_end: Option<Color>,
     /// Border glyph set.
     pub border: BorderSet,

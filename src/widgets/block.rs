@@ -551,4 +551,44 @@ mod tests {
             }
         );
     }
+
+    #[test]
+    fn non_rgb_primary_with_primary_end_renders_flat_end_color_not_a_gradient() {
+        // Pins easing::lerp_color's existing fallback: any non-Rgb color pair
+        // returns `to` outright, so a named primary + primary_end degrades
+        // to a flat primary_end across the whole ring, not a partial ramp.
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            primary_end: Some(Color::Red),
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+            border_bold: false,
+            border_thick: false,
+        };
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        for x in 0..4 {
+            assert_eq!(buf.get(x, 0).fg, Color::Red);
+            assert_eq!(buf.get(x, 2).fg, Color::Red);
+        }
+        for y in 0..3 {
+            assert_eq!(buf.get(0, y).fg, Color::Red);
+            assert_eq!(buf.get(3, y).fg, Color::Red);
+        }
+    }
 }
