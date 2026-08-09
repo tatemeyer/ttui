@@ -138,7 +138,15 @@ mod tests {
         let leading_edge = buf.get(4, 0).fg;
         assert_eq!(
             leading_edge,
-            lerp_color(base, Color::Rgb { r: 255, g: 255, b: 255 }, 0.8)
+            lerp_color(
+                base,
+                Color::Rgb {
+                    r: 255,
+                    g: 255,
+                    b: 255
+                },
+                0.8
+            )
         );
         assert_ne!(leading_edge, base);
     }
