@@ -2,3 +2,5 @@
 //! compiled example under a pseudo-console, drives it with a scripted
 //! sequence of key presses and waits, and rasterizes the captured
 //! terminal output to a PNG or animated GIF.
+
+pub mod keys;
