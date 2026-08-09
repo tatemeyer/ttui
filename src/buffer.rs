@@ -2,6 +2,7 @@
 //! Widgets write `Cell`s into a `Buffer`; apps composite multiple
 //! layers into one via `LayerStack` before the terminal diff-flush.
 
+use crate::easing::lerp_color;
 use crossterm::style::Color;
 
 /// Text intensity — a single SGR axis; a cell is bold, dim, or
@@ -33,7 +34,7 @@ pub struct CellStyle {
 }
 
 /// One terminal character cell: glyph, foreground/background color,
-/// and style.
+/// style, and coverage.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Cell {
     /// The glyph to render.
@@ -44,6 +45,13 @@ pub struct Cell {
     pub bg: Color,
     /// Bold/etc. styling.
     pub style: CellStyle,
+    /// How much this cell covers whatever is beneath it during
+    /// `LayerStack::composite()` — `0.0` fully transparent, `1.0`
+    /// fully opaque. Meaningless once a `Buffer` has been composited
+    /// and is headed for `diff`/the terminal; every cell leaving
+    /// `composite()` is either untouched (`0.0`, stays default) or
+    /// real content (`1.0`).
+    pub alpha: f32,
 }
 
 impl Default for Cell {
@@ -53,6 +61,7 @@ impl Default for Cell {
             fg: Color::Reset,
             bg: Color::Reset,
             style: CellStyle::default(),
+            alpha: 0.0,
         }
     }
 }
@@ -195,18 +204,70 @@ impl LayerStack {
         let mut out = Buffer::new(width, height);
         for y in 0..height {
             for x in 0..width {
-                let mut cell = Cell::default();
-                for layer in self.layers.iter().rev() {
-                    let c = layer.get(x, y);
-                    if *c != Cell::default() {
-                        cell = c.clone();
-                        break;
-                    }
-                }
-                out.set(x, y, cell);
+                out.set(x, y, composite_cell(&self.layers, x, y));
             }
         }
         out
+    }
+}
+
+// Top-to-bottom Porter-Duff "over" accumulation. `remaining` tracks how
+// much of this pixel is still undecided; each layer claims
+// `alpha * remaining` of it, and `remaining` shrinks by `(1 - alpha)`.
+// When every cell involved has alpha 1.0 (true for every existing app
+// post-migration), the first non-transparent layer claims 100% on
+// contact and the loop breaks immediately — byte-identical to the old
+// "topmost non-default cell wins" scan, for the same reason (early exit
+// on full coverage).
+fn composite_cell(layers: &[Buffer], x: u16, y: u16) -> Cell {
+    let mut remaining = 1.0_f32;
+    let mut acc_weight = 0.0_f32;
+    let mut acc_fg = Color::Reset;
+    let mut acc_bg = Color::Reset;
+    let mut winner: Option<(char, CellStyle)> = None;
+    let mut first: Option<(char, CellStyle)> = None;
+
+    for layer in layers.iter().rev() {
+        if remaining <= 0.0 {
+            break;
+        }
+        let cell = layer.get(x, y);
+        if cell.alpha <= 0.0 {
+            continue;
+        }
+        let contribution = cell.alpha * remaining;
+
+        if first.is_none() {
+            first = Some((cell.symbol, cell.style));
+        }
+        if winner.is_none() && contribution >= 0.5 {
+            winner = Some((cell.symbol, cell.style));
+        }
+
+        acc_fg = if acc_weight <= 0.0 {
+            cell.fg
+        } else {
+            crate::easing::lerp_color(acc_fg, cell.fg, contribution / (acc_weight + contribution))
+        };
+        acc_bg = if acc_weight <= 0.0 {
+            cell.bg
+        } else {
+            crate::easing::lerp_color(acc_bg, cell.bg, contribution / (acc_weight + contribution))
+        };
+        acc_weight += contribution;
+
+        remaining *= 1.0 - cell.alpha;
+    }
+
+    match winner.or(first) {
+        None => Cell::default(),
+        Some((symbol, style)) => Cell {
+            symbol,
+            fg: acc_fg,
+            bg: acc_bg,
+            style,
+            alpha: 1.0,
+        },
     }
 }
 
@@ -258,6 +319,255 @@ mod tests {
     }
 
     #[test]
+    fn cell_default_alpha_is_zero() {
+        assert_eq!(Cell::default().alpha, 0.0);
+    }
+
+    #[test]
+    fn composite_blends_partial_alpha_between_two_layers() {
+        let mut stack = LayerStack::new(1, 1);
+        let base = Cell {
+            symbol: 'a',
+            fg: Color::Rgb { r: 0, g: 0, b: 0 },
+            bg: Color::Reset,
+            alpha: 1.0,
+            ..Default::default()
+        };
+        stack.set(0, 0, base);
+        let top = Cell {
+            symbol: 'b',
+            fg: Color::Rgb {
+                r: 200,
+                g: 100,
+                b: 50,
+            },
+            bg: Color::Reset,
+            alpha: 0.5,
+            ..Default::default()
+        };
+        stack.push_layer().set(0, 0, top);
+
+        let out = stack.composite();
+
+        // top's contribution = 0.5 * remaining(1.0) = 0.5; base's is the
+        // other 0.5 (remaining after top). Exact midpoint.
+        assert_eq!(
+            out.get(0, 0).fg,
+            Color::Rgb {
+                r: 100,
+                g: 50,
+                b: 25
+            }
+        );
+        assert_eq!(out.get(0, 0).symbol, 'b'); // top's contribution (0.5) meets the >= 0.5 threshold
+        assert_eq!(out.get(0, 0).alpha, 1.0);
+    }
+
+    #[test]
+    fn composite_accumulates_correctly_across_three_partially_transparent_layers() {
+        let mut stack = LayerStack::new(1, 1);
+        let bottom_fg = Color::Rgb { r: 0, g: 0, b: 0 };
+        let mid_fg = Color::Rgb {
+            r: 100,
+            g: 100,
+            b: 100,
+        };
+        let top_fg = Color::Rgb {
+            r: 200,
+            g: 200,
+            b: 200,
+        };
+        stack.set(
+            0,
+            0,
+            Cell {
+                symbol: 'a',
+                fg: bottom_fg,
+                bg: Color::Reset,
+                alpha: 1.0,
+                ..Default::default()
+            },
+        );
+        stack.push_layer().set(
+            0,
+            0,
+            Cell {
+                symbol: 'b',
+                fg: mid_fg,
+                bg: Color::Reset,
+                alpha: 0.5,
+                ..Default::default()
+            },
+        );
+        stack.push_layer().set(
+            0,
+            0,
+            Cell {
+                symbol: 'c',
+                fg: top_fg,
+                bg: Color::Reset,
+                alpha: 0.5,
+                ..Default::default()
+            },
+        );
+
+        let out = stack.composite();
+
+        // Hand-verified accumulation, top to bottom: top ('c') contributes
+        // 0.5*1.0=0.5 (remaining -> 0.5); mid ('b') then contributes
+        // 0.5*0.5=0.25 (remaining -> 0.25); bottom ('a', fully opaque)
+        // claims the last 0.25. Expected fg is computed via the exact same
+        // incremental pairwise-lerp steps the implementation performs (not
+        // a closed-form average — each step truncates to u8 independently,
+        // same as the real algorithm), so this is the algorithm's own
+        // formula used as its test oracle, not an independently-derived
+        // magic number.
+        let expected_fg = {
+            let after_mid = lerp_color(top_fg, mid_fg, 0.25 / 0.75); // mid's contribution / total-so-far
+            lerp_color(after_mid, bottom_fg, 0.25 / 1.0) // bottom's contribution / total-so-far
+        };
+        assert_eq!(out.get(0, 0).fg, expected_fg);
+        assert_eq!(out.get(0, 0).symbol, 'c'); // topmost to cross the 0.5 threshold
+    }
+
+    #[test]
+    fn a_fully_opaque_layer_occludes_everything_beneath_it() {
+        let mut stack = LayerStack::new(1, 1);
+        // Bottom layer's color would show up in the result if (incorrectly) blended in.
+        stack.set(
+            0,
+            0,
+            Cell {
+                symbol: 'z',
+                fg: Color::Rgb { r: 255, g: 0, b: 0 },
+                bg: Color::Reset,
+                alpha: 1.0,
+                ..Default::default()
+            },
+        );
+        stack.push_layer().set(
+            0,
+            0,
+            Cell {
+                symbol: 'y',
+                fg: Color::Rgb { r: 0, g: 255, b: 0 },
+                bg: Color::Reset,
+                alpha: 1.0,
+                ..Default::default()
+            },
+        );
+
+        let out = stack.composite();
+
+        assert_eq!(out.get(0, 0).symbol, 'y');
+        assert_eq!(out.get(0, 0).fg, Color::Rgb { r: 0, g: 255, b: 0 });
+    }
+
+    #[test]
+    fn non_rgb_colors_fall_back_to_the_lerp_color_target_not_a_true_blend() {
+        let mut stack = LayerStack::new(1, 1);
+        stack.set(
+            0,
+            0,
+            Cell {
+                symbol: 'a',
+                fg: Color::Green,
+                bg: Color::Reset,
+                alpha: 1.0,
+                ..Default::default()
+            },
+        );
+        stack.push_layer().set(
+            0,
+            0,
+            Cell {
+                symbol: 'b',
+                fg: Color::Yellow,
+                bg: Color::Reset,
+                alpha: 0.5,
+                ..Default::default()
+            },
+        );
+
+        let out = stack.composite();
+
+        // Neither Green nor Yellow is Color::Rgb. The accumulator seeds to
+        // Yellow (top layer), then blends against Green (bottom) via
+        // lerp_color, which falls back to returning its `to` argument
+        // outright for non-Rgb pairs (per easing.rs) — so the result is
+        // Green exactly, not a true yellow/green mix. This is a known,
+        // pre-existing lerp_color limitation this spec does not attempt to
+        // fix (see the design doc's Non-goals) — this test documents it,
+        // not hides it.
+        assert_eq!(out.get(0, 0).fg, Color::Green);
+    }
+
+    #[test]
+    fn glyph_selection_uses_the_first_layer_to_reach_half_contribution() {
+        let mut stack = LayerStack::new(1, 1);
+        stack.set(
+            0,
+            0,
+            Cell {
+                symbol: 'a',
+                fg: Color::Reset,
+                bg: Color::Reset,
+                alpha: 1.0,
+                ..Default::default()
+            },
+        );
+        stack.push_layer().set(
+            0,
+            0,
+            Cell {
+                symbol: 'b',
+                fg: Color::Reset,
+                bg: Color::Reset,
+                alpha: 0.5,
+                ..Default::default()
+            },
+        );
+
+        let out = stack.composite();
+        // top layer's contribution is exactly 0.5 * 1.0 = 0.5, which meets
+        // (not just exceeds) the >= 0.5 threshold.
+        assert_eq!(out.get(0, 0).symbol, 'b');
+    }
+
+    #[test]
+    fn glyph_selection_falls_back_to_the_topmost_contributor_when_none_reach_half() {
+        let mut stack = LayerStack::new(1, 1);
+        stack.set(
+            0,
+            0,
+            Cell {
+                symbol: 'a',
+                fg: Color::Reset,
+                bg: Color::Reset,
+                alpha: 0.3,
+                ..Default::default()
+            },
+        );
+        stack.push_layer().set(
+            0,
+            0,
+            Cell {
+                symbol: 'b',
+                fg: Color::Reset,
+                bg: Color::Reset,
+                alpha: 0.3,
+                ..Default::default()
+            },
+        );
+
+        let out = stack.composite();
+        // top ('b') contributes 0.3*1.0=0.3; bottom ('a') then contributes
+        // 0.3*0.7=0.21 — neither reaches the 0.5 threshold individually, so
+        // the rule falls back to "topmost non-transparent contributor", 'b'.
+        assert_eq!(out.get(0, 0).symbol, 'b');
+    }
+
+    #[test]
     fn new_buffer_is_filled_with_default_cells() {
         let buf = Buffer::new(3, 2);
         assert_eq!(buf.width, 3);
@@ -273,6 +583,7 @@ mod tests {
             symbol: 'x',
             fg: crossterm::style::Color::Red,
             bg: crossterm::style::Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         buf.set(1, 1, cell.clone());
@@ -287,6 +598,7 @@ mod tests {
             symbol: 'x',
             fg: Color::Reset,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         next.set(1, 0, cell.clone());
@@ -317,6 +629,7 @@ mod tests {
             symbol: 'x',
             fg: Color::Red,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         stack.push_layer().set(1, 1, cell.clone());
@@ -332,6 +645,7 @@ mod tests {
             symbol: 'y',
             fg: Color::Reset,
             bg: Color::Red,
+            alpha: 1.0,
             ..Default::default()
         };
         stack.set(0, 1, cell.clone()); // DerefMut -> base layer, no layer_mut(0) needed
@@ -347,6 +661,7 @@ mod tests {
             symbol: 'z',
             fg: Color::Green,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         stack.set(1, 0, cell.clone());
@@ -366,18 +681,21 @@ mod tests {
             symbol: 'a',
             fg: Color::Reset,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         let b = Cell {
             symbol: 'b',
             fg: Color::Reset,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         let c = Cell {
             symbol: 'c',
             fg: Color::Reset,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
 
@@ -399,12 +717,14 @@ mod tests {
             symbol: 'a',
             fg: Color::Reset,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         let top_cell = Cell {
             symbol: 'b',
             fg: Color::Blue,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         stack.set(0, 0, base_cell.clone()); // base layer via DerefMut
@@ -445,6 +765,7 @@ mod tests {
             symbol: 'q',
             fg: Color::Reset,
             bg: Color::Reset,
+            alpha: 1.0,
             ..Default::default()
         };
         stack.push_layer().set(0, 0, cell.clone());
