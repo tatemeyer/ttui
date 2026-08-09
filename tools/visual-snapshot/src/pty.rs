@@ -151,13 +151,75 @@ impl Session {
     }
 
     /// Terminates the child process. Safe to call even after the child
-    /// has already exited on its own. `self.master` is intentionally
-    /// unused here — it exists as a `Session` field solely to stay
-    /// alive (and keep the pseudo-console open) for as long as
-    /// `Session` itself does; ownership does that on its own, no
-    /// explicit method call needed.
+    /// has already exited on its own: verified from the 0.9.0
+    /// `portable-pty` source (`src/win/mod.rs`, `WinChild::kill`) that
+    /// this project's Windows ConPTY backend already collapses a failed
+    /// `TerminateProcess` call to `Ok(())` internally, so there is no
+    /// "already exited" failure case for this method to special-case.
+    /// The underlying `Result` is still propagated (rather than
+    /// blanket-ignored) so a future backend change that *can* report a
+    /// genuine termination failure isn't silently discarded here.
     pub fn kill(&mut self) -> Result<(), PtyError> {
-        let _ = self.child.kill();
+        self.child.kill()?;
         Ok(())
+    }
+}
+
+impl Drop for Session {
+    /// Ensures the child process doesn't outlive its `Session` even if
+    /// the caller never calls `kill()` explicitly (as in ordinary
+    /// scope-exit cleanup). Delegates to `kill()`, which is documented
+    /// safe to call on an already-exited child; the `Result` can't be
+    /// propagated out of `drop`, so it's discarded here specifically
+    /// (not the blanket-ignore pattern flagged for the old `kill()`
+    /// body — this is the one place ignoring it is unavoidable).
+    fn drop(&mut self) {
+        let _ = self.kill();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Instant;
+
+    fn echo_key_binary() -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("../../target/debug/examples/echo_key");
+        if cfg!(windows) {
+            path.set_extension("exe");
+        }
+        path
+    }
+
+    /// Guards finding #1 from the Task 8 review: cleanup must be a real,
+    /// verified effect, not an assumed side effect of `master`'s Drop
+    /// impl. Spawns a real child, confirms it's alive, kills it, then
+    /// polls `Child::try_wait` (the crate's own liveness check) until it
+    /// reports the process gone, bounded so a regression fails fast
+    /// instead of hanging.
+    #[test]
+    fn kill_terminates_a_still_running_child_within_a_bounded_time() {
+        let mut session = Session::spawn(&echo_key_binary(), 5, 40).unwrap();
+        // The fixture blocks on event::read() until killed or sent
+        // input, so it should still be alive immediately after spawn.
+        assert!(
+            session.child.try_wait().unwrap().is_none(),
+            "expected the fixture to still be running before kill()"
+        );
+
+        session.kill().unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if session.child.try_wait().unwrap().is_some() {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "child was not reported terminated within 5s of kill()"
+            );
+            thread::sleep(Duration::from_millis(50));
+        }
     }
 }
