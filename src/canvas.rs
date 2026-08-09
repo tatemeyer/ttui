@@ -81,7 +81,7 @@ impl Canvas {
     pub fn blit(&self, buf: &mut Buffer, x: u16, y: u16) {
         match self.mode {
             CanvasMode::HalfBlock => self.blit_half_block(buf, x, y),
-            CanvasMode::Braille => { /* added in Task 3 */ }
+            CanvasMode::Braille => self.blit_braille(buf, x, y),
         }
     }
 
@@ -122,6 +122,97 @@ impl Canvas {
                 if bx < buf.width && by < buf.height {
                     buf.set(bx, by, cell);
                 }
+            }
+        }
+    }
+
+    fn blit_braille(&self, buf: &mut Buffer, ox: u16, oy: u16) {
+        // Braille dot bit layout (Unicode "Braille Patterns" block,
+        // U+2800): bit0/bit3 = row0 col0/col1, bit1/bit4 = row1,
+        // bit2/bit5 = row2, bit6/bit7 = row3.
+        const DOT_BITS: [[u8; 2]; 4] = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]];
+        for cy in 0..self.height {
+            for cx in 0..self.width {
+                let mut mask: u8 = 0;
+                let mut color: Option<Color> = None;
+                for row in 0..4u16 {
+                    for col in 0..2u16 {
+                        let px = cx * 2 + col;
+                        let py = cy * 4 + row;
+                        if let Some(c) = self.grid[self.index(px, py)] {
+                            mask |= DOT_BITS[row as usize][col as usize];
+                            color = Some(c); // last-write-wins per cell
+                        }
+                    }
+                }
+                if mask == 0 {
+                    continue; // transparent
+                }
+                let symbol = char::from_u32(0x2800 + mask as u32).unwrap();
+                let bx = ox + cx;
+                let by = oy + cy;
+                if bx < buf.width && by < buf.height {
+                    buf.set(
+                        bx,
+                        by,
+                        Cell {
+                            symbol,
+                            fg: color.unwrap(),
+                            bg: Color::Reset,
+                            style: CellStyle::default(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    /// Draws a straight line between two subpixel points (Bresenham).
+    pub fn line(&mut self, x0: u16, y0: u16, x1: u16, y1: u16, color: Color) {
+        let (mut x0, mut y0) = (x0 as i32, y0 as i32);
+        let (x1, y1) = (x1 as i32, y1 as i32);
+        let dx = (x1 - x0).abs();
+        let dy = -(y1 - y0).abs();
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let sy = if y0 < y1 { 1 } else { -1 };
+        let mut err = dx + dy;
+        loop {
+            if x0 >= 0 && y0 >= 0 {
+                self.set_pixel(x0 as u16, y0 as u16, color);
+            }
+            if x0 == x1 && y0 == y1 {
+                break;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x0 += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y0 += sy;
+            }
+        }
+    }
+
+    /// Draws a rectangle outline with top-left at `(x, y)` (subpixel
+    /// coordinates).
+    pub fn rect(&mut self, x: u16, y: u16, w: u16, h: u16, color: Color) {
+        if w == 0 || h == 0 {
+            return;
+        }
+        self.line(x, y, x + w - 1, y, color);
+        self.line(x, y + h - 1, x + w - 1, y + h - 1, color);
+        self.line(x, y, x, y + h - 1, color);
+        self.line(x + w - 1, y, x + w - 1, y + h - 1, color);
+    }
+
+    /// Fills a solid rectangle with top-left at `(x, y)` (subpixel
+    /// coordinates).
+    pub fn fill_rect(&mut self, x: u16, y: u16, w: u16, h: u16, color: Color) {
+        for row in y..y + h {
+            for col in x..x + w {
+                self.set_pixel(col, row, color);
             }
         }
     }
