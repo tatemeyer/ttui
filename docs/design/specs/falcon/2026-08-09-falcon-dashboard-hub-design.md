@@ -268,7 +268,10 @@ including watching the full boot sequence play once at startup.
   compositing) reuses what already exists in `src/`. `CockpitPanel` is
   a new *widget*, not a new primitive — same category as
   `SmashBorder`/`Dial`/`Roundel`.
-- **No audio** — not a TTUI capability.
+- **No audio** — `smash_crabs` shows TTUI apps *can* opt into sound via
+  `ttui::audio::AudioSink`, but the vision doc never called for it and
+  this Arc doesn't add it; a purely deliberate exclusion, not a
+  framework limitation.
 - **No new dependency.**
 
 ## Verification
