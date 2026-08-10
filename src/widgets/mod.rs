@@ -6,6 +6,8 @@
 pub mod analog_toggle;
 /// Bordered container, with an optional outward second border ring.
 pub mod block;
+/// Thick, riveted, deliberately-asymmetric double-line border.
+pub mod cockpit_panel;
 /// Percent display that shifts white/yellow/red as it climbs.
 pub mod damage_meter;
 /// Circular item-select dial.
