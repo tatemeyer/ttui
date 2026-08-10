@@ -127,3 +127,35 @@ fn capture_frame_stays_fast_when_output_arrives_quickly() {
         "expected a fast-quiescing capture to return well under MAX_SETTLE_WAIT, took {elapsed:?}"
     );
 }
+
+/// Guards a Task 12 second-round review finding: an earlier version of
+/// the fix above compared each poll only against the screen's content
+/// from *before* `capture_frame` was even called, rather than against
+/// the immediately preceding poll taken during the same call. That
+/// meant a screen that was already fully drawn and stable *before* the
+/// call started — an idle wait step, a key with no visible effect,
+/// capturing a static screen twice — never saw a "change" to react to,
+/// so it could never be recognized as quiescent and paid the full
+/// `MAX_SETTLE_WAIT` (2s) every time, even though nothing was actually
+/// still drawing. This is the common case, not a rare edge case. This
+/// test drives exactly that: capture once to let the fixture's echoed
+/// "a" settle, then capture again immediately with nothing further
+/// happening, and asserts the second call returns fast rather than
+/// paying the full bound.
+#[test]
+fn capture_frame_is_fast_when_the_screen_is_already_stable() {
+    let mut session = Session::spawn(&echo_key_binary(), 5, 40).unwrap();
+    let _ = session.capture_frame().unwrap(); // initial blank frame
+    session.send(b"a").unwrap();
+    let _ = session.capture_frame().unwrap(); // let the echoed "a" settle
+
+    let start = std::time::Instant::now();
+    let _ = session.capture_frame().unwrap(); // nothing new happened
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(200),
+        "expected an already-stable screen to be recognized as quiescent almost \
+         immediately, not pay the full MAX_SETTLE_WAIT; took {elapsed:?}"
+    );
+}

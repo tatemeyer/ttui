@@ -114,6 +114,11 @@ pub struct Session {
     parser: vt100::Parser,
     writer: Arc<Mutex<Box<dyn std::io::Write + Send>>>,
     output: Arc<Mutex<Vec<u8>>>,
+    // Whether `capture_frame` has completed at least once for this
+    // session yet — see `capture_frame`'s doc comment for why the very
+    // first call uses a deliberately different (more patient)
+    // quiescence strategy than every call after it.
+    first_capture_done: bool,
     // Never read directly — held purely so the pseudo-console (and the
     // reader/writer handles derived from it) stays open for as long as
     // `Session` does. Dropping it early would tear down the pty out
@@ -211,6 +216,7 @@ impl Session {
             parser: vt100::Parser::new(rows, cols, 0),
             writer,
             output,
+            first_capture_done: false,
             master: pair.master,
             child,
         })
@@ -219,63 +225,163 @@ impl Session {
     /// Waits for the child's current draw to quiesce, then rasterizes
     /// the current screen state.
     ///
+    /// A session's very first capture uses a different (more patient)
+    /// quiescence strategy than every capture after it —
+    /// `wait_for_first_output` vs `wait_for_further_output` — because
+    /// the two calls face genuinely different, *irreconcilable*
+    /// uncertainty:
+    ///
+    /// - On the first capture, the screen is typically still blank (or
+    ///   whatever the child wrote in its startup handshake — see
+    ///   `Session::spawn`'s DSR handling), and there is no way to tell,
+    ///   from the byte stream alone, "this app never draws anything
+    ///   without input" (`echo_key`'s fixture; the common case
+    ///   `spawning_and_capturing_one_frame_shows_the_process_alive`
+    ///   exercises) apart from "this app is still cold-starting and
+    ///   will draw something real in a moment" (a real TUI example
+    ///   under OS scheduling variance — the original Task 12 bug
+    ///   against `tardis`; `capture_frame_waits_past_the_old_fixed_
+    ///   settle_delay_for_a_slow_first_draw` exercises this with a
+    ///   synthetic 500ms-delayed fixture). Both scenarios produce the
+    ///   *exact same observable byte sequence* — silence — for as long
+    ///   as the silence lasts; no quiescence heuristic can distinguish
+    ///   "silent forever" from "silent for another 400ms" without
+    ///   either waiting it out or guessing wrong. Given that, the first
+    ///   capture stays patient up to the full `MAX_SETTLE_WAIT`,
+    ///   because guessing wrong here means silently returning a blank
+    ///   frame for a real app that *was* about to draw — the original,
+    ///   more severe bug this whole fix exists to close. This does mean
+    ///   a session whose child never draws without input (like a fresh
+    ///   `echo_key` session) pays the full `MAX_SETTLE_WAIT` on its
+    ///   first capture; that cost is deliberate, not an oversight.
+    /// - Every capture after the first is on an already-running,
+    ///   already-warmed-up process — cold-start variance no longer
+    ///   applies. Here, a screen that isn't currently changing is far
+    ///   more likely to be genuinely done (an idle wait step, a key
+    ///   with no visible effect, a static screen captured twice — see
+    ///   the Task 12 flakiness fix report's Critical finding) than
+    ///   mid-cold-start, so this path returns fast once two consecutive
+    ///   polls agree, same as a screen that's still actively changing
+    ///   returns once it stops.
+    pub fn capture_frame(&mut self) -> Result<image::RgbaImage, PtyError> {
+        let deadline = Instant::now() + MAX_SETTLE_WAIT;
+        if self.first_capture_done {
+            self.wait_for_further_output(deadline);
+        } else {
+            self.wait_for_first_output(deadline);
+            self.first_capture_done = true;
+        }
+        Ok(render::render_screen(self.parser.screen())?)
+    }
+
+    /// Quiescence strategy for every capture after a session's first —
+    /// see `capture_frame`'s doc comment for why this differs from
+    /// `wait_for_first_output`.
+    ///
     /// Polls every `POLL_INTERVAL`, feeding any newly arrived bytes
     /// into the parser and comparing the parser's rendered *screen
-    /// contents* (`vt100::Screen::contents`, plain text only) against
-    /// the previous poll — not raw byte counts. That distinction
-    /// matters: a real terminal app's startup emits several escape
-    /// sequences (input-mode negotiation, focus-event enabling, window
-    /// title, cursor-visibility toggles — all observed in practice from
+    /// contents* (`vt100::Screen::contents`, plain text only — see the
+    /// color/attribute caveat below) between two consecutive polls
+    /// *taken during this call*. Once two consecutive polls agree, the
+    /// draw is treated as complete. If polls never agree within
+    /// `MAX_SETTLE_WAIT` (a draw that's still actively changing right
+    /// up to the deadline), it gives up and returns whatever's there as
+    /// a bounded fallback.
+    ///
+    /// Comparing rendered text instead of raw bytes matters: a real
+    /// terminal app's startup emits several escape sequences
+    /// (input-mode negotiation, focus-event enabling, window title,
+    /// cursor-visibility toggles — all observed in practice from
     /// `crossterm::terminal::enable_raw_mode` alone, on top of the DSR
     /// handshake `Session::spawn` already answers) that are genuine
     /// output but never change what's visibly on screen. A byte-count
     /// or raw-buffer-length signal treats that startup burst as
     /// "activity", then sees silence while the app does its actual
-    /// first draw, and quiesces on exactly the wrong moment — this was
-    /// caught by `capture_frame_waits_past_the_old_fixed_settle_delay_
-    /// for_a_slow_first_draw` failing under an earlier byte-counting
-    /// version of this fix (see the Task 12 flakiness fix report).
-    /// Comparing rendered contents instead means only changes that
-    /// `render_screen` would actually show ever count as "still
-    /// drawing", so non-visual setup noise can't fool quiescence no
-    /// matter what escape sequences a given app's terminal library
-    /// happens to emit.
+    /// first draw, and quiesces on exactly the wrong moment — caught by
+    /// `capture_frame_waits_past_the_old_fixed_settle_delay_for_a_slow_
+    /// first_draw` failing under an earlier byte-counting version of
+    /// this fix (see the Task 12 flakiness fix report). Comparing
+    /// rendered contents means only changes that `render_screen` would
+    /// actually show ever count as "still drawing", so non-visual setup
+    /// noise can't fool quiescence no matter what escape sequences a
+    /// given app's terminal library happens to emit.
     ///
-    /// Once the screen has changed at least once and then holds steady
-    /// for one full poll interval, the draw is treated as complete. If
-    /// nothing ever changes within `MAX_SETTLE_WAIT`, or a draw never
-    /// quiesces, it gives up and returns whatever's there — correct for
-    /// a child that legitimately has nothing to draw yet (e.g. blocked
-    /// on input), and a bounded fallback for one that's simply slower
-    /// than usual.
-    pub fn capture_frame(&mut self) -> Result<image::RgbaImage, PtyError> {
-        let deadline = Instant::now() + MAX_SETTLE_WAIT;
+    /// Caveat: this comparison is plain text only, so a redraw that
+    /// changes *only* color/attributes — e.g. a color transition or
+    /// cursor blink with no text change — won't register as "changed"
+    /// and would hit the full `MAX_SETTLE_WAIT` rather than being
+    /// detected as quiescent early. The final rasterized frame is still
+    /// correct either way, since `render_screen` reads the full
+    /// color/attribute state regardless of what quiescence-detection
+    /// compared — this only affects how quickly a *purely stylistic*
+    /// redraw is recognized as finished, not what gets rendered.
+    fn wait_for_further_output(&mut self, deadline: Instant) {
+        let mut previous_poll_contents: Option<String> = None;
+        loop {
+            thread::sleep(POLL_INTERVAL);
+            self.drain_pending_into_parser();
+            let current_contents = self.parser.screen().contents();
+            if previous_poll_contents.as_ref() == Some(&current_contents) {
+                // This poll matches the immediately preceding one
+                // (taken during this same call): the screen has held
+                // steady for a full poll interval, so the current draw
+                // is very likely finished.
+                break;
+            }
+            previous_poll_contents = Some(current_contents);
+            if Instant::now() >= deadline {
+                break;
+            }
+        }
+    }
+
+    /// Quiescence strategy for a session's very first capture — see
+    /// `capture_frame`'s doc comment for why this differs from
+    /// `wait_for_further_output`.
+    ///
+    /// Only ever declares the draw complete after actually observing
+    /// the rendered screen contents change at least once *during this
+    /// call* (relative to whatever the screen looked like at call
+    /// entry) and then hold steady for a full poll interval. If the
+    /// screen never changes at all, it waits out the entire
+    /// `MAX_SETTLE_WAIT` rather than risk mistaking "still starting up"
+    /// for "done" — seeing zero difference between those two states is
+    /// exactly the ambiguity this method exists to resolve safely, in
+    /// exchange for potentially waiting the full bound when a child
+    /// genuinely never draws without input.
+    fn wait_for_first_output(&mut self, deadline: Instant) {
         let mut last_contents = self.parser.screen().contents();
         let mut changed_at_least_once = false;
         loop {
             thread::sleep(POLL_INTERVAL);
-            let pending: Vec<u8> = {
-                let mut buf = self.output.lock().unwrap();
-                std::mem::take(&mut *buf)
-            };
-            if !pending.is_empty() {
-                self.parser.process(&pending);
-            }
+            self.drain_pending_into_parser();
             let current_contents = self.parser.screen().contents();
             if current_contents != last_contents {
                 last_contents = current_contents;
                 changed_at_least_once = true;
             } else if changed_at_least_once {
-                // The screen changed earlier and hasn't changed for a
-                // full poll interval: the child's current draw is very
-                // likely finished.
+                // The screen changed earlier in this call and hasn't
+                // changed for a full poll interval: the child's first
+                // draw is very likely finished.
                 break;
             }
             if Instant::now() >= deadline {
                 break;
             }
         }
-        Ok(render::render_screen(self.parser.screen())?)
+    }
+
+    /// Drains whatever's arrived in the shared output buffer since the
+    /// last drain and feeds it into the parser. Shared by both
+    /// `capture_frame` quiescence strategies.
+    fn drain_pending_into_parser(&mut self) {
+        let pending: Vec<u8> = {
+            let mut buf = self.output.lock().unwrap();
+            std::mem::take(&mut *buf)
+        };
+        if !pending.is_empty() {
+            self.parser.process(&pending);
+        }
     }
 
     /// Writes raw bytes into the pseudo-console's input handle.
