@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo build --verbose
+      - run: cargo build --workspace --verbose
         if: hashFiles('Cargo.toml') != ''
 
   test:
@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
-      - run: cargo test --verbose
+      - run: cargo test --workspace --verbose
         if: hashFiles('Cargo.toml') != ''
 
   clippy:
@@ -32,7 +32,7 @@ jobs:
         with:
           components: clippy
       - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings
         if: hashFiles('Cargo.toml') != ''
 
   fmt:
