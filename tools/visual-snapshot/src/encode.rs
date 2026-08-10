@@ -41,12 +41,20 @@ pub fn write_png(img: &RgbaImage, path: &Path) -> Result<(), EncodeError> {
     Ok(())
 }
 
+/// Floor applied to a GIF frame's display delay: some viewers treat a 0ms
+/// delay oddly (skipping the frame entirely, or racing through it faster
+/// than intended), and the initial frame's recorded duration is always
+/// `Duration::ZERO` (it's captured before any step runs, so there's no
+/// step duration to attach). This only affects the encoded GIF's timing
+/// metadata, not the `Duration` values `run_script` returns.
+const MIN_GIF_FRAME_DELAY: Duration = Duration::from_millis(20);
+
 /// Writes multiple frames as an animated GIF, each held for its paired duration.
 pub fn write_gif(frames: &[(RgbaImage, Duration)], path: &Path) -> Result<(), EncodeError> {
     let file = File::create(path)?;
     let mut encoder = GifEncoder::new(file);
     for (img, duration) in frames {
-        let delay = Delay::from_saturating_duration(*duration);
+        let delay = Delay::from_saturating_duration((*duration).max(MIN_GIF_FRAME_DELAY));
         let frame = Frame::from_parts(img.clone(), 0, 0, delay);
         encoder.encode_frame(frame)?;
     }
@@ -81,8 +89,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("seq.gif");
         let frames = vec![
-            (solid(2, 2, Rgba([255, 0, 0, 255])), Duration::from_millis(16)),
-            (solid(2, 2, Rgba([0, 255, 0, 255])), Duration::from_millis(150)),
+            (
+                solid(2, 2, Rgba([255, 0, 0, 255])),
+                Duration::from_millis(16),
+            ),
+            (
+                solid(2, 2, Rgba([0, 255, 0, 255])),
+                Duration::from_millis(150),
+            ),
         ];
 
         write_gif(&frames, &path).unwrap();

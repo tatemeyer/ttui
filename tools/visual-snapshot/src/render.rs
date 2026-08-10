@@ -42,6 +42,15 @@ pub fn render_screen(screen: &vt100::Screen) -> Result<RgbaImage, RenderError> {
             let cell = screen.cell(row, col);
             let (ch, fg, bg, bold, underline, inverse) = match cell {
                 Some(c) => (
+                    // Known caveat: this takes only the cell's first char,
+                    // so a combining mark stacked onto a base character
+                    // (rare in TTUI's own glyph set, but not impossible in
+                    // arbitrary terminal output) is silently dropped rather
+                    // than composed, and a double-width glyph's trailing
+                    // continuation cell (which `vt100` represents as an
+                    // empty-string cell) renders as blank rather than
+                    // widened. Not a known issue in practice for TTUI's
+                    // current widgets, which draw single-width glyphs.
                     c.contents().chars().next().unwrap_or(' '),
                     color::to_rgb(c.fgcolor()),
                     bg_to_rgb(c.bgcolor()),
