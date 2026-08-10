@@ -36,6 +36,11 @@ impl GlitchBuffer {
         }
     }
 
+    /// Ends the glitch immediately, regardless of remaining duration.
+    pub fn clear(&mut self) {
+        self.transition = None;
+    }
+
     /// Whether the glitch is currently decaying (i.e. should render).
     pub fn is_active(&self) -> bool {
         self.transition.is_some()
@@ -118,6 +123,15 @@ mod tests {
         let mut buf = Buffer::new(3, 3);
         gb.render(area(), Color::Red, 0, &mut buf);
         assert_eq!(*buf.get(1, 1), Cell::default());
+    }
+
+    #[test]
+    fn clear_deactivates_immediately_regardless_of_remaining_duration() {
+        let mut gb = GlitchBuffer::new();
+        gb.trigger(Duration::from_millis(600));
+        assert!(gb.is_active());
+        gb.clear();
+        assert!(!gb.is_active());
     }
 
     #[test]
