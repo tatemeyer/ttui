@@ -3,11 +3,17 @@ use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::App;
 use ttui::buffer::{Cell, LayerStack};
+use ttui::glitch::GlitchBuffer;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
+use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::{BorderSet, Theme};
 use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS, matches every other app
+const IDLE_FLICKER_PERIOD_TICKS: u64 = 90; // ~3s at 33ms/tick, per panel
+const IDLE_FLICKER_DURATION_MS: u64 = 600;
+const WHACK_SPARK_COUNT: usize = 6;
+const WHACK_SPARK_LIFETIME_MS: u64 = 300;
 
 #[derive(Clone, Copy, PartialEq)]
 enum PanelKind {
@@ -65,7 +71,17 @@ fn falcon_theme() -> Theme {
 pub(crate) struct Falcon {
     theme: Theme,
     focused: usize,
-    // Task 4 adds `last_area`/`glitches`/`particles`/`tick_count` here.
+    // `App::view` takes `&self`, so this records the last-seen
+    // terminal area through a `Cell` (interior mutability) rather
+    // than a plain field, so `update`'s WHACK handler below can read
+    // the focused panel's current on-screen position. Referenced by
+    // full path (`std::cell::Cell`) rather than a `use` import,
+    // since `ttui::buffer::Cell` is already imported under the plain
+    // name `Cell` and the two would collide.
+    last_area: std::cell::Cell<Rect>,
+    glitches: [GlitchBuffer; 3],
+    particles: ParticleSystem,
+    tick_count: u64,
     // Task 5 adds `booting` here.
     quit: bool,
 }
@@ -75,6 +91,19 @@ impl Falcon {
         Falcon {
             theme: falcon_theme(),
             focused: 0,
+            last_area: std::cell::Cell::new(Rect {
+                x: 0,
+                y: 0,
+                width: 80,
+                height: 24,
+            }),
+            glitches: [
+                GlitchBuffer::new(),
+                GlitchBuffer::new(),
+                GlitchBuffer::new(),
+            ],
+            particles: ParticleSystem::new(),
+            tick_count: 0,
             quit: false,
         }
     }
@@ -114,10 +143,17 @@ impl Falcon {
         }
 
         let slots = Self::panel_slots(area);
+        let mut panel_inners = [Rect {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+        }; 3];
         for (i, kind) in PANELS.iter().enumerate() {
             let focused = i == self.focused;
             let panel_box = Self::panel_box(slots[i], focused);
             let inner = CockpitPanel::new(focused).render(panel_box, &self.theme, buf);
+            panel_inners[i] = inner;
             Text::new(kind.name()).render(inner, buf);
             if inner.height > 1 {
                 let hint = Rect {
@@ -129,6 +165,14 @@ impl Falcon {
                 Text::new("(not yet built)").render(hint, buf);
             }
         }
+
+        buf.push_layer();
+        for (i, gb) in self.glitches.iter().enumerate() {
+            if gb.is_active() {
+                gb.render(panel_inners[i], self.theme.tertiary, self.tick_count, buf);
+            }
+        }
+        self.particles.render(buf);
     }
 }
 
@@ -145,11 +189,34 @@ impl App for Falcon {
         match k.code {
             KeyCode::Tab => self.focused = (self.focused + 1) % PANELS.len(),
             KeyCode::BackTab => self.focused = (self.focused + PANELS.len() - 1) % PANELS.len(),
+            KeyCode::Char(' ') => {
+                if self.glitches[self.focused].is_active() {
+                    self.glitches[self.focused].clear();
+                    let slots = Self::panel_slots(self.last_area.get());
+                    let panel_box = Self::panel_box(slots[self.focused], true);
+                    let cx = panel_box.x as f32 + panel_box.width as f32 / 2.0;
+                    let cy = panel_box.y as f32 + panel_box.height as f32 / 2.0;
+                    for i in 0..WHACK_SPARK_COUNT {
+                        let angle = i as f32 * std::f32::consts::TAU / WHACK_SPARK_COUNT as f32;
+                        self.particles.spawn(Particle {
+                            x: cx,
+                            y: cy,
+                            vx: angle.cos() * 6.0,
+                            vy: angle.sin() * 3.0,
+                            symbol: '*',
+                            color: self.theme.accent,
+                            lifetime: Duration::from_millis(WHACK_SPARK_LIFETIME_MS),
+                            age: Duration::ZERO,
+                        });
+                    }
+                }
+            }
             _ => {}
         }
     }
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
+        self.last_area.set(area);
         self.render_dashboard(area, buf);
     }
 
@@ -159,5 +226,16 @@ impl App for Falcon {
 
     fn tick_rate(&self) -> Option<Duration> {
         Some(TICK_INTERVAL)
+    }
+
+    fn on_tick(&mut self, elapsed: Duration) {
+        self.tick_count += 1;
+        for (i, gb) in self.glitches.iter_mut().enumerate() {
+            gb.tick(elapsed);
+            if !gb.is_active() && self.tick_count % IDLE_FLICKER_PERIOD_TICKS == i as u64 * 30 {
+                gb.trigger(Duration::from_millis(IDLE_FLICKER_DURATION_MS));
+            }
+        }
+        self.particles.update(elapsed);
     }
 }
