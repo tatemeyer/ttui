@@ -77,9 +77,9 @@ cover at all. Some glyphs TTUI's examples draw are still unmapped by
 either path and produce a **hard error** naming the codepoint — no
 image is written — rather than a silently blank or wrong glyph. As of
 this writing this affects `EnergyCore`'s charged-state dingbat star
-(`✦`), `DamageMeter`'s arrow hit-indicators (`←`/`→`), several
-decorative glyphs in the `launcher` example, and `smash_crabs`'s
-explosion emoji (`💥`). See
+(`✦`, also used separately by `launcher`'s starfield), several
+decorative glyphs in the `launcher` example, `tardis`'s psychic relay
+log (em dash), and `smash_crabs`'s explosion emoji (`💥`). See
 `docs/design/specs/core/2026-08-09-visual-snapshot-tooling-design.md`'s
 "Resolved during planning" section for the current, complete gap list,
 and `.claude/rules/development-conventions.md`'s "Visual review"

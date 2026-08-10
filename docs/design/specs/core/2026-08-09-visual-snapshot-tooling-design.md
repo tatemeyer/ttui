@@ -249,17 +249,21 @@ before writing the implementation plan:
   non-ASCII glyph usage that `font8x8` does not cover, as of this
   writing:
   - **`✦` U+2726** (dingbat star) — `EnergyCore`'s charged state
-    (`src/widgets/energy_core.rs`).
+    (`src/widgets/energy_core.rs`) and, separately, the starfield
+    decoration in `examples/launcher/main.rs`.
   - **`►` U+25BA, `◄` U+25C4, `◆` U+25C6, `◈` U+25C8, `◉` U+25C9,
     `○` U+25CB, `●` U+25CF** (geometric shapes) — used across
     `examples/launcher/portal.rs`, `examples/launcher/nexus.rs`,
     `examples/omnitrix/fasttrack.rs`, `examples/omnitrix/upgrade.rs`,
     and `examples/tardis/star_charts.rs`.
   - **`←` U+2190, `→` U+2192** (arrows) — used by
-    `examples/launcher/nexus.rs` and, notably, by a `src/widgets/`
-    file: `src/widgets/damage_meter.rs`'s hit-direction indicator.
-    `DamageMeter` is therefore also affected by this gap, not only
-    `EnergyCore` as originally scoped.
+    `examples/launcher/nexus.rs`. (`src/widgets/damage_meter.rs`'s own
+    `←`/`→` are prose inside a doc comment, not rendered glyphs —
+    `DamageMeter` itself only draws digits and `%`, and is not
+    affected by this gap; an earlier draft of this list conflated the
+    two.)
+  - **`—` U+2014** (em dash) — `examples/tardis/tardis.rs`'s psychic
+    relay log.
   - **`💥` U+1F4A5** (emoji, outside the Basic Multilingual Plane) —
     `examples/smash_crabs/smash_crabs.rs`'s explosion effect.
 
@@ -285,9 +289,10 @@ before writing the implementation plan:
   glyph.rs`) decodes that same bit layout into an 8x8 pixel bitmap
   (each dot scaled to a 4x2-pixel block), checked ahead of the
   `font8x8` table lookups in `glyph_for`. `TimeRotor` is fully
-  renderable by this tool as of this fix; `EnergyCore` and
-  `DamageMeter` are not (dingbat star and arrows respectively, per the
-  gaps listed above).
+  renderable by this tool as of this fix; `EnergyCore`, `launcher`,
+  `tardis`'s relay log, `smash_crabs`, and the geometric-shape/arrow
+  glyphs above are not (per the gaps listed above), and `DamageMeter`
+  is unaffected by any of them.
 
 ## Sources consulted
 
