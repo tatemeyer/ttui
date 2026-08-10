@@ -7,9 +7,14 @@ use ttui::glitch::GlitchBuffer;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::{BorderSet, Theme};
+use ttui::transition::Transition;
 use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
 
+#[path = "boot.rs"]
+mod boot;
+
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS, matches every other app
+const BOOT_TOTAL_MS: u64 = 1400;
 const IDLE_FLICKER_PERIOD_TICKS: u64 = 90; // ~3s at 33ms/tick, per panel
 const IDLE_FLICKER_DURATION_MS: u64 = 600;
 const WHACK_SPARK_COUNT: usize = 6;
@@ -82,7 +87,7 @@ pub(crate) struct Falcon {
     glitches: [GlitchBuffer; 3],
     particles: ParticleSystem,
     tick_count: u64,
-    // Task 5 adds `booting` here.
+    booting: Option<Transition>,
     quit: bool,
 }
 
@@ -104,6 +109,7 @@ impl Falcon {
             ],
             particles: ParticleSystem::new(),
             tick_count: 0,
+            booting: Some(Transition::start(Duration::from_millis(BOOT_TOTAL_MS))),
             quit: false,
         }
     }
@@ -186,6 +192,9 @@ impl App for Falcon {
             self.quit = true;
             return;
         }
+        if self.booting.is_some() {
+            return;
+        }
         match k.code {
             KeyCode::Tab => self.focused = (self.focused + 1) % PANELS.len(),
             KeyCode::BackTab => self.focused = (self.focused + PANELS.len() - 1) % PANELS.len(),
@@ -217,6 +226,10 @@ impl App for Falcon {
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
         self.last_area.set(area);
+        if let Some(t) = &self.booting {
+            self.render_boot(area, t.progress(), buf);
+            return;
+        }
         self.render_dashboard(area, buf);
     }
 
@@ -229,6 +242,12 @@ impl App for Falcon {
     }
 
     fn on_tick(&mut self, elapsed: Duration) {
+        if let Some(t) = &mut self.booting {
+            t.tick(elapsed);
+            if t.is_complete() {
+                self.booting = None;
+            }
+        }
         self.tick_count += 1;
         for (i, gb) in self.glitches.iter_mut().enumerate() {
             gb.tick(elapsed);
