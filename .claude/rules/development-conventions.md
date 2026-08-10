@@ -70,7 +70,53 @@ Any task or final code review touching rendering-affecting code
 affected example(s) and `Read` the resulting PNG/GIF before approving —
 not optional, and "reasoned through it, no PTY available" is no longer
 an acceptable substitute now that this tool exists. See
-`docs/design/specs/core/2026-08-09-visual-snapshot-tooling-design.md`.
+`docs/design/specs/core/2026-08-09-visual-snapshot-tooling-design.md`
+and `tools/visual-snapshot/README.md` for the full command reference.
+
+**Running it:**
+
+```
+cargo run -p visual-snapshot -- --example <name> --size <cols>x<rows> --script <path.json> --out <path>
+```
+
+- `<name>` is an example binary name (`launcher`, `omnitrix`, `tardis`,
+  `smash_crabs`) — it's built automatically via `cargo build --example`.
+- `--script` points to a JSON file: a flat array of steps, each either
+  `{"wait_ms": N}` (sleep `N` real milliseconds — this is what actually
+  drives an app's `tick_rate()`-based animation) or `{"key": "Right"}`
+  (send a named key — arrows, `Enter`, `Esc`, `Tab`, single characters,
+  `Ctrl+<letter>`; see `tools/visual-snapshot/src/keys.rs` for the full
+  list). Example:
+  ```json
+  [{"wait_ms": 300}, {"key": "Right"}, {"wait_ms": 150}, {"key": "Enter"}]
+  ```
+- `--out`'s extension must match what the script actually produces: a
+  script with zero steps yields exactly one frame and requires `.png`;
+  any script with 1+ steps yields 2+ frames (an initial frame plus one
+  per step) and requires `.gif`. A mismatched extension is a hard
+  error naming the actual frame count and the extension it expects —
+  it will not silently write GIF bytes to a `.png`-named path or vice
+  versa.
+
+**Known glyph-coverage limitation:** the rasterizer (`font8x8`, plus an
+algorithmic Braille Patterns renderer added for `TimeRotor`) does not
+cover every glyph TTUI's examples draw, and hard-errors naming the
+unmapped codepoint rather than silently skipping it. As of this
+writing, this affects: `EnergyCore`'s charged-state dingbat star (`✦`),
+`DamageMeter`'s arrow hit-indicators (`←`/`→`), `launcher`'s
+portal/nexus decorative glyphs (geometric shapes and arrows), and
+`smash_crabs`'s explosion emoji (`💥`) — see the design spec's
+"Resolved during planning" section for the full, current gap list.
+**If the tool hard-errors naming an unmapped glyph** while doing a
+mandated review, that is not a reason to block the review or skip
+visual review of everything else that *is* renderable: note the
+specific error (codepoint and which widget/example hit it) in the PR
+template's Verification section, and reason about that specific
+region of the change from code reading alone, the way this whole
+review convention worked before this tool existed. This is a known,
+tracked limitation (not yet in scope to close for every glyph), not an
+escape hatch to reach for opportunistically — everything renderable in
+the affected example should still be captured and reviewed normally.
 
 Record which snapshots were reviewed in the PR template's existing
 freeform Verification section

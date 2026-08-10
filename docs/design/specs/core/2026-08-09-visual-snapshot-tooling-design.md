@@ -239,16 +239,55 @@ before writing the implementation plan:
   `Buffer`-construction fallback (which has direct access to the full
   `CellStyle`), not to route around `vt100`.
 - **`font8x8`'s `MISC_FONTS` table covers only ~10 currency/fraction
-  glyphs — it does not reach the Dingbats block (U+2700–U+27BF).**
-  This confirms the dingbat star `✦` (U+2726) used by `EnergyCore`'s
-  charged state is genuinely unmapped, not a hypothetical gap: running
-  this tool against `omnitrix`'s `EnergyCore` widget in its charged
-  state is expected to hit the hard-error path on day one. That's
-  treated as correct behavior (the error names the real gap), not a
-  bug to route around during this Arc — a future Arc could add a
-  small supplemental hand-drawn 8x8 bitmap for the handful of specific
-  glyphs TTUI actually needs outside `font8x8`'s coverage, but that's
-  new scope, not part of this plan.
+  glyphs — it does not reach the Dingbats block (U+2700–U+27BF), the
+  Geometric Shapes block (U+25A0–U+25FF), the Arrows block
+  (U+2190–U+21FF), or any Emoji/Supplementary-Plane codepoint.**
+  Confirmed by direct testing against `glyph::glyph_for`, not just
+  spec-time reasoning (see the final-branch review fix that expanded
+  this section — `.superpowers/sdd/2026-08-09-visual-snapshot-tooling-
+  plan/final-review-fix-report.md`). The full set of TTUI's actual
+  non-ASCII glyph usage that `font8x8` does not cover, as of this
+  writing:
+  - **`✦` U+2726** (dingbat star) — `EnergyCore`'s charged state
+    (`src/widgets/energy_core.rs`).
+  - **`►` U+25BA, `◄` U+25C4, `◆` U+25C6, `◈` U+25C8, `◉` U+25C9,
+    `○` U+25CB, `●` U+25CF** (geometric shapes) — used across
+    `examples/launcher/portal.rs`, `examples/launcher/nexus.rs`,
+    `examples/omnitrix/fasttrack.rs`, `examples/omnitrix/upgrade.rs`,
+    and `examples/tardis/star_charts.rs`.
+  - **`←` U+2190, `→` U+2192** (arrows) — used by
+    `examples/launcher/nexus.rs` and, notably, by a `src/widgets/`
+    file: `src/widgets/damage_meter.rs`'s hit-direction indicator.
+    `DamageMeter` is therefore also affected by this gap, not only
+    `EnergyCore` as originally scoped.
+  - **`💥` U+1F4A5** (emoji, outside the Basic Multilingual Plane) —
+    `examples/smash_crabs/smash_crabs.rs`'s explosion effect.
+
+  Running this tool against any of the widgets/examples above is
+  expected to hit the hard-error path. That's treated as correct
+  behavior (the error names the real gap), not a bug to route around —
+  see `.claude/rules/development-conventions.md`'s "Visual review"
+  section for the escape hatch this implies for a mandated review that
+  hits one of these. A future Arc could add small supplemental
+  hand-drawn 8x8 bitmaps for these specific glyphs (following the
+  precedent set by Braille below), but that's new scope, not part of
+  this plan.
+- **Braille Patterns (U+2800–U+28FF), used by `TimeRotor`
+  (`src/widgets/time_rotor.rs`, via `Canvas`'s `Braille` mode) and by
+  `examples/omnitrix/omnitrix.rs`'s ambient noise effect, is also not
+  covered by any `font8x8` table — but unlike the gaps above, this one
+  was closed during the final-branch review fix, not deferred.** The
+  block's encoding makes it renderable algorithmically rather than
+  needing a lookup table: each codepoint's low 8 bits directly name
+  one of 8 dots in a fixed 2-column x 4-row grid, the same bit layout
+  `src/canvas.rs`'s `blit_braille` already uses to *emit* these
+  glyphs. `glyph::braille_glyph_for` (`tools/visual-snapshot/src/
+  glyph.rs`) decodes that same bit layout into an 8x8 pixel bitmap
+  (each dot scaled to a 4x2-pixel block), checked ahead of the
+  `font8x8` table lookups in `glyph_for`. `TimeRotor` is fully
+  renderable by this tool as of this fix; `EnergyCore` and
+  `DamageMeter` are not (dingbat star and arrows respectively, per the
+  gaps listed above).
 
 ## Sources consulted
 
