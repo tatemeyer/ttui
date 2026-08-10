@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command as StdCommand;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Errors from spawning or driving a PTY-attached child process.
 #[derive(Debug)]
@@ -66,9 +66,26 @@ pub fn build_example(name: &str) -> Result<PathBuf, PtyError> {
     Ok(path)
 }
 
-/// How long `capture_frame` waits for pending output to arrive before
-/// parsing whatever has landed in the shared buffer so far.
-pub const SETTLE_DELAY: Duration = Duration::from_millis(100);
+/// Interval between polls of the shared output buffer while
+/// `capture_frame` waits for the child's current draw to quiesce.
+pub const POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+/// Upper bound on how long `capture_frame` will wait for output before
+/// giving up and snapshotting whatever's there — a safety valve so a
+/// session where the child has genuinely stopped producing output
+/// (crashed, hung, or just idle waiting on input) can't hang
+/// `capture_frame` forever. Superseded the old fixed `SETTLE_DELAY`
+/// (100ms, sleep-once-then-snapshot-regardless) after that proved
+/// flaky against real TUI examples: `SETTLE_DELAY` assumed a child's
+/// first draw always lands within 100ms of being asked for, but a real
+/// app's actual startup-to-first-draw latency varies with OS
+/// scheduling and process-spawn overhead far more than a trivial test
+/// fixture's does. Not derived from a formal measurement — calibrated
+/// against this tool's own dev environment, where a real example's
+/// first draw was directly measured taking up to ~1.9s even with no
+/// competing load (see the Task 12 flakiness fix report). Should be
+/// retuned if it proves insufficient — or excessive — in practice.
+pub const MAX_SETTLE_WAIT: Duration = Duration::from_millis(2000);
 
 /// Scans `chunk` (a single `read()` call's worth of bytes) for the
 /// 4-byte Device Status Report cursor-position query `ESC[6n`, correctly
@@ -199,16 +216,65 @@ impl Session {
         })
     }
 
-    /// Waits `SETTLE_DELAY`, drains whatever output has arrived since
-    /// the last capture into the parser, and rasterizes the current
-    /// screen state.
+    /// Waits for the child's current draw to quiesce, then rasterizes
+    /// the current screen state.
+    ///
+    /// Polls every `POLL_INTERVAL`, feeding any newly arrived bytes
+    /// into the parser and comparing the parser's rendered *screen
+    /// contents* (`vt100::Screen::contents`, plain text only) against
+    /// the previous poll — not raw byte counts. That distinction
+    /// matters: a real terminal app's startup emits several escape
+    /// sequences (input-mode negotiation, focus-event enabling, window
+    /// title, cursor-visibility toggles — all observed in practice from
+    /// `crossterm::terminal::enable_raw_mode` alone, on top of the DSR
+    /// handshake `Session::spawn` already answers) that are genuine
+    /// output but never change what's visibly on screen. A byte-count
+    /// or raw-buffer-length signal treats that startup burst as
+    /// "activity", then sees silence while the app does its actual
+    /// first draw, and quiesces on exactly the wrong moment — this was
+    /// caught by `capture_frame_waits_past_the_old_fixed_settle_delay_
+    /// for_a_slow_first_draw` failing under an earlier byte-counting
+    /// version of this fix (see the Task 12 flakiness fix report).
+    /// Comparing rendered contents instead means only changes that
+    /// `render_screen` would actually show ever count as "still
+    /// drawing", so non-visual setup noise can't fool quiescence no
+    /// matter what escape sequences a given app's terminal library
+    /// happens to emit.
+    ///
+    /// Once the screen has changed at least once and then holds steady
+    /// for one full poll interval, the draw is treated as complete. If
+    /// nothing ever changes within `MAX_SETTLE_WAIT`, or a draw never
+    /// quiesces, it gives up and returns whatever's there — correct for
+    /// a child that legitimately has nothing to draw yet (e.g. blocked
+    /// on input), and a bounded fallback for one that's simply slower
+    /// than usual.
     pub fn capture_frame(&mut self) -> Result<image::RgbaImage, PtyError> {
-        thread::sleep(SETTLE_DELAY);
-        let pending: Vec<u8> = {
-            let mut buf = self.output.lock().unwrap();
-            std::mem::take(&mut *buf)
-        };
-        self.parser.process(&pending);
+        let deadline = Instant::now() + MAX_SETTLE_WAIT;
+        let mut last_contents = self.parser.screen().contents();
+        let mut changed_at_least_once = false;
+        loop {
+            thread::sleep(POLL_INTERVAL);
+            let pending: Vec<u8> = {
+                let mut buf = self.output.lock().unwrap();
+                std::mem::take(&mut *buf)
+            };
+            if !pending.is_empty() {
+                self.parser.process(&pending);
+            }
+            let current_contents = self.parser.screen().contents();
+            if current_contents != last_contents {
+                last_contents = current_contents;
+                changed_at_least_once = true;
+            } else if changed_at_least_once {
+                // The screen changed earlier and hasn't changed for a
+                // full poll interval: the child's current draw is very
+                // likely finished.
+                break;
+            }
+            if Instant::now() >= deadline {
+                break;
+            }
+        }
         Ok(render::render_screen(self.parser.screen())?)
     }
 
