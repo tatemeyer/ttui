@@ -46,19 +46,50 @@ impl std::fmt::Display for PtyError {
 }
 impl std::error::Error for PtyError {}
 
-/// Builds `cargo build --example <name>` and returns the resulting
-/// binary's path (relative to the workspace's shared `target/` dir).
+/// Path to the root `ttui` crate's `Cargo.toml`, computed from this
+/// crate's own manifest dir rather than assumed from the caller's cwd —
+/// `tools/visual-snapshot`'s examples (`echo_key`, `delayed_draw`, ...)
+/// live in *this* crate, but the example binaries this tool actually
+/// snapshots (`launcher`, `omnitrix`, ...) live in the root crate, so
+/// `build_example` must always build against the root manifest
+/// regardless of which directory this tool happens to be invoked from.
+fn root_manifest_path() -> PathBuf {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("../../Cargo.toml");
+    path
+}
+
+/// Resolves the directory `cargo build --example` places compiled
+/// example binaries into: `$CARGO_TARGET_DIR/debug/examples` if that
+/// override is set (as it would be in an environment overriding Cargo's
+/// default `target/` layout), otherwise the workspace-relative
+/// `target/debug/examples` this crate assumes by default. Shared by
+/// `build_example` and this crate's own integration tests so both agree
+/// on where a binary actually lands.
+pub fn examples_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
+        let mut path = PathBuf::from(dir);
+        path.push("debug/examples");
+        return path;
+    }
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("../../target/debug/examples");
+    path
+}
+
+/// Builds `cargo build --example <name>` against the root `ttui` crate
+/// and returns the resulting binary's path.
 pub fn build_example(name: &str) -> Result<PathBuf, PtyError> {
     let status = StdCommand::new("cargo")
-        .args(["build", "--example", name])
+        .args(["build", "--example", name, "--manifest-path"])
+        .arg(root_manifest_path())
         .status()?;
     if !status.success() {
         return Err(PtyError::Pty(format!(
             "cargo build --example {name} failed"
         )));
     }
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("../../target/debug/examples");
+    let mut path = examples_dir();
     path.push(name);
     if cfg!(windows) {
         path.set_extension("exe");
@@ -274,6 +305,30 @@ impl Session {
         Ok(render::render_screen(self.parser.screen())?)
     }
 
+    /// Captures a frame using the same patient quiescence contract as a
+    /// session's very first capture (`wait_for_first_output`) — requires
+    /// observing at least one real screen-content change before declaring
+    /// the draw complete — rather than `wait_for_further_output`'s fast
+    /// consecutive-poll-match path.
+    ///
+    /// Used specifically for the capture immediately following a `Key`
+    /// step in `run_script`. `wait_for_further_output`'s fast path starts
+    /// comparing polls with no baseline from before the key was sent, so
+    /// it can (and, against a real app, did) declare "quiescent" after
+    /// just two poll intervals purely because the screen hasn't changed
+    /// *yet* — not because the app has finished reacting to the keypress.
+    /// A `Wait` step and a session's true first capture don't have this
+    /// problem (nothing was just sent that the screen is expected to
+    /// react to), so they keep using `capture_frame`'s existing behavior;
+    /// this method exists only for the "just sent a key, must observe the
+    /// reaction" case. See the final-review fix report's finding #4.
+    pub fn capture_frame_after_key(&mut self) -> Result<image::RgbaImage, PtyError> {
+        let deadline = Instant::now() + MAX_SETTLE_WAIT;
+        self.wait_for_first_output(deadline);
+        self.first_capture_done = true;
+        Ok(render::render_screen(self.parser.screen())?)
+    }
+
     /// Quiescence strategy for every capture after a session's first —
     /// see `capture_frame`'s doc comment for why this differs from
     /// `wait_for_first_output`.
@@ -335,9 +390,13 @@ impl Session {
         }
     }
 
-    /// Quiescence strategy for a session's very first capture — see
-    /// `capture_frame`'s doc comment for why this differs from
-    /// `wait_for_further_output`.
+    /// Quiescence strategy for a session's very first capture, and for
+    /// every capture immediately following a `Key` step
+    /// (`capture_frame_after_key`) — see `capture_frame`'s doc comment for
+    /// why the first capture differs from `wait_for_further_output`, and
+    /// `capture_frame_after_key`'s doc comment for why a post-`Key`
+    /// capture needs the same patient discipline even though it isn't
+    /// literally the session's first capture.
     ///
     /// Only ever declares the draw complete after actually observing
     /// the rendered screen contents change at least once *during this
@@ -424,20 +483,25 @@ pub fn run_script(
     frames.push((session.capture_frame()?, Duration::from_millis(0)));
 
     for step in steps {
-        let duration = match step {
+        match step {
             Step::Wait { wait_ms } => {
                 std::thread::sleep(Duration::from_millis(*wait_ms));
-                Duration::from_millis(*wait_ms)
+                frames.push((session.capture_frame()?, Duration::from_millis(*wait_ms)));
             }
             Step::Key { key } => {
                 let bytes = keys::encode_key(key).map_err(|keys::KeyEncodeError::Unknown(k)| {
                     PtyError::Pty(format!("unknown key name: {k}"))
                 })?;
                 session.send(&bytes)?;
-                KEY_STEP_DISPLAY_DURATION
+                // Must observe the child's actual reaction, not just two
+                // stable polls — see `capture_frame_after_key`'s doc
+                // comment and the final-review fix report's finding #4.
+                frames.push((
+                    session.capture_frame_after_key()?,
+                    KEY_STEP_DISPLAY_DURATION,
+                ));
             }
-        };
-        frames.push((session.capture_frame()?, duration));
+        }
     }
 
     session.kill()?;
@@ -463,8 +527,8 @@ mod tests {
     use std::time::Instant;
 
     fn echo_key_binary() -> PathBuf {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("../../target/debug/examples/echo_key");
+        let mut path = examples_dir();
+        path.push("echo_key");
         if cfg!(windows) {
             path.set_extension("exe");
         }

@@ -1,9 +1,9 @@
 use std::path::PathBuf;
-use visual_snapshot::pty::Session;
+use visual_snapshot::pty::{examples_dir, Session};
 
 fn echo_key_binary() -> PathBuf {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("../../target/debug/examples/echo_key");
+    let mut path = examples_dir();
+    path.push("echo_key");
     if cfg!(windows) {
         path.set_extension("exe");
     }
@@ -11,8 +11,17 @@ fn echo_key_binary() -> PathBuf {
 }
 
 fn delayed_draw_binary() -> PathBuf {
-    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    path.push("../../target/debug/examples/delayed_draw");
+    let mut path = examples_dir();
+    path.push("delayed_draw");
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+    path
+}
+
+fn delayed_key_response_binary() -> PathBuf {
+    let mut path = examples_dir();
+    path.push("delayed_key_response");
     if cfg!(windows) {
         path.set_extension("exe");
     }
@@ -157,5 +166,39 @@ fn capture_frame_is_fast_when_the_screen_is_already_stable() {
         elapsed < std::time::Duration::from_millis(200),
         "expected an already-stable screen to be recognized as quiescent almost \
          immediately, not pay the full MAX_SETTLE_WAIT; took {elapsed:?}"
+    );
+}
+
+/// Guards finding #4 from the final-branch review: `wait_for_further_output`
+/// (used for every capture after a session's first, including the capture
+/// immediately following a `Key` step) started with no baseline from before
+/// the just-sent key. That let it declare "quiescent" as soon as two
+/// consecutive polls agreed — including the very first two polls, taken
+/// while the screen hadn't changed *yet*, not because the app had finished
+/// reacting. `delayed_key_response` waits 180ms — well past two 20ms
+/// `POLL_INTERVAL` ticks — before drawing its response to a keypress, so the
+/// old logic would capture a blank/stale frame for the `Key` step here,
+/// silently missing the reaction entirely. This drives `run_script` exactly
+/// as the CLI does (no test-side retry loop) and asserts the frame captured
+/// for the `Key` step actually shows the response, proving the post-`Key`
+/// capture path now waits for a real observed change before quiescing.
+#[test]
+fn a_key_steps_frame_waits_for_the_childs_actual_reaction_not_just_two_stable_polls() {
+    let steps = vec![Step::Key {
+        key: "a".to_string(),
+    }];
+
+    let frames = run_script(&delayed_key_response_binary(), 5, 40, &steps).unwrap();
+
+    // Initial frame (blank) + one for the Key step.
+    assert_eq!(frames.len(), 2);
+    let after_key = &frames[1].0;
+    let any_non_background = after_key
+        .pixels()
+        .any(|p| *p != image::Rgba([0, 0, 0, 255]));
+    assert!(
+        any_non_background,
+        "expected the Key step's captured frame to show the fixture's delayed \
+         response, not a blank screen captured before it reacted"
     );
 }
