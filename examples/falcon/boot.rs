@@ -21,26 +21,37 @@ impl Falcon {
 
         if progress < 0.7 {
             let wave = (progress - 0.1) / 0.6;
-            let panels_shown = ((wave * 3.0) as usize).min(3);
+            let panels_shown = ((wave * 3.0).ceil() as usize).min(3);
             let slots = Self::panel_slots(area);
-            let mut newest_inner = None;
+            let mut newest: Option<(usize, Rect)> = None;
             for (i, kind) in PANELS.iter().enumerate().take(panels_shown) {
                 let panel_box = Self::panel_box(slots[i], false);
                 let inner = CockpitPanel::new(false).render(panel_box, &self.theme, buf);
                 Text::new(kind.name()).render(inner, buf);
-                newest_inner = Some(inner);
+                newest = Some((i, inner));
             }
-            // The most-recently-revealed panel gets a static burst: a
-            // freshly-triggered GlitchBuffer rendered in the same frame
-            // (never ticked) always renders at full intensity, so this
-            // panel flashes static until the next one takes over as
-            // "newest" — the "brief static burst" the design spec calls
-            // for at each panel's reveal moment.
-            if let Some(inner) = newest_inner {
+            // The most-recently-revealed panel gets a static burst that
+            // decays over its own reveal window, rather than staying
+            // pinned at full intensity: a freshly-triggered GlitchBuffer
+            // rendered without ticking always renders at full intensity
+            // (100% cell coverage), which would fully blank the panel
+            // instead of overlaying it — so we manually tick the burst
+            // forward by how far into its own reveal slice `wave` is.
+            if let Some((newest_index, inner)) = newest {
+                // How far into this panel's own reveal slot we are, in
+                // [0.0, 1.0] — each panel occupies a 1/3-wide slice of
+                // `wave`; this normalizes position-within-slice so the
+                // burst can decay smoothly across it rather than staying
+                // pinned at full intensity the whole time.
+                let local_wave = ((wave * 3.0) - newest_index as f32).clamp(0.0, 1.0);
                 let mut burst = GlitchBuffer::new();
-                burst.trigger(Duration::from_millis(300));
-                buf.push_layer();
-                burst.render(inner, self.theme.tertiary, self.tick_count, buf);
+                let burst_duration = Duration::from_millis(300);
+                burst.trigger(burst_duration);
+                burst.tick(Duration::from_secs_f32(
+                    local_wave * burst_duration.as_secs_f32(),
+                ));
+                let overlay = buf.push_layer();
+                burst.render(inner, self.theme.tertiary, self.tick_count, overlay);
             }
             return;
         }

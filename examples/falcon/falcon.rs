@@ -120,10 +120,10 @@ impl Falcon {
     }
 
     fn panel_box(slot: Rect, focused: bool) -> Rect {
-        let base_w = slot.width.saturating_sub(2).max(8);
-        let base_h = slot.height.saturating_sub(4).clamp(4, 10);
-        let focus_w = (base_w + 4).min(slot.width.saturating_sub(1));
-        let focus_h = (base_h + 2).min(slot.height.saturating_sub(1));
+        let base_w = slot.width.saturating_sub(6).max(8).min(slot.width);
+        let base_h = slot.height.saturating_sub(4).clamp(4, 10).min(slot.height);
+        let focus_w = (base_w + 4).min(slot.width);
+        let focus_h = (base_h + 2).min(slot.height);
         let box_w = if focused { focus_w } else { base_w };
         let box_h = if focused { focus_h } else { base_h };
         Rect {
@@ -172,13 +172,18 @@ impl Falcon {
             }
         }
 
-        buf.push_layer();
+        let overlay = buf.push_layer();
         for (i, gb) in self.glitches.iter().enumerate() {
             if gb.is_active() {
-                gb.render(panel_inners[i], self.theme.tertiary, self.tick_count, buf);
+                gb.render(
+                    panel_inners[i],
+                    self.theme.tertiary,
+                    self.tick_count,
+                    overlay,
+                );
             }
         }
-        self.particles.render(buf);
+        self.particles.render(overlay);
     }
 }
 
