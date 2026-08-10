@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 //! Headless visual-snapshot tooling for TTUI example apps: spawns a
 //! compiled example under a pseudo-console, drives it with a scripted
 //! sequence of key presses and waits, and rasterizes the captured

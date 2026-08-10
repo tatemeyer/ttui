@@ -1,16 +1,32 @@
+//! Parses a snapshot script — a flat JSON array of wait/key steps that
+//! `pty::run_script` drives a spawned example through.
+
 use serde::Deserialize;
 use std::path::Path;
 
+/// One step of a snapshot script: either a real wall-clock pause or a
+/// named key press sent to the spawned example.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub enum Step {
-    Wait { wait_ms: u64 },
-    Key { key: String },
+    /// Sleep `wait_ms` milliseconds of real time before the next step.
+    Wait {
+        /// Duration to sleep, in milliseconds.
+        wait_ms: u64,
+    },
+    /// Send the named key (see `keys::encode_key`) to the spawned example.
+    Key {
+        /// The key's name, as written in the script (e.g. `"Right"`).
+        key: String,
+    },
 }
 
+/// Failure reading or parsing a snapshot script file.
 #[derive(Debug)]
 pub enum ScriptError {
+    /// Underlying filesystem I/O failure reading the script file.
     Io(std::io::Error),
+    /// Failure parsing the file's contents as a script's JSON shape.
     Json(serde_json::Error),
 }
 
@@ -49,7 +65,11 @@ mod tests {
     fn parses_a_mix_of_wait_and_key_steps() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("script.json");
-        std::fs::write(&path, r#"[{"wait_ms":16},{"key":"Right"},{"wait_ms":150},{"key":"Enter"}]"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"[{"wait_ms":16},{"key":"Right"},{"wait_ms":150},{"key":"Enter"}]"#,
+        )
+        .unwrap();
 
         let steps = parse_script(&path).unwrap();
 
@@ -57,9 +77,13 @@ mod tests {
             steps,
             vec![
                 Step::Wait { wait_ms: 16 },
-                Step::Key { key: "Right".to_string() },
+                Step::Key {
+                    key: "Right".to_string()
+                },
                 Step::Wait { wait_ms: 150 },
-                Step::Key { key: "Enter".to_string() },
+                Step::Key {
+                    key: "Enter".to_string()
+                },
             ]
         );
     }

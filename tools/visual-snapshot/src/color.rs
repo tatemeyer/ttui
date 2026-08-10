@@ -1,3 +1,8 @@
+//! Maps `vt100`'s parsed terminal colors (16-color, 256-color, and true
+//! color) to RGB pixels, plus small approximations for SGR attributes
+//! (`bold`, `reverse`) that `render.rs` applies on top of a cell's base
+//! fg/bg color.
+
 use image::Rgb;
 use vt100::Color;
 

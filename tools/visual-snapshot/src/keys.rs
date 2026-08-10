@@ -1,5 +1,12 @@
+//! Encodes a snapshot script's named `{"key": "..."}` steps into the raw
+//! byte sequences a real terminal would send for them — arrow keys as CSI
+//! sequences, `Ctrl+`-combos as control bytes, everything else as a
+//! literal ASCII byte.
+
+/// A script step's `"key"` name that doesn't match any known encoding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KeyEncodeError {
+    /// The unrecognized key name, as written in the script.
     Unknown(String),
 }
 
