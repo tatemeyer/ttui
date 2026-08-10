@@ -17,6 +17,8 @@ This directory holds:
 - `launcher/` — the cross-app portal-nexus shell that composes the
   three example apps into one launcher (a fourth example, not a themed
   app of its own).
+- `falcon/` — a fifth themed example app (a scrappy smuggler-freighter
+  cockpit), built from `TTUI-Ideas/vision/UI/idea-4-Falcon.md`.
 - A new bucket is added here the first time a genuinely new Arc starts
   (e.g. a fourth example app) — this list, not the file count inside
   each bucket, is what stays small as the docs tree grows.
