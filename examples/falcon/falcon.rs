@@ -55,19 +55,11 @@ fn canopy_vertices() -> [Point3; 8] {
 
 /// 4 near-rectangle edges (dx/dy pairs), 4 far-rectangle edges, 4
 /// near-to-far connectors — same topology as a cube's 12 edges.
+#[rustfmt::skip]
 const CANOPY_EDGES: [(usize, usize); 12] = [
-    (0, 4),
-    (1, 5),
-    (2, 6),
-    (3, 7), // edges along dx
-    (0, 2),
-    (1, 3),
-    (4, 6),
-    (5, 7), // edges along dy
-    (0, 1),
-    (2, 3),
-    (4, 5),
-    (6, 7), // near-to-far connectors
+    (0, 4), (1, 5), (2, 6), (3, 7), // edges along dx
+    (0, 2), (1, 3), (4, 6), (5, 7), // edges along dy
+    (0, 1), (2, 3), (4, 5), (6, 7), // near-to-far connectors
 ];
 
 #[derive(Clone, Copy, PartialEq)]
@@ -218,7 +210,23 @@ impl Falcon {
         }
     }
 
+    /// Splits `area` into the windshield (top ~78%) and console (bottom
+    /// strip) regions — factored out so `render_dashboard` and the WHACK
+    /// handler in `update()` can never disagree on where the split falls.
+    fn windshield_console_split(area: Rect) -> (Rect, Rect) {
+        let regions = Layout::new(
+            Direction::Vertical,
+            vec![Constraint::Percentage(78), Constraint::Fill(1)],
+        )
+        .split(area);
+        (regions[0], regions[1])
+    }
+
     fn render_dashboard(&self, area: Rect, buf: &mut LayerStack) {
+        let (windshield, console) = Self::windshield_console_split(area);
+
+        self.render_windshield(windshield, buf, 12);
+
         let bg = Cell {
             symbol: ' ',
             fg: self.theme.primary,
@@ -226,13 +234,13 @@ impl Falcon {
             alpha: 1.0,
             ..Default::default()
         };
-        for y in 0..area.height {
-            for x in 0..area.width {
-                buf.set(area.x + x, area.y + y, bg.clone());
+        for y in 0..console.height {
+            for x in 0..console.width {
+                buf.set(console.x + x, console.y + y, bg.clone());
             }
         }
 
-        let slots = Self::panel_slots(area);
+        let slots = Self::panel_slots(console);
         let mut panel_inners = [Rect {
             x: 0,
             y: 0,
@@ -342,6 +350,23 @@ impl Falcon {
         }
         canvas.blit(buf, area.x, area.y);
     }
+
+    fn render_windshield(&self, area: Rect, buf: &mut LayerStack, canopy_edges_shown: usize) {
+        let bg = Cell {
+            symbol: ' ',
+            fg: Color::Reset,
+            bg: self.theme.background,
+            alpha: 1.0,
+            ..Default::default()
+        };
+        for y in 0..area.height {
+            for x in 0..area.width {
+                buf.set(area.x + x, area.y + y, bg.clone());
+            }
+        }
+        self.render_starfield(area, buf);
+        self.render_canopy(area, buf, canopy_edges_shown);
+    }
 }
 
 impl App for Falcon {
@@ -362,7 +387,8 @@ impl App for Falcon {
             KeyCode::BackTab => self.focused = (self.focused + PANELS.len() - 1) % PANELS.len(),
             KeyCode::Char(' ') if self.glitches[self.focused].is_active() => {
                 self.glitches[self.focused].clear();
-                let slots = Self::panel_slots(self.last_area.get());
+                let (_, console) = Self::windshield_console_split(self.last_area.get());
+                let slots = Self::panel_slots(console);
                 let panel_box = Self::panel_box(slots[self.focused], true);
                 let cx = panel_box.x as f32 + panel_box.width as f32 / 2.0;
                 let cy = panel_box.y as f32 + panel_box.height as f32 / 2.0;
@@ -391,8 +417,6 @@ impl App for Falcon {
             return;
         }
         self.render_dashboard(area, buf);
-        self.render_starfield(area, buf); // TEMPORARY — Task 3 replaces this with the real windshield/console layout split
-        self.render_canopy(area, buf, 12); // TEMPORARY — same
     }
 
     fn should_quit(&self) -> bool {
