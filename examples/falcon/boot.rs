@@ -9,7 +9,7 @@ impl Falcon {
                 cx,
                 cy,
                 Cell {
-                    symbol: '\u{2022}', // '•'
+                    symbol: '*',
                     fg: self.theme.primary,
                     bg: Color::Reset,
                     alpha: 1.0,
