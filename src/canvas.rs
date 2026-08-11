@@ -589,12 +589,21 @@ mod tests {
     }
 
     #[test]
-    fn fill_polygon_scanline_loop_stays_bounded_despite_huge_input_coordinates() {
+    fn fill_polygon_handles_wildly_out_of_range_coordinates_without_panicking() {
         // A vertex with y far outside the canvas (simulating what a
-        // near-camera projected point could produce) must not cause
-        // the scanline loop to iterate beyond the canvas's own rows —
-        // the spike's own unbounded-loop landmine, fixed at the Canvas
-        // level regardless of what a caller's projection produces.
+        // near-camera projected point could produce) must not panic,
+        // and the portion of the polygon that's actually on-canvas
+        // must still fill correctly. This does NOT verify the
+        // `.min(self.grid_height().saturating_sub(1) as f32)` clamp's
+        // iteration-count optimization itself: `max_y`'s `as u16` cast
+        // already saturates out-of-range floats, and `set_pixel`'s own
+        // `y < grid_height()` bounds check makes any write beyond the
+        // canvas a silent no-op regardless of whether the clamp is
+        // present — so this black-box pixel-output test can't
+        // distinguish "loop scans ~4 rows" from "loop scans 65536
+        // rows". The clamp is still worth keeping (avoids that wasted
+        // scan) but isn't observable from here; see the `fill_polygon`
+        // doc comment for the perf rationale instead.
         let mut c = Canvas::new(2, 2, CanvasMode::HalfBlock); // grid 2x4
         c.fill_polygon(
             &[
@@ -606,7 +615,7 @@ mod tests {
             red(),
         );
         let mut buf = Buffer::new(2, 2);
-        c.blit(&mut buf, 0, 0); // must return promptly (bounded loop), not stall
+        c.blit(&mut buf, 0, 0); // must not panic
         for cy in 0..2 {
             for cx in 0..2 {
                 assert_eq!(buf.get(cx, cy).symbol, '█', "cell ({cx},{cy})");
