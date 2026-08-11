@@ -6,6 +6,7 @@ use ttui::buffer::{Cell, LayerStack};
 use ttui::glitch::GlitchBuffer;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
+use ttui::perspective::{Camera, Point3};
 use ttui::theme::{BorderSet, Theme};
 use ttui::transition::Transition;
 use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
@@ -19,6 +20,9 @@ const IDLE_FLICKER_PERIOD_TICKS: u64 = 90; // ~3s at 33ms/tick, per panel
 const IDLE_FLICKER_DURATION_MS: u64 = 600;
 const WHACK_SPARK_COUNT: usize = 6;
 const WHACK_SPARK_LIFETIME_MS: u64 = 300;
+const STAR_COUNT: usize = 60;
+const STAR_SPEED: f32 = 3.0; // z-units/second
+const STAR_RESPAWN_Z: f32 = 20.0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum PanelKind {
@@ -73,8 +77,30 @@ fn falcon_theme() -> Theme {
     }
 }
 
+fn falcon_camera() -> Camera {
+    Camera {
+        near: 0.5,
+        focal_length: 8.0,
+    }
+}
+
+struct Star {
+    x: f32,
+    y: f32,
+    z: f32,
+}
+
+/// Deterministic pseudo-random scatter for star placement — no RNG
+/// dependency, matching every prior Arc's posture.
+fn scatter(seed: u32, spread: f32) -> f32 {
+    let h = (seed.wrapping_mul(2_654_435_761)) ^ (seed.wrapping_mul(40_503).rotate_left(13));
+    ((h % 10_000) as f32 / 10_000.0 - 0.5) * spread
+}
+
 pub(crate) struct Falcon {
     theme: Theme,
+    camera: Camera,
+    stars: Vec<Star>,
     focused: usize,
     // `App::view` takes `&self`, so this records the last-seen
     // terminal area through a `Cell` (interior mutability) rather
@@ -93,8 +119,20 @@ pub(crate) struct Falcon {
 
 impl Falcon {
     pub(crate) fn new() -> Self {
+        let stars = (0..STAR_COUNT)
+            .map(|i| {
+                let seed = i as u32;
+                Star {
+                    x: scatter(seed, 16.0),
+                    y: scatter(seed.wrapping_add(1_000), 10.0),
+                    z: 2.0 + (seed as f32 % 20.0),
+                }
+            })
+            .collect();
         Falcon {
             theme: falcon_theme(),
+            camera: falcon_camera(),
+            stars,
             focused: 0,
             last_area: std::cell::Cell::new(Rect {
                 x: 0,
@@ -185,6 +223,53 @@ impl Falcon {
         }
         self.particles.render(overlay);
     }
+
+    fn render_starfield(&self, area: Rect, buf: &mut LayerStack) {
+        let center_x = area.x as f32 + area.width as f32 / 2.0;
+        let center_y = area.y as f32 + area.height as f32 / 2.0;
+        for star in &self.stars {
+            let p = Point3 {
+                x: star.x,
+                y: star.y,
+                z: star.z,
+            };
+            let Some((sx, sy, scale)) = self.camera.project(p, center_x, center_y) else {
+                continue;
+            };
+            let x = sx.round();
+            let y = sy.round();
+            if x < area.x as f32
+                || y < area.y as f32
+                || x >= (area.x + area.width) as f32
+                || y >= (area.y + area.height) as f32
+            {
+                continue;
+            }
+            let symbol = if scale > 3.0 {
+                '@'
+            } else if scale > 1.5 {
+                '*'
+            } else {
+                '.'
+            };
+            let brightness = (scale * 50.0).clamp(25.0, 255.0) as u8;
+            buf.set(
+                x as u16,
+                y as u16,
+                Cell {
+                    symbol,
+                    fg: Color::Rgb {
+                        r: brightness,
+                        g: brightness,
+                        b: brightness,
+                    },
+                    bg: Color::Reset,
+                    alpha: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+    }
 }
 
 impl App for Falcon {
@@ -234,6 +319,7 @@ impl App for Falcon {
             return;
         }
         self.render_dashboard(area, buf);
+        self.render_starfield(area, buf); // TEMPORARY — Task 3 replaces this with the real windshield/console layout split
     }
 
     fn should_quit(&self) -> bool {
@@ -259,5 +345,19 @@ impl App for Falcon {
             }
         }
         self.particles.update(elapsed);
+        let dz = STAR_SPEED * elapsed.as_secs_f32();
+        for (i, star) in self.stars.iter_mut().enumerate() {
+            star.z -= dz;
+            if star.z <= self.camera.near {
+                let seed = i as u32;
+                star.z = STAR_RESPAWN_Z;
+                star.x = scatter(seed.wrapping_add(self.tick_count as u32), 16.0);
+                star.y = scatter(
+                    seed.wrapping_add(self.tick_count as u32)
+                        .wrapping_add(1_000),
+                    10.0,
+                );
+            }
+        }
     }
 }
