@@ -3,10 +3,11 @@ use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::App;
 use ttui::buffer::{Cell, LayerStack};
+use ttui::canvas::{Canvas, CanvasMode};
 use ttui::glitch::GlitchBuffer;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
-use ttui::perspective::{Camera, Point3};
+use ttui::perspective::{Camera, Line3, Point3};
 use ttui::theme::{BorderSet, Theme};
 use ttui::transition::Transition;
 use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
@@ -23,6 +24,51 @@ const WHACK_SPARK_LIFETIME_MS: u64 = 300;
 const STAR_COUNT: usize = 60;
 const STAR_SPEED: f32 = 3.0; // z-units/second
 const STAR_RESPAWN_Z: f32 = 20.0;
+const CANOPY_NEAR_Z: f32 = 2.0;
+const CANOPY_FAR_Z: f32 = 10.0;
+const CANOPY_HALF_W: f32 = 5.0;
+const CANOPY_HALF_H: f32 = 3.0;
+
+/// The canopy's 8 corners: two parallel rectangles (near/far) of the
+/// same world-space size, connected by 4 verticals — the perspective
+/// convergence comes entirely from the projection, not from shrinking
+/// the far rectangle's world-space size. Index order:
+/// `i = (dx_idx*2 + dy_idx)*2 + z_idx` for `dx_idx, dy_idx, z_idx`
+/// each in `{0 (near/-), 1 (far/+)}`.
+fn canopy_vertices() -> [Point3; 8] {
+    let mut v = [Point3 {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    }; 8];
+    let mut i = 0;
+    for dx in [-CANOPY_HALF_W, CANOPY_HALF_W] {
+        for dy in [-CANOPY_HALF_H, CANOPY_HALF_H] {
+            for z in [CANOPY_NEAR_Z, CANOPY_FAR_Z] {
+                v[i] = Point3 { x: dx, y: dy, z };
+                i += 1;
+            }
+        }
+    }
+    v
+}
+
+/// 4 near-rectangle edges (dx/dy pairs), 4 far-rectangle edges, 4
+/// near-to-far connectors — same topology as a cube's 12 edges.
+const CANOPY_EDGES: [(usize, usize); 12] = [
+    (0, 4),
+    (1, 5),
+    (2, 6),
+    (3, 7), // edges along dx
+    (0, 2),
+    (1, 3),
+    (4, 6),
+    (5, 7), // edges along dy
+    (0, 1),
+    (2, 3),
+    (4, 5),
+    (6, 7), // near-to-far connectors
+];
 
 #[derive(Clone, Copy, PartialEq)]
 enum PanelKind {
@@ -270,6 +316,32 @@ impl Falcon {
             );
         }
     }
+
+    fn render_canopy(&self, area: Rect, buf: &mut LayerStack, edges_shown: usize) {
+        let center_x = area.x as f32 + area.width as f32 / 2.0;
+        let center_y = area.y as f32 + area.height as f32 / 2.0;
+        let verts = canopy_vertices();
+        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
+        for &(a, b) in CANOPY_EDGES.iter().take(edges_shown) {
+            let line = Line3 {
+                start: verts[a],
+                end: verts[b],
+            };
+            if let Some((x0, y0, x1, y1)) = self.camera.project_line(
+                line,
+                center_x,
+                center_y,
+                area.width as f32,
+                area.height as f32,
+                2.0,
+                4.0,
+                0.0,
+            ) {
+                canvas.line(x0, y0, x1, y1, self.theme.secondary);
+            }
+        }
+        canvas.blit(buf, area.x, area.y);
+    }
 }
 
 impl App for Falcon {
@@ -320,6 +392,7 @@ impl App for Falcon {
         }
         self.render_dashboard(area, buf);
         self.render_starfield(area, buf); // TEMPORARY — Task 3 replaces this with the real windshield/console layout split
+        self.render_canopy(area, buf, 12); // TEMPORARY — same
     }
 
     fn should_quit(&self) -> bool {
