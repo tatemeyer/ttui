@@ -2,6 +2,8 @@ use super::*;
 
 impl Falcon {
     pub(crate) fn render_boot(&self, area: Rect, progress: f32, buf: &mut LayerStack) {
+        let (windshield, console) = Self::windshield_console_split(area);
+
         if progress < 0.1 {
             let cx = area.x + area.width / 2;
             let cy = area.y + area.height / 2;
@@ -19,10 +21,27 @@ impl Falcon {
             return;
         }
 
-        if progress < 0.7 {
-            let wave = (progress - 0.1) / 0.6;
+        if progress < 0.4 {
+            // Windshield power-on: the starfield is already fully present
+            // (render_windshield always draws it in full), while the
+            // canopy wireframe reveals a growing prefix of CANOPY_EDGES —
+            // ceil() so the very first edge appears immediately at the
+            // start of this phase rather than needing a full step of
+            // `wave` to show anything.
+            let wave = (progress - 0.1) / 0.3;
+            let edges_shown = ((wave * 12.0).ceil() as usize).min(12);
+            self.render_windshield(windshield, buf, edges_shown);
+            return;
+        }
+
+        if progress < 0.85 {
+            // Windshield is fully revealed and stays visible above the
+            // console strip while its panels reveal underneath.
+            self.render_windshield(windshield, buf, 12);
+
+            let wave = (progress - 0.4) / 0.45;
             let panels_shown = ((wave * 3.0).ceil() as usize).min(3);
-            let slots = Self::panel_slots(area);
+            let slots = Self::panel_slots(console);
             let mut newest: Option<(usize, Rect)> = None;
             for (i, kind) in PANELS.iter().enumerate().take(panels_shown) {
                 let panel_box = Self::panel_box(slots[i], false);
@@ -56,7 +75,7 @@ impl Falcon {
             return;
         }
 
-        let fade = ((progress - 0.7) / 0.3).clamp(0.0, 1.0);
+        let fade = ((progress - 0.85) / 0.15).clamp(0.0, 1.0);
         // Render into an isolated scratch LayerStack, not `buf` directly:
         // render_dashboard pushes its own glitch/particle layer, and if we
         // dimmed cells directly on `buf` afterward we'd only be rewriting
