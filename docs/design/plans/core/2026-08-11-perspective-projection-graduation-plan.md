@@ -16,6 +16,20 @@
 - One worktree for this whole plan, created via `superpowers:using-git-worktrees` before Task 1, per `.claude/rules/git-github-standards.md`.
 - `coding`-tagged → **Gated** autonomy tier: ships as a PR to `main` with all four required checks green, squash-merged at the end.
 - `tools/visual-snapshot` is **not required** for this plan — no example's `view()`/`on_tick()` changes (per `.claude/rules/development-conventions.md`'s "Visual review" section, the mandate applies to rendering-affecting `src/` code or an example's render loop; this plan touches `src/canvas.rs` and adds `src/perspective.rs`, both covered by real unit tests instead — the next Arc, which actually renders something with this module, is where a visual capture becomes mandatory again).
+  **Correction (added post-execution, during final review — not itself
+  a re-execution of this plan):** this reasoning was factually wrong.
+  The "Visual review" rule's mandate is a disjunction — rendering-
+  affecting `src/` code **or** an example's render loop — not a
+  conjunction requiring both. `src/canvas.rs` is named explicitly in
+  that rule's file list, and this plan modifies it (including a real
+  Braille color-selection bug fix), so the rule applied regardless of
+  `examples/depth_spike.rs` being untouched. The final review closed
+  this gap with an actual `tools/visual-snapshot` capture against
+  `depth_spike` (see the design spec's Verification section for what
+  it showed); the low regression risk to shipped widgets is why this
+  wasn't treated as a blocking gap at the time, not because the rule
+  didn't apply. Whoever plans the next Arc off this one should not
+  reuse this paragraph's original reasoning.
 - Spec being implemented: `docs/design/specs/core/2026-08-11-perspective-projection-graduation-design.md`.
 
 ---

@@ -141,6 +141,18 @@ impl Camera {
     /// entirely outside the visible screen. A segment partially
     /// outside is clipped to the visible rectangle before being
     /// converted to subpixel coordinates.
+    ///
+    /// Note: clipping happens in cell space against the closed
+    /// interval `[0, screen_w] x [0, screen_h]`, so a caller passing
+    /// `screen_w`/`screen_h` equal to the canvas's actual cell
+    /// width/height can get a clipped endpoint at exactly `screen_w`
+    /// (or `screen_h`), which converts to a subpixel coordinate of
+    /// `screen_w * subpixels_x` — one past the last valid column
+    /// index (`Canvas::grid_width() - 1`). `Canvas::set_pixel`'s own
+    /// bounds check makes this a silent no-op (the line just loses its
+    /// last subpixel) rather than a panic, so this half-open/closed
+    /// boundary mismatch is a known cosmetic quirk, not a bug to fix
+    /// here.
     #[allow(clippy::too_many_arguments)]
     pub fn project_line(
         &self,

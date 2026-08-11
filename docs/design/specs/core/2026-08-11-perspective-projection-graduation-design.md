@@ -485,11 +485,27 @@ mandatory, no exceptions.
   graduated — rewriting it to import `src/perspective.rs` instead of
   its own copy is optional cleanup, not required); confirm it still
   builds unmodified.
-- `cargo run -p visual-snapshot -- --example depth_spike ...` is **not**
-  required for this Arc (no example's `view()`/`on_tick()` changes) —
-  this Arc is a pure `src/` addition plus one `Canvas` bug fix, and the
-  bug fix's correctness is established by the new regression test
-  above, not a fresh visual capture. The next Arc (Falcon redesign,
-  once it actually renders something with this module) is where a
-  visual-snapshot check becomes mandatory again per
-  `.claude/rules/development-conventions.md`.
+- **Correction (added during final review):** the plan's original text
+  here claimed `tools/visual-snapshot` wasn't required because no
+  example's `view()`/`on_tick()` changed. That reasoning was wrong:
+  `.claude/rules/development-conventions.md`'s "Visual review" section
+  triggers on rendering-affecting `src/` code **or** an example's
+  render loop — a disjunction, not a conjunction — and `src/canvas.rs`
+  (which this Arc modifies, including the Braille color-selection bug
+  fix) is named explicitly in that rule's file list. The rule applied
+  regardless of `examples/depth_spike.rs` being untouched.
+  A `tools/visual-snapshot` capture against `depth_spike` (`--size
+  100x35`, 0-step/single-frame PNG, cube at its starting `cube_z =
+  CUBE_MIN_Z = 4.0`) was run as part of this Arc's final review to
+  close that gap. It showed a large, legible wireframe cube: the outer
+  rectangle (front-face edges), an inner rectangle (back-face edges),
+  and all 4 diagonal front-to-back connecting edges rendered in a
+  distinct light blue (`rgb(200,220,255)`) clearly standing out against
+  the navy-blue front-face fill (`rgb(40,60,100)`) — all 12 edges
+  visible, none swallowed into the fill color, confirming the Braille
+  last-write-wins fix. The low regression risk to already-shipped
+  widgets (the only in-tree Braille consumers, `Roundel` and
+  `TimeRotor`, are both single-color and therefore provably unaffected
+  by a last-write-wins color-selection change) is why this gap wasn't
+  treated as a blocking issue earlier — not because the visual-review
+  rule didn't apply.

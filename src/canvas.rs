@@ -234,9 +234,9 @@ impl Canvas {
 
     /// Fills the polygon described by `points` (subpixel coordinates,
     /// 3+ points, in perimeter order) via an even-odd scanline fill.
-    /// Does nothing if fewer than 3 points are given. The scanline
-    /// loop is clamped to the canvas's own valid row range regardless
-    /// of the input points' range, so a point far outside the canvas
+    /// Does nothing if fewer than 3 points are given. Both the row
+    /// range and each row's column range are clamped to the canvas's
+    /// own bounds, so a point far outside the canvas in either axis
     /// cannot cause an oversized per-frame scan.
     pub fn fill_polygon(&mut self, points: &[(f32, f32)], color: Color) {
         if points.len() < 3 {
@@ -265,11 +265,15 @@ impl Canvas {
                     xs.push(x0 + t * (x1 - x0));
                 }
             }
-            xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            xs.sort_by(f32::total_cmp);
             let mut i = 0;
             while i + 1 < xs.len() {
                 let x_start = xs[i].round().max(0.0) as u16;
-                let x_end = xs[i + 1].round().max(0.0) as u16;
+                let x_end = xs[i + 1]
+                    .round()
+                    .max(0.0)
+                    .min(self.grid_width().saturating_sub(1) as f32)
+                    as u16;
                 for x in x_start..=x_end {
                     self.set_pixel(x, y, color);
                 }
@@ -619,27 +623,27 @@ mod tests {
 
     #[test]
     fn fill_polygon_handles_wildly_out_of_range_coordinates_without_panicking() {
-        // A vertex with y far outside the canvas (simulating what a
-        // near-camera projected point could produce) must not panic,
-        // and the portion of the polygon that's actually on-canvas
-        // must still fill correctly. This does NOT verify the
-        // `.min(self.grid_height().saturating_sub(1) as f32)` clamp's
-        // iteration-count optimization itself: `max_y`'s `as u16` cast
-        // already saturates out-of-range floats, and `set_pixel`'s own
-        // `y < grid_height()` bounds check makes any write beyond the
-        // canvas a silent no-op regardless of whether the clamp is
-        // present — so this black-box pixel-output test can't
-        // distinguish "loop scans ~4 rows" from "loop scans 65536
-        // rows". The clamp is still worth keeping (avoids that wasted
-        // scan) but isn't observable from here; see the `fill_polygon`
-        // doc comment for the perf rationale instead.
+        // Vertices far outside the canvas on BOTH axes (simulating
+        // what a near-camera projected point could produce, since
+        // `project_polygon` deliberately does no screen-edge clipping)
+        // must not panic, and the portion of the polygon that's
+        // actually on-canvas must still fill correctly. This does NOT
+        // verify the row/column clamps' iteration-count optimization
+        // itself: the `as u16` casts already saturate out-of-range
+        // floats, and `set_pixel`'s own bounds check makes any write
+        // beyond the canvas a silent no-op regardless of whether the
+        // clamps are present — so this black-box pixel-output test
+        // can't distinguish "loop scans ~4 rows/cols" from "loop scans
+        // 65536 rows/cols". The clamps are still worth keeping (avoids
+        // that wasted scan) but aren't observable from here; see the
+        // `fill_polygon` doc comment for the perf rationale instead.
         let mut c = Canvas::new(2, 2, CanvasMode::HalfBlock); // grid 2x4
         c.fill_polygon(
             &[
                 (0.0, 0.0),
                 (0.0, 1_000_000.0),
-                (2.0, 1_000_000.0),
-                (2.0, 0.0),
+                (1_000_000.0, 1_000_000.0),
+                (1_000_000.0, 0.0),
             ],
             red(),
         );
@@ -650,5 +654,85 @@ mod tests {
                 assert_eq!(buf.get(cx, cy).symbol, '█', "cell ({cx},{cy})");
             }
         }
+    }
+
+    #[test]
+    fn project_polygon_then_fill_polygon_produce_the_expected_triangle() {
+        // Integration test across the Camera::project_polygon ->
+        // Canvas::fill_polygon seam: every other test in this file or
+        // in perspective.rs exercises exactly one of these two
+        // functions, hand-typing stand-in values for whatever the
+        // other one would have produced. This test instead projects a
+        // real 3-vertex Polygon3 with a real Camera and feeds the
+        // resulting Vec<(f32, f32)> directly into fill_polygon, so a
+        // coordinate-convention mismatch between the two (a y-flip, a
+        // cell-vs-subpixel unit mismatch) would actually be caught.
+        // Using 3 distinct vertices here (rather than perspective.rs's
+        // existing single-vertex project_polygon test) also proves
+        // multiple vertices project correctly, in order.
+        use crate::perspective::{Camera, Point3, Polygon3};
+
+        let cam = Camera {
+            near: 0.5,
+            focal_length: 8.0,
+        };
+        // All three vertices at z=4.0; x/y chosen so every ndc value
+        // is an exact power-of-two fraction (no epsilon needed).
+        // Hand-verified projection (center=(2.0,2.5), subpixels=(1.0,2.0)):
+        //   A(x=-0.25,y=1.0,z=4): ndc=(-0.0625,0.25)  -> screen=(1.0,0.5) -> subpixel (1.0,1.0)
+        //   B(x=-0.25,y=0.0,z=4): ndc=(-0.0625,0.0)   -> screen=(1.0,2.5) -> subpixel (1.0,5.0)
+        //   C(x=0.25, y=0.5,z=4): ndc=(0.0625,0.125)  -> screen=(3.0,1.5) -> subpixel (3.0,3.0)
+        let triangle = Polygon3 {
+            vertices: vec![
+                Point3 {
+                    x: -0.25,
+                    y: 1.0,
+                    z: 4.0,
+                },
+                Point3 {
+                    x: -0.25,
+                    y: 0.0,
+                    z: 4.0,
+                },
+                Point3 {
+                    x: 0.25,
+                    y: 0.5,
+                    z: 4.0,
+                },
+            ],
+        };
+        let points = cam
+            .project_polygon(&triangle, 2.0, 2.5, 1.0, 2.0, 0.0)
+            .expect("all three vertices are in front of the near plane");
+        assert_eq!(points, vec![(1.0, 1.0), (1.0, 5.0), (3.0, 3.0)]);
+
+        let mut c = Canvas::new(4, 3, CanvasMode::HalfBlock); // grid 4x6
+        c.fill_polygon(&points, red());
+        let mut buf = Buffer::new(4, 3);
+        c.blit(&mut buf, 0, 0);
+
+        // Hand-traced even-odd scanline fill of the projected triangle
+        // (1,1)-(1,5)-(3,3): subpixel row 1 fills cols 1-2, rows 2-3
+        // fill cols 1-3, row 4 fills cols 1-2, rows 0 and 5 fill
+        // nothing (row 0 is above the topmost vertex; row 5 sits
+        // exactly on vertex B and the per-row crossing test correctly
+        // excludes it, same convention as the rectangle test above).
+        assert_eq!(buf.get(1, 0).symbol, '▄', "cell (1,0): bottom-only");
+        assert_eq!(buf.get(1, 0).fg, red());
+        assert_eq!(buf.get(2, 0).symbol, '▄', "cell (2,0): bottom-only");
+        assert_eq!(*buf.get(0, 0), Cell::default(), "left of the triangle");
+        assert_eq!(*buf.get(3, 0), Cell::default(), "right of the triangle");
+
+        for cx in 1..=3 {
+            assert_eq!(buf.get(cx, 1).symbol, '█', "cell ({cx},1): solid row");
+            assert_eq!(buf.get(cx, 1).fg, red());
+        }
+        assert_eq!(*buf.get(0, 1), Cell::default());
+
+        assert_eq!(buf.get(1, 2).symbol, '▀', "cell (1,2): top-only");
+        assert_eq!(buf.get(1, 2).fg, red());
+        assert_eq!(buf.get(2, 2).symbol, '▀', "cell (2,2): top-only");
+        assert_eq!(*buf.get(0, 2), Cell::default());
+        assert_eq!(*buf.get(3, 2), Cell::default());
     }
 }
