@@ -27,7 +27,8 @@ pub struct Canvas {
     mode: CanvasMode,
     subpixels_x: u16,
     subpixels_y: u16,
-    grid: Vec<Option<Color>>, // len = grid_width() * grid_height()
+    grid: Vec<Option<(Color, u64)>>, // (color, write-sequence number)
+    next_seq: u64,
 }
 
 impl Canvas {
@@ -46,6 +47,7 @@ impl Canvas {
             subpixels_x,
             subpixels_y,
             grid: vec![None; grid_w * grid_h],
+            next_seq: 0,
         }
     }
 
@@ -66,7 +68,9 @@ impl Canvas {
     pub fn set_pixel(&mut self, x: u16, y: u16, color: Color) {
         if x < self.grid_width() && y < self.grid_height() {
             let idx = self.index(x, y);
-            self.grid[idx] = Some(color);
+            let seq = self.next_seq;
+            self.next_seq += 1;
+            self.grid[idx] = Some((color, seq));
         }
     }
 
@@ -90,8 +94,8 @@ impl Canvas {
     fn blit_half_block(&self, buf: &mut Buffer, ox: u16, oy: u16) {
         for cy in 0..self.height {
             for cx in 0..self.width {
-                let top = self.grid[self.index(cx, cy * 2)];
-                let bottom = self.grid[self.index(cx, cy * 2 + 1)];
+                let top = self.grid[self.index(cx, cy * 2)].map(|(c, _)| c);
+                let bottom = self.grid[self.index(cx, cy * 2 + 1)].map(|(c, _)| c);
                 let cell = match (top, bottom) {
                     (None, None) => continue, // transparent: leave buf untouched
                     (Some(t), None) => Cell {
@@ -140,14 +144,16 @@ impl Canvas {
         for cy in 0..self.height {
             for cx in 0..self.width {
                 let mut mask: u8 = 0;
-                let mut color: Option<Color> = None;
+                let mut winner: Option<(Color, u64)> = None;
                 for row in 0..4u16 {
                     for col in 0..2u16 {
                         let px = cx * 2 + col;
                         let py = cy * 4 + row;
-                        if let Some(c) = self.grid[self.index(px, py)] {
+                        if let Some((c, seq)) = self.grid[self.index(px, py)] {
                             mask |= DOT_BITS[row as usize][col as usize];
-                            color = Some(c); // last-write-wins per cell
+                            if winner.map(|(_, best)| seq > best).unwrap_or(true) {
+                                winner = Some((c, seq)); // genuinely last-write-wins now
+                            }
                         }
                     }
                 }
@@ -163,7 +169,7 @@ impl Canvas {
                         by,
                         Cell {
                             symbol,
-                            fg: color.unwrap(),
+                            fg: winner.unwrap().0,
                             bg: Color::Reset,
                             style: CellStyle::default(),
                             alpha: 1.0,
@@ -222,6 +228,56 @@ impl Canvas {
         for row in y..y.saturating_add(h) {
             for col in x..x.saturating_add(w) {
                 self.set_pixel(col, row, color);
+            }
+        }
+    }
+
+    /// Fills the polygon described by `points` (subpixel coordinates,
+    /// 3+ points, in perimeter order) via an even-odd scanline fill.
+    /// Does nothing if fewer than 3 points are given. Both the row
+    /// range and each row's column range are clamped to the canvas's
+    /// own bounds, so a point far outside the canvas in either axis
+    /// cannot cause an oversized per-frame scan.
+    pub fn fill_polygon(&mut self, points: &[(f32, f32)], color: Color) {
+        if points.len() < 3 {
+            return;
+        }
+        let min_y = points
+            .iter()
+            .map(|p| p.1)
+            .fold(f32::INFINITY, f32::min)
+            .floor()
+            .max(0.0) as u16;
+        let max_y = points
+            .iter()
+            .map(|p| p.1)
+            .fold(f32::NEG_INFINITY, f32::max)
+            .ceil()
+            .min(self.grid_height().saturating_sub(1) as f32) as u16;
+        for y in min_y..=max_y {
+            let yf = y as f32 + 0.5;
+            let mut xs: Vec<f32> = Vec::new();
+            for i in 0..points.len() {
+                let (x0, y0) = points[i];
+                let (x1, y1) = points[(i + 1) % points.len()];
+                if (y0 <= yf && y1 > yf) || (y1 <= yf && y0 > yf) {
+                    let t = (yf - y0) / (y1 - y0);
+                    xs.push(x0 + t * (x1 - x0));
+                }
+            }
+            xs.sort_by(f32::total_cmp);
+            let mut i = 0;
+            while i + 1 < xs.len() {
+                let x_start = xs[i].round().max(0.0) as u16;
+                let x_end = xs[i + 1]
+                    .round()
+                    .max(0.0)
+                    .min(self.grid_width().saturating_sub(1) as f32)
+                    as u16;
+                for x in x_start..=x_end {
+                    self.set_pixel(x, y, color);
+                }
+                i += 2;
             }
         }
     }
@@ -389,6 +445,29 @@ mod tests {
     }
 
     #[test]
+    fn braille_last_written_wins_even_when_earlier_in_scan_order() {
+        // The scan visits (row, col) in order (0,0),(0,1),(1,0),(1,1),
+        // (2,0),(2,1),(3,0),(3,1) — so subpixel (1,3) [row=3,col=1] is
+        // LAST in scan order, and (0,0) [row=0,col=0] is FIRST. Here
+        // they're written in the OPPOSITE order: the scan-order-last
+        // subpixel is written FIRST (chronologically), and the
+        // scan-order-first subpixel is written SECOND (chronologically
+        // more recent). A scan-order-based (buggy) rule would report
+        // `red` (whichever the row/col loop touches last); a true
+        // last-write-wins rule reports `blue` (written later in real
+        // call order) — this is exactly the distinction the existing
+        // `braille_last_written_dot_wins_the_cells_color` test above
+        // cannot catch, since its two `set_pixel` calls happen to
+        // already agree on scan order and write order.
+        let mut c = Canvas::new(1, 1, CanvasMode::Braille);
+        c.set_pixel(1, 3, red());
+        c.set_pixel(0, 0, blue());
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(buf.get(0, 0).fg, blue());
+    }
+
+    #[test]
     fn braille_unset_cell_leaves_target_buffer_untouched() {
         let c = Canvas::new(1, 1, CanvasMode::Braille);
         let mut buf = Buffer::new(1, 1);
@@ -498,5 +577,162 @@ mod tests {
         let mut c = Canvas::new(4, 4, CanvasMode::HalfBlock);
         c.rect(u16::MAX - 2, u16::MAX - 2, 10, 10, red()); // must not panic on overflow
         c.fill_rect(u16::MAX - 2, u16::MAX - 2, 10, 10, red()); // must not panic on overflow
+    }
+
+    #[test]
+    fn fill_polygon_does_nothing_for_fewer_than_three_points() {
+        let mut c = Canvas::new(2, 2, CanvasMode::HalfBlock);
+        c.fill_polygon(&[(0.0, 0.0), (3.0, 3.0)], red());
+        let mut buf = Buffer::new(2, 2);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(*buf.get(0, 0), Cell::default());
+        assert_eq!(*buf.get(1, 1), Cell::default());
+    }
+
+    #[test]
+    fn fill_polygon_fills_a_rectangle_with_correct_even_odd_boundaries() {
+        // HalfBlock canvas, 4 cells wide x 3 cells tall (subpixel grid 4x6).
+        // Rectangle vertices at subpixel (1,1)-(1,5)-(3,5)-(3,1) fill
+        // subpixel columns 1-3 (inclusive both boundary columns, per
+        // this scan's existing crossing-pair convention) across
+        // subpixel rows 1-4 — row 5 sits exactly on the bottom edge
+        // and is correctly left unfilled by the per-row crossing test,
+        // even though it's within the outer loop's scanned range.
+        // Hand-traced against the actual algorithm, not assumed.
+        let mut c = Canvas::new(4, 3, CanvasMode::HalfBlock);
+        c.fill_polygon(&[(1.0, 1.0), (1.0, 5.0), (3.0, 5.0), (3.0, 1.0)], red());
+        let mut buf = Buffer::new(4, 3);
+        c.blit(&mut buf, 0, 0);
+
+        // Column 0 (outside the rectangle): every row stays default.
+        assert_eq!(*buf.get(0, 0), Cell::default());
+        assert_eq!(*buf.get(0, 1), Cell::default());
+        assert_eq!(*buf.get(0, 2), Cell::default());
+
+        // Columns 1-3: bottom-only at row 0 (subpixel y=1 filled, y=0
+        // not), solid at row 1 (subpixel y=2 and y=3 both filled),
+        // top-only at row 2 (subpixel y=4 filled, y=5 not).
+        for cx in 1..=3 {
+            assert_eq!(buf.get(cx, 0).symbol, '▄', "col {cx} row 0");
+            assert_eq!(buf.get(cx, 0).fg, red());
+            assert_eq!(buf.get(cx, 1).symbol, '█', "col {cx} row 1");
+            assert_eq!(buf.get(cx, 2).symbol, '▀', "col {cx} row 2");
+            assert_eq!(buf.get(cx, 2).fg, red());
+        }
+    }
+
+    #[test]
+    fn fill_polygon_handles_wildly_out_of_range_coordinates_without_panicking() {
+        // Vertices far outside the canvas on BOTH axes (simulating
+        // what a near-camera projected point could produce, since
+        // `project_polygon` deliberately does no screen-edge clipping)
+        // must not panic, and the portion of the polygon that's
+        // actually on-canvas must still fill correctly. This does NOT
+        // verify the row/column clamps' iteration-count optimization
+        // itself: the `as u16` casts already saturate out-of-range
+        // floats, and `set_pixel`'s own bounds check makes any write
+        // beyond the canvas a silent no-op regardless of whether the
+        // clamps are present — so this black-box pixel-output test
+        // can't distinguish "loop scans ~4 rows/cols" from "loop scans
+        // 65536 rows/cols". The clamps are still worth keeping (avoids
+        // that wasted scan) but aren't observable from here; see the
+        // `fill_polygon` doc comment for the perf rationale instead.
+        let mut c = Canvas::new(2, 2, CanvasMode::HalfBlock); // grid 2x4
+        c.fill_polygon(
+            &[
+                (0.0, 0.0),
+                (0.0, 1_000_000.0),
+                (1_000_000.0, 1_000_000.0),
+                (1_000_000.0, 0.0),
+            ],
+            red(),
+        );
+        let mut buf = Buffer::new(2, 2);
+        c.blit(&mut buf, 0, 0); // must not panic
+        for cy in 0..2 {
+            for cx in 0..2 {
+                assert_eq!(buf.get(cx, cy).symbol, '█', "cell ({cx},{cy})");
+            }
+        }
+    }
+
+    #[test]
+    fn project_polygon_then_fill_polygon_produce_the_expected_triangle() {
+        // Integration test across the Camera::project_polygon ->
+        // Canvas::fill_polygon seam: every other test in this file or
+        // in perspective.rs exercises exactly one of these two
+        // functions, hand-typing stand-in values for whatever the
+        // other one would have produced. This test instead projects a
+        // real 3-vertex Polygon3 with a real Camera and feeds the
+        // resulting Vec<(f32, f32)> directly into fill_polygon, so a
+        // coordinate-convention mismatch between the two (a y-flip, a
+        // cell-vs-subpixel unit mismatch) would actually be caught.
+        // Using 3 distinct vertices here (rather than perspective.rs's
+        // existing single-vertex project_polygon test) also proves
+        // multiple vertices project correctly, in order.
+        use crate::perspective::{Camera, Point3, Polygon3};
+
+        let cam = Camera {
+            near: 0.5,
+            focal_length: 8.0,
+        };
+        // All three vertices at z=4.0; x/y chosen so every ndc value
+        // is an exact power-of-two fraction (no epsilon needed).
+        // Hand-verified projection (center=(2.0,2.5), subpixels=(1.0,2.0)):
+        //   A(x=-0.25,y=1.0,z=4): ndc=(-0.0625,0.25)  -> screen=(1.0,0.5) -> subpixel (1.0,1.0)
+        //   B(x=-0.25,y=0.0,z=4): ndc=(-0.0625,0.0)   -> screen=(1.0,2.5) -> subpixel (1.0,5.0)
+        //   C(x=0.25, y=0.5,z=4): ndc=(0.0625,0.125)  -> screen=(3.0,1.5) -> subpixel (3.0,3.0)
+        let triangle = Polygon3 {
+            vertices: vec![
+                Point3 {
+                    x: -0.25,
+                    y: 1.0,
+                    z: 4.0,
+                },
+                Point3 {
+                    x: -0.25,
+                    y: 0.0,
+                    z: 4.0,
+                },
+                Point3 {
+                    x: 0.25,
+                    y: 0.5,
+                    z: 4.0,
+                },
+            ],
+        };
+        let points = cam
+            .project_polygon(&triangle, 2.0, 2.5, 1.0, 2.0, 0.0)
+            .expect("all three vertices are in front of the near plane");
+        assert_eq!(points, vec![(1.0, 1.0), (1.0, 5.0), (3.0, 3.0)]);
+
+        let mut c = Canvas::new(4, 3, CanvasMode::HalfBlock); // grid 4x6
+        c.fill_polygon(&points, red());
+        let mut buf = Buffer::new(4, 3);
+        c.blit(&mut buf, 0, 0);
+
+        // Hand-traced even-odd scanline fill of the projected triangle
+        // (1,1)-(1,5)-(3,3): subpixel row 1 fills cols 1-2, rows 2-3
+        // fill cols 1-3, row 4 fills cols 1-2, rows 0 and 5 fill
+        // nothing (row 0 is above the topmost vertex; row 5 sits
+        // exactly on vertex B and the per-row crossing test correctly
+        // excludes it, same convention as the rectangle test above).
+        assert_eq!(buf.get(1, 0).symbol, '▄', "cell (1,0): bottom-only");
+        assert_eq!(buf.get(1, 0).fg, red());
+        assert_eq!(buf.get(2, 0).symbol, '▄', "cell (2,0): bottom-only");
+        assert_eq!(*buf.get(0, 0), Cell::default(), "left of the triangle");
+        assert_eq!(*buf.get(3, 0), Cell::default(), "right of the triangle");
+
+        for cx in 1..=3 {
+            assert_eq!(buf.get(cx, 1).symbol, '█', "cell ({cx},1): solid row");
+            assert_eq!(buf.get(cx, 1).fg, red());
+        }
+        assert_eq!(*buf.get(0, 1), Cell::default());
+
+        assert_eq!(buf.get(1, 2).symbol, '▀', "cell (1,2): top-only");
+        assert_eq!(buf.get(1, 2).fg, red());
+        assert_eq!(buf.get(2, 2).symbol, '▀', "cell (2,2): top-only");
+        assert_eq!(*buf.get(0, 2), Cell::default());
+        assert_eq!(*buf.get(3, 2), Cell::default());
     }
 }

@@ -27,6 +27,8 @@ pub mod glitch;
 pub mod layout;
 /// A simple particle system for bursts and impacts.
 pub mod particles;
+/// Fixed-forward pinhole-camera projection: points, lines, polygons.
+pub mod perspective;
 /// Raw-mode terminal setup/teardown.
 pub mod terminal;
 /// App color palette and border glyph set.
