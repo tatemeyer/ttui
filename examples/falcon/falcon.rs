@@ -203,26 +203,24 @@ impl App for Falcon {
         match k.code {
             KeyCode::Tab => self.focused = (self.focused + 1) % PANELS.len(),
             KeyCode::BackTab => self.focused = (self.focused + PANELS.len() - 1) % PANELS.len(),
-            KeyCode::Char(' ') => {
-                if self.glitches[self.focused].is_active() {
-                    self.glitches[self.focused].clear();
-                    let slots = Self::panel_slots(self.last_area.get());
-                    let panel_box = Self::panel_box(slots[self.focused], true);
-                    let cx = panel_box.x as f32 + panel_box.width as f32 / 2.0;
-                    let cy = panel_box.y as f32 + panel_box.height as f32 / 2.0;
-                    for i in 0..WHACK_SPARK_COUNT {
-                        let angle = i as f32 * std::f32::consts::TAU / WHACK_SPARK_COUNT as f32;
-                        self.particles.spawn(Particle {
-                            x: cx,
-                            y: cy,
-                            vx: angle.cos() * 6.0,
-                            vy: angle.sin() * 3.0,
-                            symbol: '*',
-                            color: self.theme.accent,
-                            lifetime: Duration::from_millis(WHACK_SPARK_LIFETIME_MS),
-                            age: Duration::ZERO,
-                        });
-                    }
+            KeyCode::Char(' ') if self.glitches[self.focused].is_active() => {
+                self.glitches[self.focused].clear();
+                let slots = Self::panel_slots(self.last_area.get());
+                let panel_box = Self::panel_box(slots[self.focused], true);
+                let cx = panel_box.x as f32 + panel_box.width as f32 / 2.0;
+                let cy = panel_box.y as f32 + panel_box.height as f32 / 2.0;
+                for i in 0..WHACK_SPARK_COUNT {
+                    let angle = i as f32 * std::f32::consts::TAU / WHACK_SPARK_COUNT as f32;
+                    self.particles.spawn(Particle {
+                        x: cx,
+                        y: cy,
+                        vx: angle.cos() * 6.0,
+                        vy: angle.sin() * 3.0,
+                        symbol: '*',
+                        color: self.theme.accent,
+                        lifetime: Duration::from_millis(WHACK_SPARK_LIFETIME_MS),
+                        age: Duration::ZERO,
+                    });
                 }
             }
             _ => {}
