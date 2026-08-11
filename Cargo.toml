@@ -3,6 +3,9 @@ name = "ttui"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+members = [".", "tools/visual-snapshot"]
+
 [dependencies]
 crossterm = "0.27"
 
