@@ -225,6 +225,52 @@ impl Canvas {
             }
         }
     }
+
+    /// Fills the polygon described by `points` (subpixel coordinates,
+    /// 3+ points, in perimeter order) via an even-odd scanline fill.
+    /// Does nothing if fewer than 3 points are given. The scanline
+    /// loop is clamped to the canvas's own valid row range regardless
+    /// of the input points' range, so a point far outside the canvas
+    /// cannot cause an oversized per-frame scan.
+    pub fn fill_polygon(&mut self, points: &[(f32, f32)], color: Color) {
+        if points.len() < 3 {
+            return;
+        }
+        let min_y = points
+            .iter()
+            .map(|p| p.1)
+            .fold(f32::INFINITY, f32::min)
+            .floor()
+            .max(0.0) as u16;
+        let max_y = points
+            .iter()
+            .map(|p| p.1)
+            .fold(f32::NEG_INFINITY, f32::max)
+            .ceil()
+            .min(self.grid_height().saturating_sub(1) as f32) as u16;
+        for y in min_y..=max_y {
+            let yf = y as f32 + 0.5;
+            let mut xs: Vec<f32> = Vec::new();
+            for i in 0..points.len() {
+                let (x0, y0) = points[i];
+                let (x1, y1) = points[(i + 1) % points.len()];
+                if (y0 <= yf && y1 > yf) || (y1 <= yf && y0 > yf) {
+                    let t = (yf - y0) / (y1 - y0);
+                    xs.push(x0 + t * (x1 - x0));
+                }
+            }
+            xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let mut i = 0;
+            while i + 1 < xs.len() {
+                let x_start = xs[i].round().max(0.0) as u16;
+                let x_end = xs[i + 1].round().max(0.0) as u16;
+                for x in x_start..=x_end {
+                    self.set_pixel(x, y, color);
+                }
+                i += 2;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -498,5 +544,73 @@ mod tests {
         let mut c = Canvas::new(4, 4, CanvasMode::HalfBlock);
         c.rect(u16::MAX - 2, u16::MAX - 2, 10, 10, red()); // must not panic on overflow
         c.fill_rect(u16::MAX - 2, u16::MAX - 2, 10, 10, red()); // must not panic on overflow
+    }
+
+    #[test]
+    fn fill_polygon_does_nothing_for_fewer_than_three_points() {
+        let mut c = Canvas::new(2, 2, CanvasMode::HalfBlock);
+        c.fill_polygon(&[(0.0, 0.0), (3.0, 3.0)], red());
+        let mut buf = Buffer::new(2, 2);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(*buf.get(0, 0), Cell::default());
+        assert_eq!(*buf.get(1, 1), Cell::default());
+    }
+
+    #[test]
+    fn fill_polygon_fills_a_rectangle_with_correct_even_odd_boundaries() {
+        // HalfBlock canvas, 4 cells wide x 3 cells tall (subpixel grid 4x6).
+        // Rectangle vertices at subpixel (1,1)-(1,5)-(3,5)-(3,1) fill
+        // subpixel columns 1-3 (inclusive both boundary columns, per
+        // this scan's existing crossing-pair convention) across
+        // subpixel rows 1-4 — row 5 sits exactly on the bottom edge
+        // and is correctly left unfilled by the per-row crossing test,
+        // even though it's within the outer loop's scanned range.
+        // Hand-traced against the actual algorithm, not assumed.
+        let mut c = Canvas::new(4, 3, CanvasMode::HalfBlock);
+        c.fill_polygon(&[(1.0, 1.0), (1.0, 5.0), (3.0, 5.0), (3.0, 1.0)], red());
+        let mut buf = Buffer::new(4, 3);
+        c.blit(&mut buf, 0, 0);
+
+        // Column 0 (outside the rectangle): every row stays default.
+        assert_eq!(*buf.get(0, 0), Cell::default());
+        assert_eq!(*buf.get(0, 1), Cell::default());
+        assert_eq!(*buf.get(0, 2), Cell::default());
+
+        // Columns 1-3: bottom-only at row 0 (subpixel y=1 filled, y=0
+        // not), solid at row 1 (subpixel y=2 and y=3 both filled),
+        // top-only at row 2 (subpixel y=4 filled, y=5 not).
+        for cx in 1..=3 {
+            assert_eq!(buf.get(cx, 0).symbol, '▄', "col {cx} row 0");
+            assert_eq!(buf.get(cx, 0).fg, red());
+            assert_eq!(buf.get(cx, 1).symbol, '█', "col {cx} row 1");
+            assert_eq!(buf.get(cx, 2).symbol, '▀', "col {cx} row 2");
+            assert_eq!(buf.get(cx, 2).fg, red());
+        }
+    }
+
+    #[test]
+    fn fill_polygon_scanline_loop_stays_bounded_despite_huge_input_coordinates() {
+        // A vertex with y far outside the canvas (simulating what a
+        // near-camera projected point could produce) must not cause
+        // the scanline loop to iterate beyond the canvas's own rows —
+        // the spike's own unbounded-loop landmine, fixed at the Canvas
+        // level regardless of what a caller's projection produces.
+        let mut c = Canvas::new(2, 2, CanvasMode::HalfBlock); // grid 2x4
+        c.fill_polygon(
+            &[
+                (0.0, 0.0),
+                (0.0, 1_000_000.0),
+                (2.0, 1_000_000.0),
+                (2.0, 0.0),
+            ],
+            red(),
+        );
+        let mut buf = Buffer::new(2, 2);
+        c.blit(&mut buf, 0, 0); // must return promptly (bounded loop), not stall
+        for cy in 0..2 {
+            for cx in 0..2 {
+                assert_eq!(buf.get(cx, cy).symbol, '█', "cell ({cx},{cy})");
+            }
+        }
     }
 }

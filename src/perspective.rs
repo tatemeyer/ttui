@@ -166,6 +166,33 @@ impl Camera {
             (cy1 * subpixels_y).round().clamp(0.0, u16::MAX as f32) as u16,
         ))
     }
+
+    /// Projects `polygon`'s vertices to `Canvas` subpixel coordinates,
+    /// ready for `Canvas::fill_polygon`. Returns `None` if any vertex
+    /// is at/behind the near plane, or if every vertex's `scale` is
+    /// below `min_scale` — no screen-edge clipping for polygons (see
+    /// this Arc's design spec Non-goals).
+    pub fn project_polygon(
+        &self,
+        polygon: &Polygon3,
+        center_x: f32,
+        center_y: f32,
+        subpixels_x: f32,
+        subpixels_y: f32,
+        min_scale: f32,
+    ) -> Option<Vec<(f32, f32)>> {
+        let mut points = Vec::with_capacity(polygon.vertices.len());
+        let mut max_scale = 0.0f32;
+        for &v in &polygon.vertices {
+            let (sx, sy, scale) = self.project(v, center_x, center_y)?;
+            max_scale = max_scale.max(scale);
+            points.push((sx * subpixels_x, sy * subpixels_y));
+        }
+        if max_scale < min_scale {
+            return None;
+        }
+        Some(points)
+    }
 }
 
 #[cfg(test)]
@@ -415,5 +442,72 @@ mod tests {
             .expect("line crosses into the visible screen");
         // Clipped start lands at screen (10.0, 5.0) -> subpixel (20, 20).
         assert_eq!(result, (20, 20, 10, 20));
+    }
+
+    #[test]
+    fn project_polygon_returns_none_when_any_vertex_is_behind_the_near_plane() {
+        let cam = camera();
+        let poly = Polygon3 {
+            vertices: vec![
+                Point3 {
+                    x: -1.0,
+                    y: -1.0,
+                    z: 4.0,
+                },
+                Point3 {
+                    x: -1.0,
+                    y: 1.0,
+                    z: 4.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.2,
+                },
+            ],
+        };
+        assert_eq!(cam.project_polygon(&poly, 5.0, 5.0, 2.0, 4.0, 0.0), None);
+    }
+
+    #[test]
+    fn project_polygon_returns_none_when_every_vertexs_scale_is_below_min_scale() {
+        let cam = camera();
+        let poly = Polygon3 {
+            vertices: vec![
+                Point3 {
+                    x: -1.0,
+                    y: -1.0,
+                    z: 100.0,
+                },
+                Point3 {
+                    x: -1.0,
+                    y: 1.0,
+                    z: 100.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 100.0,
+                },
+            ],
+        };
+        assert_eq!(cam.project_polygon(&poly, 5.0, 5.0, 2.0, 4.0, 0.1), None);
+    }
+
+    #[test]
+    fn project_polygon_projects_every_vertex_when_visible() {
+        let cam = camera();
+        // z=4.0, x=0.0, y=0.0 -> ndc=(0,0) -> screen=(5.0,5.0) -> subpixel (10.0,20.0).
+        let poly = Polygon3 {
+            vertices: vec![Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 4.0,
+            }],
+        };
+        let result = cam
+            .project_polygon(&poly, 5.0, 5.0, 2.0, 4.0, 0.0)
+            .expect("single visible vertex projects");
+        assert_eq!(result, vec![(10.0, 20.0)]);
     }
 }
