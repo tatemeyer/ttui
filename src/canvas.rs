@@ -27,7 +27,8 @@ pub struct Canvas {
     mode: CanvasMode,
     subpixels_x: u16,
     subpixels_y: u16,
-    grid: Vec<Option<Color>>, // len = grid_width() * grid_height()
+    grid: Vec<Option<(Color, u64)>>, // (color, write-sequence number)
+    next_seq: u64,
 }
 
 impl Canvas {
@@ -46,6 +47,7 @@ impl Canvas {
             subpixels_x,
             subpixels_y,
             grid: vec![None; grid_w * grid_h],
+            next_seq: 0,
         }
     }
 
@@ -66,7 +68,9 @@ impl Canvas {
     pub fn set_pixel(&mut self, x: u16, y: u16, color: Color) {
         if x < self.grid_width() && y < self.grid_height() {
             let idx = self.index(x, y);
-            self.grid[idx] = Some(color);
+            let seq = self.next_seq;
+            self.next_seq += 1;
+            self.grid[idx] = Some((color, seq));
         }
     }
 
@@ -90,8 +94,8 @@ impl Canvas {
     fn blit_half_block(&self, buf: &mut Buffer, ox: u16, oy: u16) {
         for cy in 0..self.height {
             for cx in 0..self.width {
-                let top = self.grid[self.index(cx, cy * 2)];
-                let bottom = self.grid[self.index(cx, cy * 2 + 1)];
+                let top = self.grid[self.index(cx, cy * 2)].map(|(c, _)| c);
+                let bottom = self.grid[self.index(cx, cy * 2 + 1)].map(|(c, _)| c);
                 let cell = match (top, bottom) {
                     (None, None) => continue, // transparent: leave buf untouched
                     (Some(t), None) => Cell {
@@ -140,14 +144,16 @@ impl Canvas {
         for cy in 0..self.height {
             for cx in 0..self.width {
                 let mut mask: u8 = 0;
-                let mut color: Option<Color> = None;
+                let mut winner: Option<(Color, u64)> = None;
                 for row in 0..4u16 {
                     for col in 0..2u16 {
                         let px = cx * 2 + col;
                         let py = cy * 4 + row;
-                        if let Some(c) = self.grid[self.index(px, py)] {
+                        if let Some((c, seq)) = self.grid[self.index(px, py)] {
                             mask |= DOT_BITS[row as usize][col as usize];
-                            color = Some(c); // last-write-wins per cell
+                            if winner.map(|(_, best)| seq > best).unwrap_or(true) {
+                                winner = Some((c, seq)); // genuinely last-write-wins now
+                            }
                         }
                     }
                 }
@@ -163,7 +169,7 @@ impl Canvas {
                         by,
                         Cell {
                             symbol,
-                            fg: color.unwrap(),
+                            fg: winner.unwrap().0,
                             bg: Color::Reset,
                             style: CellStyle::default(),
                             alpha: 1.0,
@@ -429,6 +435,29 @@ mod tests {
         let mut c = Canvas::new(1, 1, CanvasMode::Braille);
         c.set_pixel(0, 0, red());
         c.set_pixel(1, 0, blue());
+        let mut buf = Buffer::new(1, 1);
+        c.blit(&mut buf, 0, 0);
+        assert_eq!(buf.get(0, 0).fg, blue());
+    }
+
+    #[test]
+    fn braille_last_written_wins_even_when_earlier_in_scan_order() {
+        // The scan visits (row, col) in order (0,0),(0,1),(1,0),(1,1),
+        // (2,0),(2,1),(3,0),(3,1) — so subpixel (1,3) [row=3,col=1] is
+        // LAST in scan order, and (0,0) [row=0,col=0] is FIRST. Here
+        // they're written in the OPPOSITE order: the scan-order-last
+        // subpixel is written FIRST (chronologically), and the
+        // scan-order-first subpixel is written SECOND (chronologically
+        // more recent). A scan-order-based (buggy) rule would report
+        // `red` (whichever the row/col loop touches last); a true
+        // last-write-wins rule reports `blue` (written later in real
+        // call order) — this is exactly the distinction the existing
+        // `braille_last_written_dot_wins_the_cells_color` test above
+        // cannot catch, since its two `set_pixel` calls happen to
+        // already agree on scan order and write order.
+        let mut c = Canvas::new(1, 1, CanvasMode::Braille);
+        c.set_pixel(1, 3, red());
+        c.set_pixel(0, 0, blue());
         let mut buf = Buffer::new(1, 1);
         c.blit(&mut buf, 0, 0);
         assert_eq!(buf.get(0, 0).fg, blue());
