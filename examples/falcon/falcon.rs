@@ -336,9 +336,11 @@ impl Falcon {
                 start: verts[a],
                 end: verts[b],
             };
-            // Subtract half a subpixel from each clip bound so the closed-interval
-            // clip boundary (`project_line` clips against `[0, screen_w]`) maps to
-            // the last valid subpixel column/row instead of one past it — see the
+            // Subtract one subpixel's worth from each clip bound (in cell-space
+            // units, so 1/2 for the 2-subpixel-wide column and 1/4 for the
+            // 4-subpixel-tall row) so the closed-interval clip boundary
+            // (`project_line` clips against `[0, screen_w]`) maps to the last
+            // valid subpixel column/row instead of one past it — see the
             // "cosmetic quirk" doc comment on `Camera::project_line` in
             // src/perspective.rs. Without this, a clipped endpoint landing exactly
             // on the boundary silently drops (Canvas::set_pixel's bounds check),
