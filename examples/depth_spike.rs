@@ -6,6 +6,8 @@
 // projection math. This file grows across that spec's implementation
 // plan; expect prototype-quality code throughout.
 
+use std::time::Duration;
+
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use ttui::app::{run, App};
@@ -143,13 +145,51 @@ fn fill_polygon(
     }
 }
 
+const STAR_COUNT: usize = 80;
+const STAR_SPEED: f32 = 4.0; // z-units/second
+const STAR_RESPAWN_Z: f32 = 24.0;
+
+/// One drifting star: a fixed `(x, y)` and a `z` that decreases over
+/// time (drifting toward the camera), respawning far away once it
+/// passes the near plane.
+#[derive(Clone, Copy, Debug)]
+struct Star {
+    x: f32,
+    y: f32,
+    z: f32,
+}
+
+/// Deterministic pseudo-random scatter for star placement — no RNG
+/// dependency, matching every prior Arc's posture (same style as
+/// `src/glitch.rs`'s noise hash).
+fn scatter(seed: u32, spread: f32) -> f32 {
+    let h = (seed.wrapping_mul(2_654_435_761)) ^ (seed.wrapping_mul(40_503).rotate_left(13));
+    ((h % 10_000) as f32 / 10_000.0 - 0.5) * spread
+}
+
 struct DepthSpike {
+    stars: Vec<Star>,
+    tick_count: u32,
     quit: bool,
 }
 
 impl DepthSpike {
     fn new() -> Self {
-        DepthSpike { quit: false }
+        let stars = (0..STAR_COUNT)
+            .map(|i| {
+                let seed = i as u32;
+                Star {
+                    x: scatter(seed, 16.0),
+                    y: scatter(seed.wrapping_add(1_000), 10.0),
+                    z: 2.0 + (seed as f32 % 20.0),
+                }
+            })
+            .collect();
+        DepthSpike {
+            stars,
+            tick_count: 0,
+            quit: false,
+        }
     }
 
     fn render_test_lines(&self, area: Rect, buf: &mut LayerStack) {
@@ -207,6 +247,49 @@ impl DepthSpike {
         );
         canvas.blit(buf, area.x, area.y);
     }
+
+    fn render_starfield(&self, area: Rect, buf: &mut LayerStack) {
+        let center_x = area.width as f32 / 2.0;
+        let center_y = area.height as f32 / 2.0;
+        for star in &self.stars {
+            let p = Point3 { x: star.x, y: star.y, z: star.z };
+            let Some((sx, sy, scale)) = project(p, center_x, center_y) else {
+                continue;
+            };
+            let x = sx.round();
+            let y = sy.round();
+            if x < 0.0 || y < 0.0 || x as u16 >= area.width || y as u16 >= area.height {
+                continue;
+            }
+            // Nearer (larger scale) stars render as a brighter, denser
+            // glyph; farther ones as a dim, sparse glyph — both driven
+            // by the same projection-derived `scale`, not a separate
+            // hand-tuned depth curve.
+            let symbol = if scale > 3.0 {
+                '@'
+            } else if scale > 1.5 {
+                '*'
+            } else {
+                '.'
+            };
+            let brightness = (scale * 60.0).clamp(30.0, 255.0) as u8;
+            buf.set(
+                x as u16,
+                y as u16,
+                Cell {
+                    symbol,
+                    fg: Color::Rgb {
+                        r: brightness,
+                        g: brightness,
+                        b: brightness,
+                    },
+                    bg: Color::Reset,
+                    alpha: 1.0,
+                    ..Default::default()
+                },
+            );
+        }
+    }
 }
 
 impl App for DepthSpike {
@@ -221,51 +304,31 @@ impl App for DepthSpike {
     }
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
-        // Sanity check: four points at increasing depth (plus one
-        // behind the near plane, which must not render) along the
-        // same x/y — nearer ones should land farther from center and
-        // brighter; farther ones should converge toward center and
-        // dim; the z=0.2 point must not appear at all.
-        let center_x = area.width as f32 / 2.0;
-        let center_y = area.height as f32 / 2.0;
-        let test_points = [
-            Point3 { x: 3.0, y: 0.0, z: 2.0 },
-            Point3 { x: 3.0, y: 0.0, z: 5.0 },
-            Point3 { x: 3.0, y: 0.0, z: 10.0 },
-            Point3 { x: 3.0, y: 0.0, z: 0.2 },
-        ];
-        for p in test_points {
-            let Some((sx, sy, scale)) = project(p, center_x, center_y) else {
-                continue;
-            };
-            let x = sx.round();
-            let y = sy.round();
-            if x < 0.0 || y < 0.0 || x as u16 >= area.width || y as u16 >= area.height {
-                continue;
-            }
-            let brightness = (scale * 40.0).clamp(40.0, 255.0) as u8;
-            buf.set(
-                x as u16,
-                y as u16,
-                Cell {
-                    symbol: '*',
-                    fg: Color::Rgb {
-                        r: brightness,
-                        g: brightness,
-                        b: brightness,
-                    },
-                    bg: Color::Reset,
-                    alpha: 1.0,
-                    ..Default::default()
-                },
-            );
-        }
+        self.render_starfield(area, buf);
         self.render_test_lines(area, buf);
         self.render_test_polygon(area, buf);
     }
 
     fn should_quit(&self) -> bool {
         self.quit
+    }
+
+    fn tick_rate(&self) -> Option<Duration> {
+        Some(Duration::from_millis(33))
+    }
+
+    fn on_tick(&mut self, elapsed: Duration) {
+        let dz = STAR_SPEED * elapsed.as_secs_f32();
+        for (i, star) in self.stars.iter_mut().enumerate() {
+            star.z -= dz;
+            if star.z <= NEAR_PLANE {
+                let seed = i as u32;
+                star.z = STAR_RESPAWN_Z;
+                star.x = scatter(seed.wrapping_add(self.tick_count), 16.0);
+                star.y = scatter(seed.wrapping_add(self.tick_count).wrapping_add(1_000), 10.0);
+            }
+        }
+        self.tick_count = self.tick_count.wrapping_add(1);
     }
 }
 
