@@ -10,6 +10,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use ttui::app::{run, App};
 use ttui::buffer::{Cell, LayerStack};
+use ttui::canvas::{Canvas, CanvasMode};
 use ttui::layout::Rect;
 
 /// Camera fixed at the origin, looking down `+Z` — no position/
@@ -46,6 +47,36 @@ fn project(p: Point3, center_x: f32, center_y: f32) -> Option<(f32, f32, f32)> {
     Some((screen_x, screen_y, scale))
 }
 
+/// A line segment in camera-relative 3D space.
+#[derive(Clone, Copy, Debug)]
+struct Line3 {
+    start: Point3,
+    end: Point3,
+}
+
+/// Projects `line` to `Canvas` subpixel coordinates for a canvas whose
+/// subpixel grid is `subpixels_x`/`subpixels_y` per cell. Simplified
+/// clipping for this spike: `None` if *either* endpoint is at/behind
+/// the near plane — true near-plane segment clipping (computing the
+/// intersection point) is a documented Non-goal unless this spike
+/// finds it's actually needed.
+fn project_line(
+    line: Line3,
+    center_x: f32,
+    center_y: f32,
+    subpixels_x: f32,
+    subpixels_y: f32,
+) -> Option<(u16, u16, u16, u16)> {
+    let (sx0, sy0, _) = project(line.start, center_x, center_y)?;
+    let (sx1, sy1, _) = project(line.end, center_x, center_y)?;
+    Some((
+        (sx0 * subpixels_x).round().max(0.0) as u16,
+        (sy0 * subpixels_y).round().max(0.0) as u16,
+        (sx1 * subpixels_x).round().max(0.0) as u16,
+        (sy1 * subpixels_y).round().max(0.0) as u16,
+    ))
+}
+
 struct DepthSpike {
     quit: bool,
 }
@@ -53,6 +84,38 @@ struct DepthSpike {
 impl DepthSpike {
     fn new() -> Self {
         DepthSpike { quit: false }
+    }
+
+    fn render_test_lines(&self, area: Rect, buf: &mut LayerStack) {
+        let center_x = area.width as f32 / 2.0;
+        let center_y = area.height as f32 / 2.0;
+        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
+        let lines = [
+            Line3 {
+                start: Point3 { x: -3.0, y: -2.0, z: 4.0 },
+                end: Point3 { x: 3.0, y: -2.0, z: 4.0 },
+            },
+            Line3 {
+                start: Point3 { x: -3.0, y: 2.0, z: 4.0 },
+                end: Point3 { x: 3.0, y: 2.0, z: 4.0 },
+            },
+            Line3 {
+                start: Point3 { x: -3.0, y: -2.0, z: 4.0 },
+                end: Point3 { x: -5.0, y: -3.0, z: 10.0 },
+            },
+            Line3 {
+                start: Point3 { x: 3.0, y: -2.0, z: 4.0 },
+                end: Point3 { x: 5.0, y: -3.0, z: 10.0 },
+            },
+        ];
+        for line in lines {
+            if let Some((x0, y0, x1, y1)) =
+                project_line(line, center_x, center_y, 2.0, 4.0)
+            {
+                canvas.line(x0, y0, x1, y1, Color::Rgb { r: 90, g: 180, b: 255 });
+            }
+        }
+        canvas.blit(buf, area.x, area.y);
     }
 }
 
@@ -107,6 +170,7 @@ impl App for DepthSpike {
                 },
             );
         }
+        self.render_test_lines(area, buf);
     }
 
     fn should_quit(&self) -> bool {
