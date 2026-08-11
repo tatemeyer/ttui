@@ -235,6 +235,14 @@ transition).
   glyph (`•`) at screen center — a static pre-boot moment.
 - **`[0.1, 0.7)`:** remap to `wave = (progress - 0.1) / 0.6` in
   `[0, 1]`. `panels_shown = (wave * 3.0) as usize` (0, 1, 2, or 3).
+  (Corrected during final review: the truncating formula above never
+  actually reaches 3 — since `wave < 1.0` throughout this branch,
+  `wave * 3.0` never reaches `3.0`, so truncation caps `panels_shown`
+  at 2 and also leaves ~300ms of blank screen at the start of the
+  phase before the first panel appears. The as-implemented formula is
+  `panels_shown = (wave * 3.0).ceil() as usize` (still `.min(3)`
+  clamped), which reaches all of 0, 1, 2, and 3 and eliminates the
+  blank gap.)
   Panels `0..panels_shown` render their full `CockpitPanel` border
   (unfocused coloring) with their `GlitchBuffer` triggered for a brief
   burst (reuses Slice 3's overlay rendering) at the moment they first

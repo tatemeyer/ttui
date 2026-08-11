@@ -20,6 +20,10 @@ against a specific vision doc (`TTUI-Ideas/vision/UI/`). Run with
   launches through its own boot + signature transition, `F12` (or an
   app's own `q`) returns to the nexus, and the nexus's `q` quits. Built
   from `docs/design/specs/launcher/2026-08-08-cross-app-launcher-design.md`.
+- **`falcon`** — a scrappy smuggler-freighter cockpit with three
+  instrument panels (Hyperdrive, Sensors, Weapons — placeholders for
+  now, a follow-up plan fills them in) and a percussive-maintenance
+  glitch mechanic. Built from `TTUI-Ideas/vision/UI/idea-4-Falcon.md`.
 - **`demo`** — the original core-framework smoke-test example, predates
   the vision-doc apps above. Retirement tracked in issue #83.
 - **`render_spike`** — a bare showcase proving out six
