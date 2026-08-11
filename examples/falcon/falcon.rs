@@ -53,8 +53,9 @@ fn canopy_vertices() -> [Point3; 8] {
     v
 }
 
-/// 4 near-rectangle edges (dx/dy pairs), 4 far-rectangle edges, 4
-/// near-to-far connectors — same topology as a cube's 12 edges.
+/// 4 dx-parallel edges (2 near + 2 far), 4 dy-parallel edges (2 near +
+/// 2 far), then 4 near-to-far connectors — same topology as a cube's
+/// 12 edges.
 #[rustfmt::skip]
 const CANOPY_EDGES: [(usize, usize); 12] = [
     (0, 4), (1, 5), (2, 6), (3, 7), // edges along dx
@@ -326,8 +327,8 @@ impl Falcon {
     }
 
     fn render_canopy(&self, area: Rect, buf: &mut LayerStack, edges_shown: usize) {
-        let center_x = area.x as f32 + area.width as f32 / 2.0;
-        let center_y = area.y as f32 + area.height as f32 / 2.0;
+        let center_x = area.width as f32 / 2.0;
+        let center_y = area.height as f32 / 2.0;
         let verts = canopy_vertices();
         let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
         for &(a, b) in CANOPY_EDGES.iter().take(edges_shown) {
@@ -335,12 +336,19 @@ impl Falcon {
                 start: verts[a],
                 end: verts[b],
             };
+            // Subtract half a subpixel from each clip bound so the closed-interval
+            // clip boundary (`project_line` clips against `[0, screen_w]`) maps to
+            // the last valid subpixel column/row instead of one past it — see the
+            // "cosmetic quirk" doc comment on `Camera::project_line` in
+            // src/perspective.rs. Without this, a clipped endpoint landing exactly
+            // on the boundary silently drops (Canvas::set_pixel's bounds check),
+            // which at 80 columns culls one of the canopy's near-rectangle pillars.
             if let Some((x0, y0, x1, y1)) = self.camera.project_line(
                 line,
                 center_x,
                 center_y,
-                area.width as f32,
-                area.height as f32,
+                area.width as f32 - 1.0 / 2.0,
+                area.height as f32 - 1.0 / 4.0,
                 2.0,
                 4.0,
                 0.0,

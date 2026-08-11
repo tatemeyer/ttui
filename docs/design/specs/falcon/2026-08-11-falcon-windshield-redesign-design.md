@@ -187,8 +187,8 @@ fn canopy_vertices() -> [Point3; 8] {
     v
 }
 
-/// Same edge topology as `depth_spike.rs::CUBE_EDGES` (4 near-rect
-/// edges via dx/dy pairs, 4 far-rect edges, 4 near-to-far connectors).
+/// Same edge topology as `depth_spike.rs::CUBE_EDGES` (4 dx-parallel
+/// edges, 4 dy-parallel edges, 4 near-to-far connectors).
 const CANOPY_EDGES: [(usize, usize); 12] = [
     (0, 4), (1, 5), (2, 6), (3, 7), // edges along dx
     (0, 2), (1, 3), (4, 6), (5, 7), // edges along dy
