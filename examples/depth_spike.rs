@@ -145,6 +145,35 @@ fn fill_polygon(
     }
 }
 
+const CUBE_HALF: f32 = 2.0;
+const CUBE_MIN_Z: f32 = 4.0;
+const CUBE_MAX_Z: f32 = 14.0;
+const CUBE_DRIFT_SPEED: f32 = 2.0; // z-units/second
+
+/// The 8 corners of a cube of half-width `CUBE_HALF` centered at
+/// `(0, 0, center_z)`. Index order: `i = (dx_idx*2 + dy_idx)*2 + dz_idx`
+/// for `dx_idx, dy_idx, dz_idx` each in `{0 (-), 1 (+)}`.
+fn cube_vertices(center_z: f32) -> [Point3; 8] {
+    let mut v = [Point3 { x: 0.0, y: 0.0, z: 0.0 }; 8];
+    let mut i = 0;
+    for dx in [-CUBE_HALF, CUBE_HALF] {
+        for dy in [-CUBE_HALF, CUBE_HALF] {
+            for dz in [-CUBE_HALF, CUBE_HALF] {
+                v[i] = Point3 { x: dx, y: dy, z: center_z + dz };
+                i += 1;
+            }
+        }
+    }
+    v
+}
+
+/// The cube's 12 edges as index pairs into `cube_vertices`'s output.
+const CUBE_EDGES: [(usize, usize); 12] = [
+    (0, 4), (1, 5), (2, 6), (3, 7), // edges along dx
+    (0, 2), (1, 3), (4, 6), (5, 7), // edges along dy
+    (0, 1), (2, 3), (4, 5), (6, 7), // edges along dz
+];
+
 const STAR_COUNT: usize = 80;
 const STAR_SPEED: f32 = 4.0; // z-units/second
 const STAR_RESPAWN_Z: f32 = 24.0;
@@ -169,6 +198,7 @@ fn scatter(seed: u32, spread: f32) -> f32 {
 
 struct DepthSpike {
     stars: Vec<Star>,
+    cube_z: f32,
     tick_count: u32,
     quit: bool,
 }
@@ -187,65 +217,10 @@ impl DepthSpike {
             .collect();
         DepthSpike {
             stars,
+            cube_z: CUBE_MIN_Z,
             tick_count: 0,
             quit: false,
         }
-    }
-
-    fn render_test_lines(&self, area: Rect, buf: &mut LayerStack) {
-        let center_x = area.width as f32 / 2.0;
-        let center_y = area.height as f32 / 2.0;
-        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
-        let lines = [
-            Line3 {
-                start: Point3 { x: -3.0, y: -2.0, z: 4.0 },
-                end: Point3 { x: 3.0, y: -2.0, z: 4.0 },
-            },
-            Line3 {
-                start: Point3 { x: -3.0, y: 2.0, z: 4.0 },
-                end: Point3 { x: 3.0, y: 2.0, z: 4.0 },
-            },
-            Line3 {
-                start: Point3 { x: -3.0, y: -2.0, z: 4.0 },
-                end: Point3 { x: -5.0, y: -3.0, z: 10.0 },
-            },
-            Line3 {
-                start: Point3 { x: 3.0, y: -2.0, z: 4.0 },
-                end: Point3 { x: 5.0, y: -3.0, z: 10.0 },
-            },
-        ];
-        for line in lines {
-            if let Some((x0, y0, x1, y1)) =
-                project_line(line, center_x, center_y, 2.0, 4.0)
-            {
-                canvas.line(x0, y0, x1, y1, Color::Rgb { r: 90, g: 180, b: 255 });
-            }
-        }
-        canvas.blit(buf, area.x, area.y);
-    }
-
-    fn render_test_polygon(&self, area: Rect, buf: &mut LayerStack) {
-        let center_x = area.width as f32 / 2.0;
-        let center_y = area.height as f32 / 2.0;
-        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
-        let polygon = Polygon3 {
-            vertices: vec![
-                Point3 { x: -4.0, y: -2.5, z: 6.0 },
-                Point3 { x: -4.0, y: 2.5, z: 6.0 },
-                Point3 { x: 2.0, y: 3.0, z: 12.0 },
-                Point3 { x: 2.0, y: -3.0, z: 12.0 },
-            ],
-        };
-        fill_polygon(
-            &polygon,
-            &mut canvas,
-            center_x,
-            center_y,
-            2.0,
-            4.0,
-            Color::Rgb { r: 60, g: 40, b: 100 },
-        );
-        canvas.blit(buf, area.x, area.y);
     }
 
     fn render_starfield(&self, area: Rect, buf: &mut LayerStack) {
@@ -290,6 +265,39 @@ impl DepthSpike {
             );
         }
     }
+
+    fn render_cube(&self, area: Rect, buf: &mut LayerStack, center_z: f32) {
+        let center_x = area.width as f32 / 2.0;
+        let center_y = area.height as f32 / 2.0;
+        let verts = cube_vertices(center_z);
+        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
+
+        // Front face (both dz=- corners: indices 0,2,6,4, walked as a
+        // perimeter), filled first so the wireframe draws on top of it.
+        let front_face = Polygon3 {
+            vertices: vec![verts[0], verts[2], verts[6], verts[4]],
+        };
+        fill_polygon(
+            &front_face,
+            &mut canvas,
+            center_x,
+            center_y,
+            2.0,
+            4.0,
+            Color::Rgb { r: 40, g: 60, b: 100 },
+        );
+
+        for &(a, b) in &CUBE_EDGES {
+            let line = Line3 { start: verts[a], end: verts[b] };
+            if let Some((x0, y0, x1, y1)) =
+                project_line(line, center_x, center_y, 2.0, 4.0)
+            {
+                canvas.line(x0, y0, x1, y1, Color::Rgb { r: 200, g: 220, b: 255 });
+            }
+        }
+
+        canvas.blit(buf, area.x, area.y);
+    }
 }
 
 impl App for DepthSpike {
@@ -305,8 +313,7 @@ impl App for DepthSpike {
 
     fn view(&self, area: Rect, buf: &mut LayerStack) {
         self.render_starfield(area, buf);
-        self.render_test_lines(area, buf);
-        self.render_test_polygon(area, buf);
+        self.render_cube(area, buf, self.cube_z);
     }
 
     fn should_quit(&self) -> bool {
@@ -327,6 +334,10 @@ impl App for DepthSpike {
                 star.x = scatter(seed.wrapping_add(self.tick_count), 16.0);
                 star.y = scatter(seed.wrapping_add(self.tick_count).wrapping_add(1_000), 10.0);
             }
+        }
+        self.cube_z += CUBE_DRIFT_SPEED * elapsed.as_secs_f32();
+        if self.cube_z > CUBE_MAX_Z {
+            self.cube_z = CUBE_MIN_Z;
         }
         self.tick_count = self.tick_count.wrapping_add(1);
     }
