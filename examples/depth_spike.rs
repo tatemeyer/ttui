@@ -154,12 +154,20 @@ const CUBE_DRIFT_SPEED: f32 = 2.0; // z-units/second
 /// `(0, 0, center_z)`. Index order: `i = (dx_idx*2 + dy_idx)*2 + dz_idx`
 /// for `dx_idx, dy_idx, dz_idx` each in `{0 (-), 1 (+)}`.
 fn cube_vertices(center_z: f32) -> [Point3; 8] {
-    let mut v = [Point3 { x: 0.0, y: 0.0, z: 0.0 }; 8];
+    let mut v = [Point3 {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    }; 8];
     let mut i = 0;
     for dx in [-CUBE_HALF, CUBE_HALF] {
         for dy in [-CUBE_HALF, CUBE_HALF] {
             for dz in [-CUBE_HALF, CUBE_HALF] {
-                v[i] = Point3 { x: dx, y: dy, z: center_z + dz };
+                v[i] = Point3 {
+                    x: dx,
+                    y: dy,
+                    z: center_z + dz,
+                };
                 i += 1;
             }
         }
@@ -168,6 +176,7 @@ fn cube_vertices(center_z: f32) -> [Point3; 8] {
 }
 
 /// The cube's 12 edges as index pairs into `cube_vertices`'s output.
+#[rustfmt::skip]
 const CUBE_EDGES: [(usize, usize); 12] = [
     (0, 4), (1, 5), (2, 6), (3, 7), // edges along dx
     (0, 2), (1, 3), (4, 6), (5, 7), // edges along dy
@@ -227,7 +236,11 @@ impl DepthSpike {
         let center_x = area.width as f32 / 2.0;
         let center_y = area.height as f32 / 2.0;
         for star in &self.stars {
-            let p = Point3 { x: star.x, y: star.y, z: star.z };
+            let p = Point3 {
+                x: star.x,
+                y: star.y,
+                z: star.z,
+            };
             let Some((sx, sy, scale)) = project(p, center_x, center_y) else {
                 continue;
             };
@@ -284,15 +297,30 @@ impl DepthSpike {
             center_y,
             2.0,
             4.0,
-            Color::Rgb { r: 40, g: 60, b: 100 },
+            Color::Rgb {
+                r: 40,
+                g: 60,
+                b: 100,
+            },
         );
 
         for &(a, b) in &CUBE_EDGES {
-            let line = Line3 { start: verts[a], end: verts[b] };
-            if let Some((x0, y0, x1, y1)) =
-                project_line(line, center_x, center_y, 2.0, 4.0)
-            {
-                canvas.line(x0, y0, x1, y1, Color::Rgb { r: 200, g: 220, b: 255 });
+            let line = Line3 {
+                start: verts[a],
+                end: verts[b],
+            };
+            if let Some((x0, y0, x1, y1)) = project_line(line, center_x, center_y, 2.0, 4.0) {
+                canvas.line(
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    Color::Rgb {
+                        r: 200,
+                        g: 220,
+                        b: 255,
+                    },
+                );
             }
         }
 

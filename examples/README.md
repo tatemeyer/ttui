@@ -27,6 +27,10 @@ against a specific vision doc (`TTUI-Ideas/vision/UI/`). Run with
   themed vision-doc app. Built from
   `docs/design/specs/core/2026-08-08-rendering-fidelity-spike-design.md`
   rather than a vision doc.
+- **`depth_spike`** — a bare showcase proving out a fixed-forward
+  pinhole-camera projection system (points, lines, filled polygons); a
+  research-spike prototype, not a themed vision-doc app. Built from
+  `docs/design/specs/core/2026-08-10-depth-perspective-projection-spike-design.md`.
 
 Each themed app's `App` type lives in `examples/<app>/<app>.rs` and is
 reused by `launcher` via `#[path]`; `examples/<app>/main.rs` is a thin

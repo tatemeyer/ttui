@@ -194,21 +194,29 @@ and (Tasks 3-5) capture raw ANSI output from short `timeout`-bounded
 runs and read the escape-sequence stream for evidence of correct
 structure (contiguous fill spans, moving star glyphs, a fill-then-
 wireframe cube silhouette). That is real evidence of code-level
-correctness, not a substitute for a human judging whether the result
-*looks* convincing. The five questions below are answered accordingly:
-three are answered with confirmed evidence, two are explicitly left
-open.
+correctness, not a substitute for a human (or a real rendered capture)
+judging whether the result *looks* convincing. Two of the five
+questions were left open at that point — the final whole-branch review
+closed both by actually running `tools/visual-snapshot` against
+`depth_spike` and reading the captured frames; those two entries below
+are updated accordingly, with the other three left as originally
+written.
 
-- **Does the projection read as convincing depth?** **Open — not
-  confirmed.** The math itself is right (Task 1's hand-trace: nearer
-  test points at `z=2.0/5.0/10.0` land farther from center-screen and
-  brighter, in the correct order; the `z=0.2` point is correctly
-  clipped). Task 4's captured frame deltas show star screen-position
-  and brightness genuinely changing tick-over-tick, confirming
-  `on_tick` drives the projection continuously rather than rendering a
-  static scene. But "convincing" is a subjective visual-quality
-  judgment this environment cannot make — no task claims to have seen
-  it animate.
+- **Does the projection read as convincing depth?** **Confirmed.** A
+  `tools/visual-snapshot` capture at 100×35, ~10 real seconds (13
+  frames, two full cube-drift cycles), settles this: bright outer stars
+  (`@`/`*`) traverse roughly 10 cells between frames while the dim
+  central `.` cloud moves only 1-3 cells — a 3-10x apparent-speed
+  differential between near and far stars, with brightness and glyph
+  density both tracking depth radially (bright near the edges, dimming
+  toward the vanishing point at center). None of this is separately
+  tuned; it falls directly out of the shared `1/z` projection math with
+  zero per-star speed adjustment, exactly the spike's central
+  hypothesis. Task 1's hand-trace (nearer test points land farther from
+  center-screen and brighter, in the correct order) and Task 4's
+  captured frame deltas (screen-position/brightness genuinely changing
+  tick-over-tick) already pointed this way; the visual capture is the
+  confirming evidence.
 - **Does near-plane clipping behave sanely?** **Confirmed.** Task 1
   hand-traced the exact boundary case (`z=0.2 <= NEAR_PLANE=0.5` is
   excluded, `z=2.0` and above render). Task 4 walked `on_tick`'s
@@ -237,37 +245,58 @@ open.
   is a pure side effect of the same `z`-dependent projection, not a
   separately coded speed curve. This is exactly the "no second heuristic
   layered on top" property the spike set out to test, and it holds by
-  inspection of the code — whether it *looks* like convincing parallax
-  in motion is the open visual question above.
+  inspection of the code — the "does it *look* like convincing
+  parallax in motion" question is no longer open either; see the
+  confirmed answer above.
 - **Does a projected shape stay legible across its depth range?**
-  **Open — not confirmed**, but backed by the strongest indirect
-  evidence available without a live run. Task 5's 12-edge cube topology
-  hand-trace confirmed genuine cube geometry: every edge pair differs in
-  exactly one axis, every vertex has degree 3, no duplicate or
-  missing edges, and the front-face perimeter walk is a valid
-  non-self-crossing quad. Task 5's captured partial runs also showed
-  the expected fill-then-wireframe layering (a solid `{40,60,100}`
-  block bordered by `{200,220,255}` wireframe cells) and a growing
-  screen-column footprint consistent with the cube drifting nearer over
-  time. None of this is a substitute for watching the cube move through
-  its full `CUBE_MIN_Z`-to-`CUBE_MAX_Z` range and confirming it doesn't
-  degenerate into an unreadable smear up close or an indistinct dot far
-  away — that judgment call is exactly what's left open.
+  **Qualified — yes near, no far.** The same `tools/visual-snapshot`
+  capture answers this directly. Near the camera (`cube_z` roughly
+  4-8, spanning ~32-20 cells wide at 100×35) the cube reads as an
+  unambiguous cube: back face, all four converging depth edges, and a
+  correct perspective taper are all visible. Past roughly
+  `cube_z ≈ 10` (down to ~6 cells wide and smaller) it degenerates into
+  a featureless filled blob with no visible internal structure — front
+  and back faces sit within about one cell of each other at that
+  distance — exactly the "indistinct dot far away" failure mode the
+  plan's own Task 5 named as a risk to watch for. Task 5's 12-edge cube
+  topology hand-trace (every edge pair differs in exactly one axis,
+  every vertex has degree 3, no duplicate or missing edges, a valid
+  non-self-crossing front-face perimeter) and its captured partial runs
+  (fill-then-wireframe layering, a growing screen-column footprint as
+  the cube nears) already pointed at correct geometry; the visual
+  capture confirms it reads correctly near the camera and identifies
+  where legibility breaks down. **Graduation condition:** a real module
+  needs a minimum-projected-size threshold or an explicit draw-distance/
+  LOD cutoff, rather than rendering arbitrarily-small projected
+  geometry all the way out.
 
-**Path forward on the two open questions.** This project's
+- **New finding: `Canvas`'s Braille mode cannot render a filled shape
+  with a differently-colored outline.** The same visual capture showed
+  3 of the cube's 12 wireframe edges (front-top, front-left,
+  back-bottom) invisible in the rendered output — swallowed by the
+  front-face fill color. Root cause, found by reading `src/canvas.rs`'s
+  `blit_braille` (not modified here — this plan's Global Constraints
+  forbid any `src/` change this Arc): it picks each cell's color from
+  the *last subpixel in scan order* (bottom-right-most set dot), not
+  the *last-written* color, despite that function's
+  `// last-write-wins per cell` comment (`src/canvas.rs:150`) claiming
+  otherwise — so a wireframe edge lying inside a filled region loses
+  its color to the fill unless it happens to land on that specific
+  subpixel. **Graduation condition:** a real module needs either
+  separate canvases/layers per color, a per-cell color-priority rule,
+  or an explicit constraint that outline and fill must share one color.
+  The misleading comment at `src/canvas.rs:150` is also worth fixing,
+  as a separate future follow-up — not this branch.
+
+**Path forward on the two open questions — resolved.** This project's
 `visual-snapshot` tooling (`tools/visual-snapshot/`, merged separately
 per `docs/design/specs/core/2026-08-09-visual-snapshot-tooling-design.md`)
 was built to solve precisely this "no eyes-on-terminal" gap
-(`docs/tooling/visual-review.md`) — it may be able to capture and
-compare rendered frames from `depth_spike` without needing a live
-interactive TTY session, which would let a future session answer the
-"convincing depth" / "shape stays legible" questions with actual
-evidence instead of a human running it by hand. Either that tooling or
-a human running `cargo run --example depth_spike` directly and watching
-it (per the spec's own stated "judged by you running it, not by a
-metric" success criterion) should happen before or immediately after
-graduation, since it's cheap to check and the graduation recommendation
-below is otherwise resting entirely on hand-traced math.
+(`docs/tooling/visual-review.md`). The final whole-branch review used it
+to capture and read real rendered frames from `depth_spike` — both open
+questions above are now answered from that evidence, not merely
+"possible to answer this way." The graduation recommendation below no
+longer rests entirely on hand-traced math.
 
 **Graduation recommendation.** Graduate this into a real `src/`
 module — the three confirmed findings (clipping is sound, the scanline
@@ -315,3 +344,18 @@ committed with full TDD:
   deciding during the graduation design doc whether it lands in
   `src/canvas.rs` alongside `fill_rect`, or stays in `src/perspective.rs`
   next to the `Polygon3`/`project_line` code that produces its inputs.
+- **Clamp `fill_polygon`'s scanline loop to the canvas's actual
+  height.** `for y in min_y.max(0)..=max_y` has no upper bound clamp —
+  `set_pixel` bounds-checks individual writes but not the iteration
+  count itself, so a polygon vertex very close to the near plane could
+  produce an enormous `max_y` and a per-frame stall. Doesn't trigger in
+  this spike's own scene (the cube's front face never gets nearer than
+  z=2.0), but is a landmine for graduation; recommend clamping the loop
+  bounds to `0..canvas.grid_height()`.
+- **Clip, don't saturate, `project_line`'s off-screen coordinates.**
+  Its subpixel conversion saturates off-screen coordinates to 0 (via
+  `.max(0.0) as u16`) rather than actually clipping the line at the
+  screen edge, which could draw a spurious edge-hugging segment for a
+  line that goes off-screen. Doesn't trigger in this spike's scene;
+  worth deciding alongside the near-plane-clipping approach when this
+  graduates.
