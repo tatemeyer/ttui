@@ -21,3 +21,6 @@ name = "echo_key"
 
 [[example]]
 name = "echo_mouse"
+
+[[example]]
+name = "echo_args"

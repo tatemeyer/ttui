@@ -160,9 +160,22 @@ pub struct Session {
 }
 
 impl Session {
-    /// Spawns `binary` under a new pseudo-console of the given size and
-    /// starts a background reader thread.
+    /// Spawns `binary` under a new pseudo-console of the given size
+    /// and starts a background reader thread. Equivalent to
+    /// `spawn_with_args(binary, rows, cols, &[])`.
     pub fn spawn(binary: &Path, rows: u16, cols: u16) -> Result<Session, PtyError> {
+        Self::spawn_with_args(binary, rows, cols, &[])
+    }
+
+    /// Like `spawn`, but also passes `args` to the child's command
+    /// line — needed by fixtures that take arguments (e.g. an output
+    /// file path).
+    pub fn spawn_with_args(
+        binary: &Path,
+        rows: u16,
+        cols: u16,
+        args: &[&str],
+    ) -> Result<Session, PtyError> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -173,7 +186,11 @@ impl Session {
             })
             .map_err(|e| PtyError::Pty(e.to_string()))?;
 
-        let cmd = CommandBuilder::new(binary);
+        let mut cmd = CommandBuilder::new(binary);
+        for a in args {
+            cmd.arg(a);
+        }
+
         let child = pair
             .slave
             .spawn_command(cmd)
@@ -465,6 +482,22 @@ impl Session {
         self.child.kill()?;
         Ok(())
     }
+
+    /// Polls `self.child.try_wait()` until it reports the process
+    /// gone or `timeout` elapses. Returns `Some(status)` if the child
+    /// exited within `timeout`, `None` if the timeout elapsed first.
+    pub fn wait_for_exit(&mut self, timeout: Duration) -> Option<portable_pty::ExitStatus> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if let Ok(Some(status)) = self.child.try_wait() {
+                return Some(status);
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
 }
 
 const KEY_STEP_DISPLAY_DURATION: Duration = Duration::from_millis(150);
@@ -620,5 +653,55 @@ mod tests {
         let mut carry = Vec::new();
         assert!(!dsr_query_seen(&mut carry, b"hello world"));
         assert!(!dsr_query_seen(&mut carry, b"more unrelated output"));
+    }
+
+    fn echo_args_binary() -> PathBuf {
+        let mut path = examples_dir();
+        path.push("echo_args");
+        if cfg!(windows) {
+            path.set_extension("exe");
+        }
+        path
+    }
+
+    #[test]
+    fn spawn_with_args_threads_arguments_to_the_child() {
+        let mut session =
+            Session::spawn_with_args(&echo_args_binary(), 5, 40, &["hello", "world"]).unwrap();
+        let status = session.wait_for_exit(Duration::from_secs(5));
+        assert!(status.is_some(), "fixture did not exit in time");
+        assert!(
+            status.unwrap().success(),
+            "fixture reported unexpected args (exited non-zero)"
+        );
+    }
+
+    #[test]
+    fn spawn_with_args_with_empty_args_behaves_like_spawn() {
+        // spawn itself is just spawn_with_args(binary, rows, cols, &[]) —
+        // confirms an empty args slice doesn't change ordinary behavior.
+        let mut session = Session::spawn_with_args(&echo_key_binary(), 5, 40, &[]).unwrap();
+        let frame = session.capture_frame().unwrap();
+        assert_eq!(frame.width(), 40 * 16);
+        assert_eq!(frame.height(), 5 * 16);
+    }
+
+    #[test]
+    fn wait_for_exit_returns_some_for_a_process_that_exits_on_its_own() {
+        let mut session = Session::spawn(&echo_args_binary(), 5, 40).unwrap();
+        let status = session.wait_for_exit(Duration::from_secs(5));
+        assert!(status.is_some());
+    }
+
+    #[test]
+    fn wait_for_exit_returns_none_when_the_timeout_elapses_first() {
+        // echo_key blocks on event::read() until killed or sent input,
+        // so it never exits on its own — a short timeout should elapse.
+        let mut session = Session::spawn(&echo_key_binary(), 5, 40).unwrap();
+        let status = session.wait_for_exit(Duration::from_millis(200));
+        assert!(
+            status.is_none(),
+            "expected the timeout to elapse since echo_key never exits on its own"
+        );
     }
 }
