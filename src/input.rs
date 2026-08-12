@@ -56,7 +56,6 @@ pub struct InputBinder<A: Copy> {
     bindings: Vec<(Vec<KeyPress>, A)>,
     pending: Vec<KeyPress>,
     pending_elapsed: Duration,
-    #[allow(dead_code)]
     chord_timeout: Duration,
 }
 
@@ -119,6 +118,19 @@ impl<A: Copy> InputBinder<A> {
         }
         self.pending_elapsed = Duration::ZERO;
         None
+    }
+
+    /// Clears a pending chord once `chord_timeout` has elapsed since
+    /// its last extending keypress. A no-op when nothing is pending.
+    pub fn expire(&mut self, elapsed: Duration) {
+        if self.pending.is_empty() {
+            return;
+        }
+        self.pending_elapsed += elapsed;
+        if self.pending_elapsed >= self.chord_timeout {
+            self.pending.clear();
+            self.pending_elapsed = Duration::ZERO;
+        }
     }
 
     fn exact_match(&self, seq: &[KeyPress]) -> Option<A> {
@@ -334,6 +346,71 @@ mod tests {
         assert_eq!(
             ctrl_binder.feed(&press_with(KeyCode::Char('c'), KeyModifiers::CONTROL)),
             Some(TestAction::A)
+        );
+    }
+
+    #[test]
+    fn expire_does_nothing_when_pending_is_empty() {
+        let mut binder = InputBinder::<TestAction>::new(Duration::from_millis(100));
+        binder.expire(Duration::from_secs(10)); // no panic, no effect
+        binder.bind(
+            vec![
+                KeyPress::plain(KeyCode::Char('g')),
+                KeyPress::plain(KeyCode::Char('g')),
+            ],
+            TestAction::Chord,
+        );
+        assert_eq!(binder.feed(&press(KeyCode::Char('g'))), None);
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            Some(TestAction::Chord)
+        );
+    }
+
+    #[test]
+    fn expire_clears_a_stale_pending_chord_after_timeout() {
+        let mut binder = InputBinder::new(Duration::from_millis(100));
+        binder.bind(
+            vec![
+                KeyPress::plain(KeyCode::Char('g')),
+                KeyPress::plain(KeyCode::Char('g')),
+            ],
+            TestAction::Chord,
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            None,
+            "starts the chord"
+        );
+        binder.expire(Duration::from_millis(150)); // past the 100ms timeout
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            None,
+            "pending was cleared by the timeout, so this is a fresh first key, not the chord's second"
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            Some(TestAction::Chord),
+            "a fresh gg from here still completes normally"
+        );
+    }
+
+    #[test]
+    fn expire_does_not_clear_a_chord_still_within_timeout() {
+        let mut binder = InputBinder::new(Duration::from_millis(100));
+        binder.bind(
+            vec![
+                KeyPress::plain(KeyCode::Char('g')),
+                KeyPress::plain(KeyCode::Char('g')),
+            ],
+            TestAction::Chord,
+        );
+        assert_eq!(binder.feed(&press(KeyCode::Char('g'))), None);
+        binder.expire(Duration::from_millis(50)); // under the 100ms timeout
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            Some(TestAction::Chord),
+            "chord still completes — the first key's pending state survived"
         );
     }
 }
