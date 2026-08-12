@@ -1,7 +1,8 @@
 //! Encodes a snapshot script's named `{"key": "..."}` steps into the raw
 //! byte sequences a real terminal would send for them — arrow keys as CSI
 //! sequences, `Ctrl+`-combos as control bytes, everything else as a
-//! literal ASCII byte.
+//! literal ASCII byte. Also encodes `{"x": N, "y": N}` click steps
+//! (`encode_click`) as SGR mouse-protocol press/release sequences.
 
 /// A script step's `"key"` name that doesn't match any known encoding.
 #[derive(Debug, Clone, PartialEq, Eq)]

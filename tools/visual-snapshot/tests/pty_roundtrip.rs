@@ -227,11 +227,23 @@ fn a_click_step_actually_reaches_the_child_process() {
     // Initial frame + one per step.
     assert_eq!(frames.len(), 4);
     let after_click = &frames[1].0;
-    let any_non_background = after_click
-        .pixels()
-        .any(|p| *p != image::Rgba([0, 0, 0, 255]));
+
+    // CELL_PX = 16 (tools/visual-snapshot/src/render.rs). Click was at
+    // cell (3, 2); the fixture draws its glyph at exactly that cell.
+    let in_expected_cell = (48u32..64)
+        .any(|x| (32u32..48).any(|y| *after_click.get_pixel(x, y) != image::Rgba([0, 0, 0, 255])));
     assert!(
-        any_non_background,
-        "expected the echoed mouse event text to draw something"
+        in_expected_cell,
+        "expected the echoed mouse glyph inside cell (3, 2)'s pixel block"
+    );
+
+    // A swapped (y, x) = (2, 3) call would have drawn in cell (2, 3)
+    // instead — assert that block stayed background, so this test would
+    // actually fail if pty.rs's run_script ever transposed the args.
+    let swapped_cell_is_background = (32u32..48)
+        .all(|x| (48u32..64).all(|y| *after_click.get_pixel(x, y) == image::Rgba([0, 0, 0, 255])));
+    assert!(
+        swapped_cell_is_background,
+        "cell (2,3) (the swapped-coordinate location) should be untouched"
     );
 }

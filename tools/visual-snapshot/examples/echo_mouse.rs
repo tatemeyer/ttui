@@ -1,25 +1,26 @@
-//! Minimal fixture binary for click-scripting integration tests:
-//! echoes the debug representation of each mouse event it receives,
-//! exits on Esc key.
+//! Minimal fixture binary for click-scripting integration tests: draws
+//! a `#` glyph at each mouse event's reported cell, exits on Esc key.
 use crossterm::event::{self, Event};
 use crossterm::terminal;
-use std::io::Write;
 
 fn main() -> std::io::Result<()> {
     terminal::enable_raw_mode()?;
-    crossterm::execute!(std::io::stdout(), event::EnableMouseCapture)?;
     let mut out = std::io::stdout();
+    crossterm::execute!(out, event::EnableMouseCapture)?;
     loop {
         match event::read()? {
             Event::Mouse(m) => {
-                write!(out, "{:?}", m.kind)?;
-                out.flush()?;
+                crossterm::execute!(
+                    out,
+                    crossterm::cursor::MoveTo(m.column, m.row),
+                    crossterm::style::Print('#')
+                )?;
             }
             Event::Key(key) if key.code == event::KeyCode::Esc => break,
             _ => {}
         }
     }
-    crossterm::execute!(std::io::stdout(), event::DisableMouseCapture)?;
+    crossterm::execute!(out, event::DisableMouseCapture)?;
     terminal::disable_raw_mode()?;
     Ok(())
 }
