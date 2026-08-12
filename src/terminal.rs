@@ -24,7 +24,12 @@ impl Terminal {
     pub fn new() -> std::io::Result<Self> {
         terminal::enable_raw_mode()?;
         let mut out = BufWriter::new(stdout());
-        execute!(out, terminal::EnterAlternateScreen, cursor::Hide)?;
+        execute!(
+            out,
+            terminal::EnterAlternateScreen,
+            cursor::Hide,
+            event::EnableMouseCapture
+        )?;
         Ok(Terminal { out })
     }
 
@@ -144,7 +149,12 @@ impl Drop for Terminal {
     fn drop(&mut self) {
         let _ = execute!(self.out, SetAttribute(Attribute::Reset));
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(self.out, terminal::LeaveAlternateScreen, cursor::Show);
+        let _ = execute!(
+            self.out,
+            event::DisableMouseCapture,
+            terminal::LeaveAlternateScreen,
+            cursor::Show
+        );
     }
 }
 
@@ -155,7 +165,12 @@ pub fn install_panic_hook() {
     std::panic::set_hook(Box::new(move |info| {
         let _ = execute!(stdout(), SetAttribute(Attribute::Reset));
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(stdout(), terminal::LeaveAlternateScreen, cursor::Show);
+        let _ = execute!(
+            stdout(),
+            event::DisableMouseCapture,
+            terminal::LeaveAlternateScreen,
+            cursor::Show
+        );
         default_hook(info);
     }));
 }
