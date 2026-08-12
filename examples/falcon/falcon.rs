@@ -28,6 +28,18 @@ const CANOPY_NEAR_Z: f32 = 2.0;
 const CANOPY_FAR_Z: f32 = 10.0;
 const CANOPY_HALF_W: f32 = 5.0;
 const CANOPY_HALF_H: f32 = 3.0;
+const HYPERDRIVE_PHASE_SPEED: f32 = 1.5; // radians/sec
+const HYPERDRIVE_DASH_COUNT: usize = 8;
+const HYPERDRIVE_START: Point3 = Point3 {
+    x: 0.0,
+    y: 0.0,
+    z: 2.5,
+};
+const HYPERDRIVE_END: Point3 = Point3 {
+    x: 6.0,
+    y: 2.0,
+    z: 22.0,
+};
 
 /// The canopy's 8 corners: two parallel rectangles (near/far) of the
 /// same world-space size, connected by 4 verticals — the perspective
@@ -139,6 +151,7 @@ fn scatter(seed: u32, spread: f32) -> f32 {
 pub(crate) struct Falcon {
     theme: Theme,
     camera: Camera,
+    hyperdrive_phase: f32,
     stars: Vec<Star>,
     focused: usize,
     // `App::view` takes `&self`, so this records the last-seen
@@ -171,6 +184,7 @@ impl Falcon {
         Falcon {
             theme: falcon_theme(),
             camera: falcon_camera(),
+            hyperdrive_phase: 0.0,
             stars,
             focused: 0,
             last_area: std::cell::Cell::new(Rect {
@@ -377,6 +391,46 @@ impl Falcon {
         self.render_starfield(area, buf);
         self.render_canopy(area, buf, canopy_edges_shown);
     }
+
+    fn render_hud_hyperdrive(&self, area: Rect, buf: &mut LayerStack) {
+        let center_x = area.width as f32 / 2.0;
+        let center_y = area.height as f32 / 2.0;
+        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
+        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
+        for i in 0..HYPERDRIVE_DASH_COUNT {
+            let t0 = i as f32 / HYPERDRIVE_DASH_COUNT as f32;
+            let t1 = (i + 1) as f32 / HYPERDRIVE_DASH_COUNT as f32;
+            let seg = Line3 {
+                start: Point3 {
+                    x: lerp(HYPERDRIVE_START.x, HYPERDRIVE_END.x, t0),
+                    y: lerp(HYPERDRIVE_START.y, HYPERDRIVE_END.y, t0),
+                    z: lerp(HYPERDRIVE_START.z, HYPERDRIVE_END.z, t0),
+                },
+                end: Point3 {
+                    x: lerp(HYPERDRIVE_START.x, HYPERDRIVE_END.x, t1),
+                    y: lerp(HYPERDRIVE_START.y, HYPERDRIVE_END.y, t1),
+                    z: lerp(HYPERDRIVE_START.z, HYPERDRIVE_END.z, t1),
+                },
+            };
+            let phase_offset = i as f32 * (std::f32::consts::TAU / HYPERDRIVE_DASH_COUNT as f32);
+            let brightness = 0.3 + 0.7 * (0.5 + 0.5 * (self.hyperdrive_phase - phase_offset).sin());
+            let color =
+                ttui::easing::lerp_color(self.theme.background, self.theme.accent, brightness);
+            if let Some((x0, y0, x1, y1)) = self.camera.project_line(
+                seg,
+                center_x,
+                center_y,
+                area.width as f32 - 1.0 / 2.0,
+                area.height as f32 - 1.0 / 4.0,
+                2.0,
+                4.0,
+                0.0,
+            ) {
+                canvas.line(x0, y0, x1, y1, color);
+            }
+        }
+        canvas.blit(buf, area.x, area.y);
+    }
 }
 
 impl App for Falcon {
@@ -427,6 +481,8 @@ impl App for Falcon {
             return;
         }
         self.render_dashboard(area, buf);
+        let (windshield, _) = Self::windshield_console_split(area);
+        self.render_hud_hyperdrive(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
     }
 
     fn should_quit(&self) -> bool {
@@ -445,6 +501,9 @@ impl App for Falcon {
             }
         }
         self.tick_count += 1;
+        self.hyperdrive_phase = (self.hyperdrive_phase
+            + HYPERDRIVE_PHASE_SPEED * elapsed.as_secs_f32())
+            % std::f32::consts::TAU;
         for (i, gb) in self.glitches.iter_mut().enumerate() {
             gb.tick(elapsed);
             if !gb.is_active() && self.tick_count % IDLE_FLICKER_PERIOD_TICKS == i as u64 * 30 {
