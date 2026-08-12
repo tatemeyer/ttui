@@ -51,7 +51,8 @@ impl std::fmt::Display for JudgeError {
             JudgeError::Status(code, body) => {
                 write!(f, "Ollama returned HTTP {code}: {body}")
             }
-            _ => write!(f, "{self:?}"),
+            JudgeError::Io(e) => write!(f, "could not read the image file: {e}"),
+            JudgeError::Parse(msg) => write!(f, "Ollama's response wasn't valid JSON: {msg}"),
         }
     }
 }
@@ -159,6 +160,21 @@ mod tests {
     #[test]
     fn default_model_is_moondream() {
         assert_eq!(DEFAULT_MODEL, "moondream");
+    }
+
+    #[test]
+    fn io_error_display_is_a_readable_message_not_raw_debug_syntax() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+        let msg = JudgeError::Io(io_err).to_string();
+        assert!(msg.contains("could not read the image file"), "{msg}");
+        assert!(!msg.contains("Os {"), "leaked raw Debug syntax: {msg}");
+    }
+
+    #[test]
+    fn parse_error_display_is_a_readable_message_not_raw_debug_syntax() {
+        let msg = JudgeError::Parse("missing field `response`".to_string()).to_string();
+        assert!(msg.contains("Ollama's response wasn't valid JSON"), "{msg}");
+        assert!(!msg.contains("Parse("), "leaked raw Debug syntax: {msg}");
     }
 
     #[test]
