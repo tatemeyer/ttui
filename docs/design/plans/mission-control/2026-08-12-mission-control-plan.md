@@ -655,7 +655,7 @@ fn main() -> std::io::Result<()> {
 Open `examples/README.md` and add one entry for Mission Control, matching the existing entries' style/length (name, one-sentence description, vision doc pointer):
 
 ```markdown
-- **mission_control** — a NASA-style ground-control telemetry console:
+- **`mission_control`** — a NASA-style ground-control telemetry console:
   three live sparklines (altitude, velocity, signal strength) and a
   bar chart of subsystem health, all animating via a deterministic
   random walk. Built from

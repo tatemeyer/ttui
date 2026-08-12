@@ -4,6 +4,8 @@
 
 /// Two-position analog toggle switch.
 pub mod analog_toggle;
+/// Horizontal bar chart with labeled, max-scaled bars.
+pub mod bar_chart;
 /// Bordered container, with an optional outward second border ring.
 pub mod block;
 /// Thick, riveted, deliberately-asymmetric double-line border.
@@ -24,6 +26,8 @@ pub mod roundel;
 pub mod scuttle_cursor;
 /// Three-ring beveled border, drawn inward.
 pub mod smash_border;
+/// Single-row auto-scaled trend indicator.
+pub mod sparkline;
 /// Header-row-plus-data-rows table.
 pub mod table;
 /// Single-line plain text.
