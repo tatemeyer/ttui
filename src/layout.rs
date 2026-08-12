@@ -14,6 +14,15 @@ pub struct Rect {
     pub height: u16,
 }
 
+impl Rect {
+    /// Whether `(x, y)` falls within this rect — inclusive of the
+    /// left/top edge, exclusive of the right/bottom edge (matches how
+    /// `width`/`height` are already used everywhere else in this crate).
+    pub fn contains(&self, x: u16, y: u16) -> bool {
+        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    }
+}
+
 /// Axis a `Layout` splits its area along.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Direction {
@@ -154,6 +163,58 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn hit_test_rect() -> Rect {
+        Rect {
+            x: 5,
+            y: 5,
+            width: 10,
+            height: 10,
+        }
+    }
+
+    #[test]
+    fn a_point_strictly_inside_is_contained() {
+        assert!(hit_test_rect().contains(10, 10));
+    }
+
+    #[test]
+    fn a_point_on_the_left_or_top_edge_is_contained() {
+        assert!(hit_test_rect().contains(5, 10));
+        assert!(hit_test_rect().contains(10, 5));
+    }
+
+    #[test]
+    fn a_point_on_the_right_or_bottom_edge_is_not_contained() {
+        assert!(!hit_test_rect().contains(15, 10));
+        assert!(!hit_test_rect().contains(10, 15));
+    }
+
+    #[test]
+    fn a_point_fully_outside_each_direction_is_not_contained() {
+        assert!(!hit_test_rect().contains(0, 10));
+        assert!(!hit_test_rect().contains(20, 10));
+        assert!(!hit_test_rect().contains(10, 0));
+        assert!(!hit_test_rect().contains(10, 20));
+    }
+
+    #[test]
+    fn a_zero_width_or_zero_height_rect_contains_nothing() {
+        let zero_w = Rect {
+            x: 5,
+            y: 5,
+            width: 0,
+            height: 10,
+        };
+        assert!(!zero_w.contains(5, 10));
+        let zero_h = Rect {
+            x: 5,
+            y: 5,
+            width: 10,
+            height: 0,
+        };
+        assert!(!zero_h.contains(10, 5));
+    }
 
     #[test]
     fn fixed_constraints_split_horizontally() {
