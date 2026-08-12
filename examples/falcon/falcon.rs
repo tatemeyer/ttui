@@ -40,6 +40,11 @@ const HYPERDRIVE_END: Point3 = Point3 {
     y: 2.0,
     z: 22.0,
 };
+const SENSOR_SWEEP_SPEED: f32 = std::f32::consts::TAU / 4.0; // one revolution per ~4s
+const SENSOR_PLANE_Z: f32 = 6.0;
+const SENSOR_RADIUS: f32 = 3.0;
+const SENSOR_TRAIL_COUNT: usize = 4;
+const SENSOR_TRAIL_STEP: f32 = 0.25; // radians between trailing lines
 
 /// The canopy's 8 corners: two parallel rectangles (near/far) of the
 /// same world-space size, connected by 4 verticals — the perspective
@@ -152,6 +157,7 @@ pub(crate) struct Falcon {
     theme: Theme,
     camera: Camera,
     hyperdrive_phase: f32,
+    sensor_sweep_angle: f32,
     stars: Vec<Star>,
     focused: usize,
     // `App::view` takes `&self`, so this records the last-seen
@@ -185,6 +191,7 @@ impl Falcon {
             theme: falcon_theme(),
             camera: falcon_camera(),
             hyperdrive_phase: 0.0,
+            sensor_sweep_angle: 0.0,
             stars,
             focused: 0,
             last_area: std::cell::Cell::new(Rect {
@@ -431,6 +438,45 @@ impl Falcon {
         }
         canvas.blit(buf, area.x, area.y);
     }
+
+    fn render_hud_sensors(&self, area: Rect, buf: &mut LayerStack) {
+        let center_x = area.width as f32 / 2.0;
+        let center_y = area.height as f32 / 2.0;
+        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
+        let center = Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: SENSOR_PLANE_Z,
+        };
+        for k in 0..=SENSOR_TRAIL_COUNT {
+            let angle = self.sensor_sweep_angle - k as f32 * SENSOR_TRAIL_STEP;
+            let tip = Point3 {
+                x: SENSOR_RADIUS * angle.cos(),
+                y: SENSOR_RADIUS * angle.sin(),
+                z: SENSOR_PLANE_Z,
+            };
+            let brightness = 1.0 - (k as f32 / (SENSOR_TRAIL_COUNT + 1) as f32);
+            let color =
+                ttui::easing::lerp_color(self.theme.background, self.theme.secondary, brightness);
+            let line = Line3 {
+                start: center,
+                end: tip,
+            };
+            if let Some((x0, y0, x1, y1)) = self.camera.project_line(
+                line,
+                center_x,
+                center_y,
+                area.width as f32 - 1.0 / 2.0,
+                area.height as f32 - 1.0 / 4.0,
+                2.0,
+                4.0,
+                0.0,
+            ) {
+                canvas.line(x0, y0, x1, y1, color);
+            }
+        }
+        canvas.blit(buf, area.x, area.y);
+    }
 }
 
 impl App for Falcon {
@@ -483,6 +529,7 @@ impl App for Falcon {
         self.render_dashboard(area, buf);
         let (windshield, _) = Self::windshield_console_split(area);
         self.render_hud_hyperdrive(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
+        self.render_hud_sensors(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
     }
 
     fn should_quit(&self) -> bool {
@@ -503,6 +550,9 @@ impl App for Falcon {
         self.tick_count += 1;
         self.hyperdrive_phase = (self.hyperdrive_phase
             + HYPERDRIVE_PHASE_SPEED * elapsed.as_secs_f32())
+            % std::f32::consts::TAU;
+        self.sensor_sweep_angle = (self.sensor_sweep_angle
+            + SENSOR_SWEEP_SPEED * elapsed.as_secs_f32())
             % std::f32::consts::TAU;
         for (i, gb) in self.glitches.iter_mut().enumerate() {
             gb.tick(elapsed);
