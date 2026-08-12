@@ -39,6 +39,11 @@ against a specific vision doc (`TTUI-Ideas/vision/UI/`). Run with
   pinhole-camera projection system (points, lines, filled polygons); a
   research-spike prototype, not a themed vision-doc app. Built from
   `docs/design/specs/core/2026-08-10-depth-perspective-projection-spike-design.md`.
+- **mission_control** — a NASA-style ground-control telemetry console:
+  three live sparklines (altitude, velocity, signal strength) and a
+  bar chart of subsystem health, all animating via a deterministic
+  random walk. Built from
+  `docs/design/specs/mission-control/2026-08-12-mission-control-design.md`.
 
 Each themed app's `App` type lives in `examples/<app>/<app>.rs` and is
 reused by `launcher` via `#[path]`; `examples/<app>/main.rs` is a thin
