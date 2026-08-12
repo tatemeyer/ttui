@@ -254,7 +254,7 @@ impl Falcon {
     fn render_dashboard(&self, area: Rect, buf: &mut LayerStack) {
         let (windshield, console) = Self::windshield_console_split(area);
 
-        self.render_windshield(windshield, buf, 12);
+        self.render_windshield(windshield, buf, 12, true);
 
         let bg = Cell {
             symbol: ' ',
@@ -389,7 +389,13 @@ impl Falcon {
         canvas.blit(buf, area.x, area.y);
     }
 
-    fn render_windshield(&self, area: Rect, buf: &mut LayerStack, canopy_edges_shown: usize) {
+    fn render_windshield(
+        &self,
+        area: Rect,
+        buf: &mut LayerStack,
+        canopy_edges_shown: usize,
+        show_hud: bool,
+    ) {
         let bg = Cell {
             symbol: ' ',
             fg: Color::Reset,
@@ -404,6 +410,9 @@ impl Falcon {
         }
         self.render_starfield(area, buf);
         self.render_canopy(area, buf, canopy_edges_shown);
+        if show_hud {
+            self.render_hud(area, buf);
+        }
     }
 
     fn render_hud_hyperdrive(&self, area: Rect, buf: &mut LayerStack) {
@@ -541,6 +550,14 @@ impl Falcon {
         }
         canvas.blit(buf, area.x, area.y);
     }
+
+    fn render_hud(&self, area: Rect, buf: &mut LayerStack) {
+        match PANELS[self.focused] {
+            PanelKind::Hyperdrive => self.render_hud_hyperdrive(area, buf),
+            PanelKind::Sensors => self.render_hud_sensors(area, buf),
+            PanelKind::Weapons => self.render_hud_weapons(area, buf),
+        }
+    }
 }
 
 impl App for Falcon {
@@ -591,10 +608,6 @@ impl App for Falcon {
             return;
         }
         self.render_dashboard(area, buf);
-        let (windshield, _) = Self::windshield_console_split(area);
-        self.render_hud_hyperdrive(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
-        self.render_hud_sensors(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
-        self.render_hud_weapons(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
     }
 
     fn should_quit(&self) -> bool {
