@@ -71,7 +71,14 @@ a more precise reason than originally stated: the runner was never
 actually the blocker — a spawned child's synthetic console was
 sufficient all along, and ordinary hosted runners already support it,
 proven by this exact mechanism running in CI on every PR since
-`tools/visual-snapshot` first landed.
+`tools/visual-snapshot` first landed. A caveat for whoever runs this
+locally after touching `src/terminal.rs`: `cargo test --test
+raw_mode_roundtrip` alone (or any other `--test`-filtered invocation)
+does not rebuild `examples/*` first, so it can silently test a stale
+fixture binary and report a false green — run a full `cargo test` (or
+`cargo test -p visual-snapshot`, or `cargo build -p visual-snapshot
+--examples` first) to be sure the fixtures reflect the change under
+test.
 
 Full rationale: `docs/design/specs/2026-08-04-testing-verification-conventions-design.md`.
 

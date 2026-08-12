@@ -12,6 +12,7 @@ fn main() {
         .expect("expected an output file path argument");
     install_panic_hook();
     crossterm::terminal::enable_raw_mode().unwrap();
+    let raw_before_panic = crossterm::terminal::is_raw_mode_enabled().unwrap_or(false);
     let result = std::panic::catch_unwind(|| {
         panic!("simulated crash");
     });
@@ -19,7 +20,7 @@ fn main() {
     fs::write(
         &out_path,
         format!(
-            "panicked={}\nraw_after_panic={raw_after_panic}\n",
+            "panicked={}\nraw_before_panic={raw_before_panic}\nraw_after_panic={raw_after_panic}\n",
             result.is_err()
         ),
     )
