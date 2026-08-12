@@ -4,6 +4,8 @@
 
 /// Two-position analog toggle switch.
 pub mod analog_toggle;
+/// Horizontal bar chart with labeled, max-scaled bars.
+pub mod bar_chart;
 /// Bordered container, with an optional outward second border ring.
 pub mod block;
 /// Thick, riveted, deliberately-asymmetric double-line border.
