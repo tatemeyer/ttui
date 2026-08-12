@@ -12,9 +12,10 @@ const OLLAMA_GENERATE_URL: &str = "http://localhost:11434/api/generate";
 /// Default local model — small enough for CPU-only inference to stay
 /// fast; override with `--model` when a GPU or a more capable model is
 /// available. Kept in sync with the CLI's `default_value = "moondream"`
-/// literals (Task 2) by the `default_model_is_moondream` test above,
-/// since clap's derive macro needs a literal there, not this constant
-/// directly.
+/// literals by the `default_model_is_moondream` test below, and by the
+/// two CLI-parsing tests in `main.rs` that also assert against this
+/// constant, since clap's derive macro needs a literal there, not this
+/// constant directly.
 pub const DEFAULT_MODEL: &str = "moondream";
 
 /// Failure judging a screenshot: reading the file, reaching Ollama, or
@@ -23,10 +24,13 @@ pub const DEFAULT_MODEL: &str = "moondream";
 pub enum JudgeError {
     /// Couldn't read the image file from disk.
     Io(std::io::Error),
-    /// Couldn't reach Ollama, or Ollama returned an error response
-    /// (e.g. model not pulled) — the string is Ollama's own message
-    /// where available, surfaced as-is rather than reinterpreted.
+    /// Couldn't reach Ollama at all (connection refused, DNS, etc.) —
+    /// this is the "is it running?" case.
     Request(String),
+    /// Ollama was reachable and responded with an HTTP error status
+    /// (e.g. model not pulled) — the string is Ollama's own response
+    /// body, surfaced as-is.
+    Status(u16, String),
     /// Ollama's response body wasn't the JSON shape expected.
     Parse(String),
 }
@@ -44,6 +48,9 @@ impl std::fmt::Display for JudgeError {
                 f,
                 "could not reach Ollama at {OLLAMA_GENERATE_URL} — is it running? ({msg})"
             ),
+            JudgeError::Status(code, body) => {
+                write!(f, "Ollama returned HTTP {code}: {body}")
+            }
             _ => write!(f, "{self:?}"),
         }
     }
@@ -102,10 +109,20 @@ fn parse_response_body(body: &str) -> Result<String, JudgeError> {
 fn send_request(body: &serde_json::Value) -> Result<String, JudgeError> {
     let json_string =
         serde_json::to_string(body).map_err(|e| JudgeError::Request(e.to_string()))?;
-    ureq::post(OLLAMA_GENERATE_URL)
+    let response = ureq::post(OLLAMA_GENERATE_URL)
         .set("Content-Type", "application/json")
+        .timeout(std::time::Duration::from_secs(300))
         .send_string(&json_string)
-        .map_err(|e| JudgeError::Request(e.to_string()))?
+        .map_err(|e| match e {
+            ureq::Error::Status(code, resp) => {
+                let body = resp
+                    .into_string()
+                    .unwrap_or_else(|_| "<no response body>".to_string());
+                JudgeError::Status(code, body)
+            }
+            ureq::Error::Transport(t) => JudgeError::Request(t.to_string()),
+        })?;
+    response
         .into_string()
         .map_err(|e| JudgeError::Request(e.to_string()))
 }

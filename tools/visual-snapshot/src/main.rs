@@ -29,9 +29,10 @@ struct Args {
     /// the judge model as context. Used by both `--review` and `judge`.
     #[arg(long)]
     context: Option<String>,
-    /// Ollama model name to judge with. Keep this literal in sync with
-    /// `judge::DEFAULT_MODEL` — see judge.rs's own doc comment on
-    /// `DEFAULT_MODEL` for why it can't be referenced directly here.
+    // Keep this literal in sync with `judge::DEFAULT_MODEL` — see
+    // judge.rs's own doc comment on `DEFAULT_MODEL` for why it can't be
+    // referenced directly here.
+    /// Ollama model name to judge with.
     #[arg(long, default_value = "moondream")]
     model: String,
 }
@@ -98,9 +99,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         model,
     }) = args.command
     {
-        let verdict = judge::judge_file(&image, context.as_deref(), &model)?;
-        println!("{verdict}");
-        return Ok(());
+        match judge::judge_file(&image, context.as_deref(), &model) {
+            Ok(verdict) => {
+                println!("{verdict}");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     let example = args.example.ok_or("--example is required")?;
@@ -125,10 +133,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .last()
             .expect("run_script always returns 1+ frames")
             .0;
-        let png_bytes = encode::png_bytes(last_frame)?;
-        match judge::judge_png_bytes(&png_bytes, args.context.as_deref(), &args.model) {
-            Ok(verdict) => println!("--- judge review ---\n{verdict}"),
-            Err(e) => eprintln!("--- judge review failed (capture above is still valid) ---\n{e}"),
+        match encode::png_bytes(last_frame) {
+            Ok(png_bytes) => {
+                match judge::judge_png_bytes(&png_bytes, args.context.as_deref(), &args.model) {
+                    Ok(verdict) => println!("--- judge review ---\n{verdict}"),
+                    Err(e) => {
+                        eprintln!("--- judge review failed (capture above is still valid) ---\n{e}")
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("--- judge review failed (capture above is still valid) ---\n{e}")
+            }
         }
     }
 
@@ -200,7 +216,7 @@ mod tests {
         assert!(args.command.is_none());
         assert_eq!(args.example.as_deref(), Some("tardis"));
         assert!(!args.review);
-        assert_eq!(args.model, "moondream");
+        assert_eq!(args.model, judge::DEFAULT_MODEL);
     }
 
     #[test]
@@ -255,7 +271,7 @@ mod tests {
     fn judge_subcommand_defaults_model_to_moondream() {
         let args = Args::try_parse_from(["visual-snapshot", "judge", "capture.png"]).unwrap();
         match args.command {
-            Some(Command::Judge { model, .. }) => assert_eq!(model, "moondream"),
+            Some(Command::Judge { model, .. }) => assert_eq!(model, judge::DEFAULT_MODEL),
             None => panic!("expected Command::Judge to parse"),
         }
     }
