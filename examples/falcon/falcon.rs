@@ -1,10 +1,11 @@
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::event::{Event, KeyCode};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::App;
 use ttui::buffer::{Cell, LayerStack};
 use ttui::canvas::{Canvas, CanvasMode};
 use ttui::glitch::GlitchBuffer;
+use ttui::input::{InputBinder, KeyPress};
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::perspective::{Camera, Line3, Point3};
@@ -33,6 +34,8 @@ const CANOPY_HALF_H: f32 = 3.0;
 const HYPERDRIVE_PHASE_SPEED: f32 = 1.5; // radians/sec
 const SENSOR_SWEEP_SPEED: f32 = std::f32::consts::TAU / 4.0; // one revolution per ~4s
 const WEAPONS_PULSE_SPEED: f32 = 3.0; // radians/sec
+const CHORD_TIMEOUT: Duration = Duration::from_millis(1500);
+const FULL_POWER_GLITCH_DURATION_MS: u64 = 500;
 
 /// The canopy's 8 corners: two parallel rectangles (near/far) of the
 /// same world-space size, connected by 4 verticals — the perspective
@@ -91,6 +94,15 @@ impl PanelKind {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum FalconAction {
+    FocusNext,
+    FocusPrev,
+    Whack,
+    Quit,
+    FullPower,
+}
+
 fn falcon_theme() -> Theme {
     Theme {
         background: Color::Rgb { r: 10, g: 10, b: 8 },
@@ -128,6 +140,24 @@ fn falcon_camera() -> Camera {
     }
 }
 
+fn falcon_input() -> InputBinder<FalconAction> {
+    let mut binder = InputBinder::new(CHORD_TIMEOUT);
+    binder.bind(KeyPress::plain(KeyCode::Tab), FalconAction::FocusNext);
+    binder.bind(KeyPress::plain(KeyCode::BackTab), FalconAction::FocusPrev);
+    binder.bind(KeyPress::plain(KeyCode::Char(' ')), FalconAction::Whack);
+    binder.bind(KeyPress::plain(KeyCode::Char('q')), FalconAction::Quit);
+    binder.bind(
+        vec![
+            KeyPress::plain(KeyCode::Up),
+            KeyPress::plain(KeyCode::Up),
+            KeyPress::plain(KeyCode::Down),
+            KeyPress::plain(KeyCode::Down),
+        ],
+        FalconAction::FullPower,
+    );
+    binder
+}
+
 struct Star {
     x: f32,
     y: f32,
@@ -162,6 +192,7 @@ pub(crate) struct Falcon {
     tick_count: u64,
     booting: Option<Transition>,
     quit: bool,
+    input: InputBinder<FalconAction>,
 }
 
 impl Falcon {
@@ -178,6 +209,7 @@ impl Falcon {
             .collect();
         Falcon {
             theme: falcon_theme(),
+            input: falcon_input(),
             camera: falcon_camera(),
             hyperdrive_phase: 0.0,
             sensor_sweep_angle: 0.0,
@@ -397,46 +429,58 @@ impl Falcon {
             self.render_hud(area, buf);
         }
     }
+
+    fn spawn_whack_sparks(&mut self, panel_box: Rect) {
+        let cx = panel_box.x as f32 + panel_box.width as f32 / 2.0;
+        let cy = panel_box.y as f32 + panel_box.height as f32 / 2.0;
+        for i in 0..WHACK_SPARK_COUNT {
+            let angle = i as f32 * std::f32::consts::TAU / WHACK_SPARK_COUNT as f32;
+            self.particles.spawn(Particle {
+                x: cx,
+                y: cy,
+                vx: angle.cos() * 6.0,
+                vy: angle.sin() * 3.0,
+                symbol: '*',
+                color: self.theme.accent,
+                lifetime: Duration::from_millis(WHACK_SPARK_LIFETIME_MS),
+                age: Duration::ZERO,
+            });
+        }
+    }
 }
 
 impl App for Falcon {
     fn update(&mut self, event: &Event) {
-        let Event::Key(k) = event else { return };
-        if k.kind != KeyEventKind::Press {
+        let Some(action) = self.input.feed(event) else {
+            return;
+        };
+        if action != FalconAction::Quit && self.booting.is_some() {
             return;
         }
-        if k.code == KeyCode::Char('q') {
-            self.quit = true;
-            return;
-        }
-        if self.booting.is_some() {
-            return;
-        }
-        match k.code {
-            KeyCode::Tab => self.focused = (self.focused + 1) % PANELS.len(),
-            KeyCode::BackTab => self.focused = (self.focused + PANELS.len() - 1) % PANELS.len(),
-            KeyCode::Char(' ') if self.glitches[self.focused].is_active() => {
-                self.glitches[self.focused].clear();
-                let (_, console) = Self::windshield_console_split(self.last_area.get());
-                let slots = Self::panel_slots(console);
-                let panel_box = Self::panel_box(slots[self.focused], true);
-                let cx = panel_box.x as f32 + panel_box.width as f32 / 2.0;
-                let cy = panel_box.y as f32 + panel_box.height as f32 / 2.0;
-                for i in 0..WHACK_SPARK_COUNT {
-                    let angle = i as f32 * std::f32::consts::TAU / WHACK_SPARK_COUNT as f32;
-                    self.particles.spawn(Particle {
-                        x: cx,
-                        y: cy,
-                        vx: angle.cos() * 6.0,
-                        vy: angle.sin() * 3.0,
-                        symbol: '*',
-                        color: self.theme.accent,
-                        lifetime: Duration::from_millis(WHACK_SPARK_LIFETIME_MS),
-                        age: Duration::ZERO,
-                    });
+        match action {
+            FalconAction::Quit => self.quit = true,
+            FalconAction::FocusNext => self.focused = (self.focused + 1) % PANELS.len(),
+            FalconAction::FocusPrev => {
+                self.focused = (self.focused + PANELS.len() - 1) % PANELS.len()
+            }
+            FalconAction::Whack => {
+                if self.glitches[self.focused].is_active() {
+                    self.glitches[self.focused].clear();
+                    let (_, console) = Self::windshield_console_split(self.last_area.get());
+                    let slots = Self::panel_slots(console);
+                    let panel_box = Self::panel_box(slots[self.focused], true);
+                    self.spawn_whack_sparks(panel_box);
                 }
             }
-            _ => {}
+            FalconAction::FullPower => {
+                let (_, console) = Self::windshield_console_split(self.last_area.get());
+                let slots = Self::panel_slots(console);
+                for (i, slot) in slots.iter().enumerate() {
+                    self.glitches[i].trigger(Duration::from_millis(FULL_POWER_GLITCH_DURATION_MS));
+                    let panel_box = Self::panel_box(*slot, i == self.focused);
+                    self.spawn_whack_sparks(panel_box);
+                }
+            }
         }
     }
 
@@ -465,6 +509,7 @@ impl App for Falcon {
             }
         }
         self.tick_count += 1;
+        self.input.expire(elapsed);
         self.hyperdrive_phase = (self.hyperdrive_phase
             + HYPERDRIVE_PHASE_SPEED * elapsed.as_secs_f32())
             % std::f32::consts::TAU;
