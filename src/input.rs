@@ -7,7 +7,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use std::time::Duration;
 
 /// A single key press to match against: code + modifiers.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct KeyPress {
     /// The key code (character, Tab, arrow, etc.).
     pub code: KeyCode,
@@ -41,7 +41,7 @@ fn sequence_starts_with(binding: &[KeyPress], seq: &[KeyPress]) -> bool {
         && seq
             .iter()
             .zip(binding.iter())
-            .all(|(actual, required)| key_press_matches(*actual, *required))
+            .all(|(seq_key, binding_key)| key_press_matches(*seq_key, *binding_key))
 }
 
 fn binding_matches(binding: &[KeyPress], seq: &[KeyPress]) -> bool {
@@ -72,9 +72,17 @@ impl<A: Copy> InputBinder<A> {
     }
 
     /// Registers a binding — a single `KeyPress` (auto-converted to a
-    /// length-1 sequence) or an explicit `Vec<KeyPress>` chord.
+    /// length-1 sequence) or an explicit `Vec<KeyPress>` chord. If a
+    /// registered binding is itself a strict prefix of a longer registered
+    /// binding, the shorter one always wins and the longer one can never
+    /// fire, since exact-match is checked before prefix-match at every step.
     pub fn bind(&mut self, sequence: impl Into<Vec<KeyPress>>, action: A) -> &mut Self {
-        self.bindings.push((sequence.into(), action));
+        let sequence = sequence.into();
+        debug_assert!(
+            !sequence.is_empty(),
+            "InputBinder::bind: sequence must not be empty"
+        );
+        self.bindings.push((sequence, action));
         self
     }
 
@@ -131,6 +139,14 @@ impl<A: Copy> InputBinder<A> {
             self.pending.clear();
             self.pending_elapsed = Duration::ZERO;
         }
+    }
+
+    /// Discards any in-progress chord immediately, without waiting for
+    /// `chord_timeout`. Useful when an app's mode changes in a way that
+    /// should invalidate whatever the user was in the middle of typing.
+    pub fn reset(&mut self) {
+        self.pending.clear();
+        self.pending_elapsed = Duration::ZERO;
     }
 
     fn exact_match(&self, seq: &[KeyPress]) -> Option<A> {
@@ -396,6 +412,67 @@ mod tests {
     }
 
     #[test]
+    fn expire_accumulates_across_multiple_calls_rather_than_resetting_each_time() {
+        let mut binder = InputBinder::new(Duration::from_millis(100));
+        binder.bind(
+            vec![
+                KeyPress::plain(KeyCode::Char('g')),
+                KeyPress::plain(KeyCode::Char('g')),
+            ],
+            TestAction::Chord,
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            None,
+            "starts the chord"
+        );
+        // Two sub-threshold calls that individually wouldn't expire it, but
+        // together (30+30=60ms, still under 100ms) should not either — this
+        // distinguishes real accumulation from a buggy `=` that would only
+        // ever hold the most recent call's value.
+        binder.expire(Duration::from_millis(30));
+        binder.expire(Duration::from_millis(30));
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            Some(TestAction::Chord),
+            "60ms total is still under the 100ms timeout — chord survives"
+        );
+    }
+
+    #[test]
+    fn expire_accumulates_past_timeout_across_many_small_calls() {
+        let mut binder = InputBinder::new(Duration::from_millis(100));
+        binder.bind(
+            vec![
+                KeyPress::plain(KeyCode::Char('g')),
+                KeyPress::plain(KeyCode::Char('g')),
+            ],
+            TestAction::Chord,
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            None,
+            "starts the chord"
+        );
+        // Four 30ms calls sum to 120ms, past the 100ms timeout. A buggy `=`
+        // instead of `+=` would never cross the threshold since each call
+        // would overwrite (not add to) the accumulator with just 30ms.
+        binder.expire(Duration::from_millis(30));
+        binder.expire(Duration::from_millis(30));
+        binder.expire(Duration::from_millis(30));
+        binder.expire(Duration::from_millis(30));
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            None,
+            "pending was cleared by cumulative timeout — this is a fresh first key"
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            Some(TestAction::Chord)
+        );
+    }
+
+    #[test]
     fn expire_does_not_clear_a_chord_still_within_timeout() {
         let mut binder = InputBinder::new(Duration::from_millis(100));
         binder.bind(
@@ -412,5 +489,94 @@ mod tests {
             Some(TestAction::Chord),
             "chord still completes — the first key's pending state survived"
         );
+    }
+
+    #[test]
+    fn reset_discards_a_pending_chord_immediately() {
+        let mut binder = InputBinder::new(Duration::from_secs(10));
+        binder.bind(
+            vec![
+                KeyPress::plain(KeyCode::Char('g')),
+                KeyPress::plain(KeyCode::Char('g')),
+            ],
+            TestAction::Chord,
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            None,
+            "starts the chord"
+        );
+        binder.reset();
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            None,
+            "reset cleared it — this is a fresh first key, not the chord's second"
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Char('g'))),
+            Some(TestAction::Chord)
+        );
+    }
+
+    #[test]
+    fn mouse_paste_and_focus_events_are_ignored() {
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        let mut binder = InputBinder::<TestAction>::new(Duration::from_secs(1));
+        binder.bind(KeyPress::plain(KeyCode::Char('a')), TestAction::A);
+        let mouse = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(binder.feed(&mouse), None);
+        assert_eq!(binder.feed(&Event::Paste("x".to_string())), None);
+        assert_eq!(binder.feed(&Event::FocusGained), None);
+        assert_eq!(binder.feed(&Event::FocusLost), None);
+    }
+
+    #[test]
+    fn chord_keys_out_of_order_do_not_fire() {
+        let mut binder = InputBinder::new(Duration::from_secs(1));
+        binder.bind(
+            vec![KeyPress::plain(KeyCode::Up), KeyPress::plain(KeyCode::Down)],
+            TestAction::Chord,
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Down)),
+            None,
+            "Down first doesn't start the Up,Down chord"
+        );
+        assert_eq!(
+            binder.feed(&press(KeyCode::Up)),
+            None,
+            "still nothing — Down,Up isn't a registered sequence"
+        );
+    }
+
+    #[test]
+    fn a_full_four_key_chord_fires_only_on_the_final_key() {
+        let mut binder = InputBinder::new(Duration::from_secs(1));
+        binder.bind(
+            vec![
+                KeyPress::plain(KeyCode::Up),
+                KeyPress::plain(KeyCode::Up),
+                KeyPress::plain(KeyCode::Down),
+                KeyPress::plain(KeyCode::Down),
+            ],
+            TestAction::Chord,
+        );
+        assert_eq!(binder.feed(&press(KeyCode::Up)), None);
+        assert_eq!(binder.feed(&press(KeyCode::Up)), None);
+        assert_eq!(binder.feed(&press(KeyCode::Down)), None);
+        assert_eq!(binder.feed(&press(KeyCode::Down)), Some(TestAction::Chord));
+    }
+
+    #[test]
+    fn duplicate_registration_the_first_bound_wins() {
+        let mut binder = InputBinder::new(Duration::from_secs(1));
+        binder.bind(KeyPress::plain(KeyCode::Char('a')), TestAction::A);
+        binder.bind(KeyPress::plain(KeyCode::Char('a')), TestAction::B);
+        assert_eq!(binder.feed(&press(KeyCode::Char('a'))), Some(TestAction::A));
     }
 }

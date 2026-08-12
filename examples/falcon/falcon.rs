@@ -17,6 +17,9 @@ use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
 mod boot;
 #[path = "hud.rs"]
 mod hud;
+#[path = "input.rs"]
+mod input_bindings;
+use input_bindings::{falcon_input, FalconAction, FULL_POWER_GLITCH_DURATION_MS};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS, matches every other app
 const BOOT_TOTAL_MS: u64 = 1400;
@@ -34,8 +37,6 @@ const CANOPY_HALF_H: f32 = 3.0;
 const HYPERDRIVE_PHASE_SPEED: f32 = 1.5; // radians/sec
 const SENSOR_SWEEP_SPEED: f32 = std::f32::consts::TAU / 4.0; // one revolution per ~4s
 const WEAPONS_PULSE_SPEED: f32 = 3.0; // radians/sec
-const CHORD_TIMEOUT: Duration = Duration::from_millis(1500);
-const FULL_POWER_GLITCH_DURATION_MS: u64 = 500;
 
 /// The canopy's 8 corners: two parallel rectangles (near/far) of the
 /// same world-space size, connected by 4 verticals — the perspective
@@ -94,15 +95,6 @@ impl PanelKind {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
-enum FalconAction {
-    FocusNext,
-    FocusPrev,
-    Whack,
-    Quit,
-    FullPower,
-}
-
 fn falcon_theme() -> Theme {
     Theme {
         background: Color::Rgb { r: 10, g: 10, b: 8 },
@@ -138,24 +130,6 @@ fn falcon_camera() -> Camera {
         near: 0.5,
         focal_length: 8.0,
     }
-}
-
-fn falcon_input() -> InputBinder<FalconAction> {
-    let mut binder = InputBinder::new(CHORD_TIMEOUT);
-    binder.bind(KeyPress::plain(KeyCode::Tab), FalconAction::FocusNext);
-    binder.bind(KeyPress::plain(KeyCode::BackTab), FalconAction::FocusPrev);
-    binder.bind(KeyPress::plain(KeyCode::Char(' ')), FalconAction::Whack);
-    binder.bind(KeyPress::plain(KeyCode::Char('q')), FalconAction::Quit);
-    binder.bind(
-        vec![
-            KeyPress::plain(KeyCode::Up),
-            KeyPress::plain(KeyCode::Up),
-            KeyPress::plain(KeyCode::Down),
-            KeyPress::plain(KeyCode::Down),
-        ],
-        FalconAction::FullPower,
-    );
-    binder
 }
 
 struct Star {
