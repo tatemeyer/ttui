@@ -59,6 +59,20 @@ this policy in effect. A self-hosted runner with real TTY access was
 considered and rejected — infrastructure/maintenance burden not
 justified for a solo project.
 
+**Update (2026-08-12):** `src/terminal.rs`'s two `#[ignore]`d tests
+remain, unchanged, as a legitimate cheap manual fallback — but they
+are no longer the *only* coverage for this behavior.
+`tools/visual-snapshot/tests/raw_mode_roundtrip.rs` now exercises the
+identical logic automatically, via a spawned child's synthetic real
+console (`portable-pty`/ConPTY) rather than the test process's own
+(absent) one, and runs on every `cargo test` with no CI workflow
+change needed. The self-hosted-runner rejection above stands, and for
+a more precise reason than originally stated: the runner was never
+actually the blocker — a spawned child's synthetic console was
+sufficient all along, and ordinary hosted runners already support it,
+proven by this exact mechanism running in CI on every PR since
+`tools/visual-snapshot` first landed.
+
 Full rationale: `docs/design/specs/2026-08-04-testing-verification-conventions-design.md`.
 
 ## Visual review
