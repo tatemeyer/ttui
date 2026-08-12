@@ -45,6 +45,11 @@ const SENSOR_PLANE_Z: f32 = 6.0;
 const SENSOR_RADIUS: f32 = 3.0;
 const SENSOR_TRAIL_COUNT: usize = 4;
 const SENSOR_TRAIL_STEP: f32 = 0.25; // radians between trailing lines
+const WEAPONS_PULSE_SPEED: f32 = 3.0; // radians/sec
+const WEAPONS_PLANE_Z: f32 = 5.0;
+const WEAPONS_BASE_HALF_SIZE: f32 = 2.0;
+const WEAPONS_PULSE_AMPLITUDE: f32 = 0.15;
+const WEAPONS_BRACKET_LEN: f32 = 0.7;
 
 /// The canopy's 8 corners: two parallel rectangles (near/far) of the
 /// same world-space size, connected by 4 verticals — the perspective
@@ -158,6 +163,7 @@ pub(crate) struct Falcon {
     camera: Camera,
     hyperdrive_phase: f32,
     sensor_sweep_angle: f32,
+    weapons_pulse_phase: f32,
     stars: Vec<Star>,
     focused: usize,
     // `App::view` takes `&self`, so this records the last-seen
@@ -192,6 +198,7 @@ impl Falcon {
             camera: falcon_camera(),
             hyperdrive_phase: 0.0,
             sensor_sweep_angle: 0.0,
+            weapons_pulse_phase: 0.0,
             stars,
             focused: 0,
             last_area: std::cell::Cell::new(Rect {
@@ -477,6 +484,63 @@ impl Falcon {
         }
         canvas.blit(buf, area.x, area.y);
     }
+
+    fn render_hud_weapons(&self, area: Rect, buf: &mut LayerStack) {
+        let center_x = area.width as f32 / 2.0;
+        let center_y = area.height as f32 / 2.0;
+        let half = WEAPONS_BASE_HALF_SIZE
+            * (1.0 + WEAPONS_PULSE_AMPLITUDE * self.weapons_pulse_phase.sin());
+        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
+        let corners = [(-half, -half), (half, -half), (half, half), (-half, half)];
+        for &(cx, cy) in &corners {
+            let dx = if cx < 0.0 {
+                WEAPONS_BRACKET_LEN
+            } else {
+                -WEAPONS_BRACKET_LEN
+            };
+            let dy = if cy < 0.0 {
+                WEAPONS_BRACKET_LEN
+            } else {
+                -WEAPONS_BRACKET_LEN
+            };
+            let corner = Point3 {
+                x: cx,
+                y: cy,
+                z: WEAPONS_PLANE_Z,
+            };
+            let horiz = Line3 {
+                start: corner,
+                end: Point3 {
+                    x: cx + dx,
+                    y: cy,
+                    z: WEAPONS_PLANE_Z,
+                },
+            };
+            let vert = Line3 {
+                start: corner,
+                end: Point3 {
+                    x: cx,
+                    y: cy + dy,
+                    z: WEAPONS_PLANE_Z,
+                },
+            };
+            for seg in [horiz, vert] {
+                if let Some((x0, y0, x1, y1)) = self.camera.project_line(
+                    seg,
+                    center_x,
+                    center_y,
+                    area.width as f32 - 1.0 / 2.0,
+                    area.height as f32 - 1.0 / 4.0,
+                    2.0,
+                    4.0,
+                    0.0,
+                ) {
+                    canvas.line(x0, y0, x1, y1, self.theme.tertiary);
+                }
+            }
+        }
+        canvas.blit(buf, area.x, area.y);
+    }
 }
 
 impl App for Falcon {
@@ -530,6 +594,7 @@ impl App for Falcon {
         let (windshield, _) = Self::windshield_console_split(area);
         self.render_hud_hyperdrive(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
         self.render_hud_sensors(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
+        self.render_hud_weapons(windshield, buf); // TEMPORARY — Task 4 replaces this with real focus-based dispatch
     }
 
     fn should_quit(&self) -> bool {
@@ -553,6 +618,9 @@ impl App for Falcon {
             % std::f32::consts::TAU;
         self.sensor_sweep_angle = (self.sensor_sweep_angle
             + SENSOR_SWEEP_SPEED * elapsed.as_secs_f32())
+            % std::f32::consts::TAU;
+        self.weapons_pulse_phase = (self.weapons_pulse_phase
+            + WEAPONS_PULSE_SPEED * elapsed.as_secs_f32())
             % std::f32::consts::TAU;
         for (i, gb) in self.glitches.iter_mut().enumerate() {
             gb.tick(elapsed);
