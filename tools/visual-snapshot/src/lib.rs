@@ -8,6 +8,7 @@
 pub mod color;
 pub mod encode;
 pub mod glyph;
+pub mod judge;
 pub mod keys;
 pub mod pty;
 pub mod render;
