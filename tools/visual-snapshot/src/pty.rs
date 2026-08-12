@@ -501,6 +501,16 @@ pub fn run_script(
                     KEY_STEP_DISPLAY_DURATION,
                 ));
             }
+            Step::Click { x, y } => {
+                session.send(&keys::encode_click(*x, *y))?;
+                // Same "wait for the child's actual reaction" quiescence
+                // strategy Key steps already use — a click should also
+                // produce an observable reaction.
+                frames.push((
+                    session.capture_frame_after_key()?,
+                    KEY_STEP_DISPLAY_DURATION,
+                ));
+            }
         }
     }
 

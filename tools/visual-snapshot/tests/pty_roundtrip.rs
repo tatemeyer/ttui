@@ -28,6 +28,15 @@ fn delayed_key_response_binary() -> PathBuf {
     path
 }
 
+fn echo_mouse_binary() -> PathBuf {
+    let mut path = examples_dir();
+    path.push("echo_mouse");
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+    path
+}
+
 #[test]
 fn spawning_and_capturing_one_frame_shows_the_process_alive() {
     let mut session = Session::spawn(&echo_key_binary(), 5, 40).unwrap();
@@ -200,5 +209,29 @@ fn a_key_steps_frame_waits_for_the_childs_actual_reaction_not_just_two_stable_po
         any_non_background,
         "expected the Key step's captured frame to show the fixture's delayed \
          response, not a blank screen captured before it reacted"
+    );
+}
+
+#[test]
+fn a_click_step_actually_reaches_the_child_process() {
+    let steps = vec![
+        Step::Click { x: 3, y: 2 },
+        Step::Wait { wait_ms: 16 },
+        Step::Key {
+            key: "Esc".to_string(),
+        },
+    ];
+
+    let frames = run_script(&echo_mouse_binary(), 5, 40, &steps).unwrap();
+
+    // Initial frame + one per step.
+    assert_eq!(frames.len(), 4);
+    let after_click = &frames[1].0;
+    let any_non_background = after_click
+        .pixels()
+        .any(|p| *p != image::Rgba([0, 0, 0, 255]));
+    assert!(
+        any_non_background,
+        "expected the echoed mouse event text to draw something"
     );
 }

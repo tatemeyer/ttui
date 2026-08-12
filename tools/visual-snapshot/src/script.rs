@@ -19,6 +19,14 @@ pub enum Step {
         /// The key's name, as written in the script (e.g. `"Right"`).
         key: String,
     },
+    /// Send a left-button click at the given cell coordinates to the
+    /// spawned example.
+    Click {
+        /// Column (0-indexed) to click.
+        x: u16,
+        /// Row (0-indexed) to click.
+        y: u16,
+    },
 }
 
 /// Failure reading or parsing a snapshot script file.
@@ -110,5 +118,36 @@ mod tests {
     fn missing_file_is_an_error() {
         let missing = std::path::Path::new("/does/not/exist.json");
         assert!(matches!(parse_script(missing), Err(ScriptError::Io(_))));
+    }
+
+    #[test]
+    fn parses_a_click_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("script.json");
+        std::fs::write(&path, r#"[{"x":10,"y":5}]"#).unwrap();
+
+        let steps = parse_script(&path).unwrap();
+
+        assert_eq!(steps, vec![Step::Click { x: 10, y: 5 }]);
+    }
+
+    #[test]
+    fn parses_a_mix_of_wait_key_and_click_steps() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("script.json");
+        std::fs::write(&path, r#"[{"wait_ms":16},{"key":"Enter"},{"x":10,"y":5}]"#).unwrap();
+
+        let steps = parse_script(&path).unwrap();
+
+        assert_eq!(
+            steps,
+            vec![
+                Step::Wait { wait_ms: 16 },
+                Step::Key {
+                    key: "Enter".to_string()
+                },
+                Step::Click { x: 10, y: 5 },
+            ]
+        );
     }
 }
