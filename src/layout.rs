@@ -167,35 +167,35 @@ mod tests {
     fn hit_test_rect() -> Rect {
         Rect {
             x: 5,
-            y: 5,
+            y: 20,
             width: 10,
-            height: 10,
+            height: 4,
         }
     }
 
     #[test]
     fn a_point_strictly_inside_is_contained() {
-        assert!(hit_test_rect().contains(10, 10));
+        assert!(hit_test_rect().contains(10, 22));
     }
 
     #[test]
     fn a_point_on_the_left_or_top_edge_is_contained() {
-        assert!(hit_test_rect().contains(5, 10));
-        assert!(hit_test_rect().contains(10, 5));
+        assert!(hit_test_rect().contains(5, 22));
+        assert!(hit_test_rect().contains(10, 20));
     }
 
     #[test]
     fn a_point_on_the_right_or_bottom_edge_is_not_contained() {
-        assert!(!hit_test_rect().contains(15, 10));
-        assert!(!hit_test_rect().contains(10, 15));
+        assert!(!hit_test_rect().contains(15, 22));
+        assert!(!hit_test_rect().contains(10, 24));
     }
 
     #[test]
     fn a_point_fully_outside_each_direction_is_not_contained() {
-        assert!(!hit_test_rect().contains(0, 10));
-        assert!(!hit_test_rect().contains(20, 10));
-        assert!(!hit_test_rect().contains(10, 0));
-        assert!(!hit_test_rect().contains(10, 20));
+        assert!(!hit_test_rect().contains(0, 22));
+        assert!(!hit_test_rect().contains(20, 22));
+        assert!(!hit_test_rect().contains(10, 15));
+        assert!(!hit_test_rect().contains(10, 29));
     }
 
     #[test]
