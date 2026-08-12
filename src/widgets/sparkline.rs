@@ -23,7 +23,10 @@ impl<'a> Sparkline<'a> {
 
     /// Renders the trailing `area.width` values as one row of
     /// height-coded block glyphs at `area.y` — always exactly one
-    /// row, regardless of `area.height`.
+    /// row, regardless of `area.height`. When there are fewer values
+    /// than `area.width`, they render left-anchored starting at
+    /// `area.x`, leaving the remaining columns empty until enough
+    /// values accumulate.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 || self.values.is_empty() {
             return;
@@ -105,6 +108,15 @@ mod tests {
         assert_eq!(buf.get(0, 0).symbol, LEVELS[0]);
         assert_eq!(buf.get(1, 0).symbol, LEVELS[7]);
         assert_eq!(buf.get(2, 0).symbol, ' ');
+    }
+
+    #[test]
+    fn an_intermediate_value_renders_the_correctly_scaled_middle_level() {
+        let values = [0.0, 75.0, 100.0];
+        let mut buf = Buffer::new(3, 1);
+        Sparkline::new(&values, Color::Reset).render(area(3, 1), &mut buf);
+        // (75-0)/(100-0) * 7 = 5.25 -> rounds to level 5, not level 6.
+        assert_eq!(buf.get(1, 0).symbol, LEVELS[5]);
     }
 
     #[test]

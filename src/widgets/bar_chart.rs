@@ -22,9 +22,11 @@ impl<'a> BarChart<'a> {
     }
 
     /// Renders one row per item (truncated to `area.height` rows).
-    /// All labels are truncated/padded to the longest label's width
-    /// so every bar starts at the same column, then filled with `█`
-    /// cells proportional to `value / max`.
+    /// Each label is drawn as-is (not padded) and clipped at the
+    /// render area's right edge; every bar's starting column is fixed
+    /// at the longest label's character-width plus one space,
+    /// regardless of that row's own label length, then filled with
+    /// `█` cells proportional to `value / max`.
     pub fn render(&self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
@@ -39,6 +41,8 @@ impl<'a> BarChart<'a> {
             let y = area.y + row as u16;
             let mut x = area.x;
             for (i, ch) in label.chars().enumerate() {
+                // `i as u16 >= label_width` is a defensive guard: label_width is the max
+                // char-count across all items, so no single label can exceed it in practice.
                 if i as u16 >= label_width || x >= area.x + area.width {
                     break;
                 }
@@ -141,6 +145,11 @@ mod tests {
         assert_eq!(buf.get(0, 0).symbol, 'A');
         assert_eq!(buf.get(7, 0).symbol, '█');
         assert_eq!(buf.get(7, 1).symbol, '█');
+        assert_ne!(
+            buf.get(6, 1).symbol,
+            '█',
+            "column 6 is the separator space, not part of the bar"
+        );
     }
 
     #[test]
@@ -175,6 +184,52 @@ mod tests {
             &mut buf,
         );
         assert_eq!(*buf.get(0, 0), Cell::default());
+    }
+
+    #[test]
+    fn non_exact_fractions_round_to_the_nearest_whole_cell() {
+        // label "X" (1 char) + 1 space -> bar starts at x=2, bar_space=10.
+        //
+        // Note: a value landing exactly on a .5 boundary (e.g. 3.5) can't
+        // distinguish `.round()` from `.ceil()`, since Rust's f32::round()
+        // rounds half-away-from-zero: round(3.5) == ceil(3.5) == 4. So this
+        // uses two off-boundary fractions, one rounding down and one
+        // rounding up, to pin the rounding mode against both `.ceil()` and
+        // `.floor()`.
+
+        // round-down case: 0.33*10 = 3.3 -> round = 3; ceil would give 4.
+        let items_down = [("X", 3.3)];
+        let mut buf_down = Buffer::new(12, 1);
+        BarChart::new(&items_down, 10.0, Color::Reset).render(area(12, 1), &mut buf_down);
+        for i in 0..3 {
+            assert_eq!(
+                buf_down.get(2 + i, 0).symbol,
+                '█',
+                "expected filled at offset {i}"
+            );
+        }
+        assert_ne!(
+            buf_down.get(2 + 3, 0).symbol,
+            '█',
+            "round(3.3)=3, not 4 (ceil)"
+        );
+
+        // round-up case: 0.37*10 = 3.7 -> round = 4; floor would give 3.
+        let items_up = [("X", 3.7)];
+        let mut buf_up = Buffer::new(12, 1);
+        BarChart::new(&items_up, 10.0, Color::Reset).render(area(12, 1), &mut buf_up);
+        for i in 0..4 {
+            assert_eq!(
+                buf_up.get(2 + i, 0).symbol,
+                '█',
+                "expected filled at offset {i}"
+            );
+        }
+        assert_ne!(
+            buf_up.get(2 + 4, 0).symbol,
+            '█',
+            "round(3.7)=4, not 3 (floor)"
+        );
     }
 
     #[test]

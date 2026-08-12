@@ -39,7 +39,7 @@ against a specific vision doc (`TTUI-Ideas/vision/UI/`). Run with
   pinhole-camera projection system (points, lines, filled polygons); a
   research-spike prototype, not a themed vision-doc app. Built from
   `docs/design/specs/core/2026-08-10-depth-perspective-projection-spike-design.md`.
-- **mission_control** — a NASA-style ground-control telemetry console:
+- **`mission_control`** — a NASA-style ground-control telemetry console:
   three live sparklines (altitude, velocity, signal strength) and a
   bar chart of subsystem health, all animating via a deterministic
   random walk. Built from

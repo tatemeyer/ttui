@@ -8,7 +8,7 @@ use ttui::theme::{BorderSet, Theme};
 use ttui::widgets::{bar_chart::BarChart, block::Block, sparkline::Sparkline};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
-const HISTORY_LEN: usize = 40;
+const HISTORY_LEN: usize = 200;
 const ALTITUDE_STEP: f32 = 15.0;
 const VELOCITY_STEP: f32 = 8.0;
 const SIGNAL_STEP: f32 = 4.0;
