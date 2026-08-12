@@ -47,7 +47,7 @@ impl Terminal {
 
     /// Polls for one input event, up to `timeout`; `None` on timeout.
     /// Motion-only mouse events (`Moved`/`Drag`) are discarded rather
-    /// than returned — see [`is_ignorable_mouse_motion`] for why.
+    /// than returned — see `is_ignorable_mouse_motion` for why.
     pub fn next_event(&self, timeout: Duration) -> std::io::Result<Option<Event>> {
         let deadline = std::time::Instant::now() + timeout;
         loop {
