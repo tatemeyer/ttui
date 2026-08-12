@@ -14,6 +14,8 @@ use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
 
 #[path = "boot.rs"]
 mod boot;
+#[path = "hud.rs"]
+mod hud;
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS, matches every other app
 const BOOT_TOTAL_MS: u64 = 1400;
@@ -28,6 +30,9 @@ const CANOPY_NEAR_Z: f32 = 2.0;
 const CANOPY_FAR_Z: f32 = 10.0;
 const CANOPY_HALF_W: f32 = 5.0;
 const CANOPY_HALF_H: f32 = 3.0;
+const HYPERDRIVE_PHASE_SPEED: f32 = 1.5; // radians/sec
+const SENSOR_SWEEP_SPEED: f32 = std::f32::consts::TAU / 4.0; // one revolution per ~4s
+const WEAPONS_PULSE_SPEED: f32 = 3.0; // radians/sec
 
 /// The canopy's 8 corners: two parallel rectangles (near/far) of the
 /// same world-space size, connected by 4 verticals — the perspective
@@ -139,6 +144,9 @@ fn scatter(seed: u32, spread: f32) -> f32 {
 pub(crate) struct Falcon {
     theme: Theme,
     camera: Camera,
+    hyperdrive_phase: f32,
+    sensor_sweep_angle: f32,
+    weapons_pulse_phase: f32,
     stars: Vec<Star>,
     focused: usize,
     // `App::view` takes `&self`, so this records the last-seen
@@ -171,6 +179,9 @@ impl Falcon {
         Falcon {
             theme: falcon_theme(),
             camera: falcon_camera(),
+            hyperdrive_phase: 0.0,
+            sensor_sweep_angle: 0.0,
+            weapons_pulse_phase: 0.0,
             stars,
             focused: 0,
             last_area: std::cell::Cell::new(Rect {
@@ -226,7 +237,7 @@ impl Falcon {
     fn render_dashboard(&self, area: Rect, buf: &mut LayerStack) {
         let (windshield, console) = Self::windshield_console_split(area);
 
-        self.render_windshield(windshield, buf, 12);
+        self.render_windshield(windshield, buf, 12, true);
 
         let bg = Cell {
             symbol: ' ',
@@ -361,7 +372,13 @@ impl Falcon {
         canvas.blit(buf, area.x, area.y);
     }
 
-    fn render_windshield(&self, area: Rect, buf: &mut LayerStack, canopy_edges_shown: usize) {
+    fn render_windshield(
+        &self,
+        area: Rect,
+        buf: &mut LayerStack,
+        canopy_edges_shown: usize,
+        show_hud: bool,
+    ) {
         let bg = Cell {
             symbol: ' ',
             fg: Color::Reset,
@@ -376,6 +393,9 @@ impl Falcon {
         }
         self.render_starfield(area, buf);
         self.render_canopy(area, buf, canopy_edges_shown);
+        if show_hud {
+            self.render_hud(area, buf);
+        }
     }
 }
 
@@ -445,6 +465,15 @@ impl App for Falcon {
             }
         }
         self.tick_count += 1;
+        self.hyperdrive_phase = (self.hyperdrive_phase
+            + HYPERDRIVE_PHASE_SPEED * elapsed.as_secs_f32())
+            % std::f32::consts::TAU;
+        self.sensor_sweep_angle = (self.sensor_sweep_angle
+            + SENSOR_SWEEP_SPEED * elapsed.as_secs_f32())
+            % std::f32::consts::TAU;
+        self.weapons_pulse_phase = (self.weapons_pulse_phase
+            + WEAPONS_PULSE_SPEED * elapsed.as_secs_f32())
+            % std::f32::consts::TAU;
         for (i, gb) in self.glitches.iter_mut().enumerate() {
             gb.tick(elapsed);
             if !gb.is_active() && self.tick_count % IDLE_FLICKER_PERIOD_TICKS == i as u64 * 30 {

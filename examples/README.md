@@ -23,8 +23,10 @@ against a specific vision doc (`TTUI-Ideas/vision/UI/`). Run with
 - **`falcon`** — a scrappy smuggler-freighter cockpit: a windshield
   filling most of the screen (parallax starfield behind a projected
   canopy frame) above three instrument panels (Hyperdrive, Sensors,
-  Weapons — placeholders for now, a follow-up plan fills them in) with
-  a percussive-maintenance glitch mechanic. Built from
+  Weapons) with a percussive-maintenance glitch mechanic. The
+  windshield overlays a focus-driven HUD — a Hyperdrive trajectory
+  line, a Sensors radar sweep, or a Weapons reticle — matching whichever
+  panel is currently focused. Built from
   `TTUI-Ideas/vision/UI/idea-4-Falcon.md`.
 - **`demo`** — the original core-framework smoke-test example, predates
   the vision-doc apps above. Retirement tracked in issue #83.

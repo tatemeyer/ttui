@@ -30,14 +30,14 @@ impl Falcon {
             // `wave` to show anything.
             let wave = (progress - 0.1) / 0.3;
             let edges_shown = ((wave * 12.0).ceil() as usize).min(12);
-            self.render_windshield(windshield, buf, edges_shown);
+            self.render_windshield(windshield, buf, edges_shown, false);
             return;
         }
 
         if progress < 0.85 {
             // Windshield is fully revealed and stays visible above the
             // console strip while its panels reveal underneath.
-            self.render_windshield(windshield, buf, 12);
+            self.render_windshield(windshield, buf, 12, true);
 
             let wave = (progress - 0.4) / 0.45;
             let panels_shown = ((wave * 3.0).ceil() as usize).min(3);
