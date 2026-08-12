@@ -23,6 +23,9 @@ pub mod easing;
 pub mod effects;
 /// Decaying noise overlay for glitch/corruption effects.
 pub mod glitch;
+/// Key-binding resolver: single keys and multi-key chords resolving
+/// to an app-defined action type.
+pub mod input;
 /// `Rect`/`Constraint`-based area splitting.
 pub mod layout;
 /// A simple particle system for bursts and impacts.
