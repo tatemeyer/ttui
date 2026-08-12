@@ -81,6 +81,39 @@ force-operation: it deletes a local ref whose content already landed.
 Tier: **Direct** when the current session created the worktree;
 **Human** otherwise (Step 3).
 
+**If cleaning up via the `ExitWorktree` tool instead of raw `git`
+commands** (the normal path for a session that entered the worktree
+with `EnterWorktree`, and the one actually hit in practice — this case
+recurred across roughly 30 PRs before being written down here): the
+tool runs its own ancestry check, independent of `git branch -d`, and
+produces the identical squash-merge false positive — it refuses
+`action: "remove"` with an error naming "N commits ... not on the base
+branch," even though the PR is genuinely merged, because the squashed
+commit on `main` isn't a git-ancestry descendant of the worktree
+branch's original commits. Resolution, mirroring Step 1's `-d`-vs-`-D`
+reasoning exactly:
+
+1. Independently confirm the merge — don't trust a paraphrase like
+   "merged" at face value; verify directly:
+   ```sh
+   gh pr view <N> --json state,mergedAt,mergeCommit
+   ```
+   Confirm `state: "MERGED"` and a real `mergedAt` timestamp.
+2. Once confirmed, call `ExitWorktree` again with
+   `discard_changes: true`. This is **not** a data-loss risk the same
+   way it would be for a genuinely unmerged branch — the tool's error
+   message is doing exactly what Step 1 already established: refusing
+   on ancestry grounds for a branch whose content already landed under
+   a rewritten commit hash.
+3. Tier: **Direct** when the current session's own worktree (same rule
+   as Step 1) — the `gh pr view` check *is* the verification step; no
+   separate human confirmation is needed each time this exact pattern
+   recurs. (A first occurrence, or any case where the `gh pr view`
+   check itself is inconclusive — no merge commit, unexpected base
+   branch, etc. — still warrants asking, per Step 3's ownership gate or
+   general judgment; it's the well-worn, independently-verified case
+   that doesn't need to re-ask.)
+
 ### Step 2 — Abandoned (zero commits ahead, no PR, no recent activity)
 
 For each **abandoned** worktree the audit reports, re-confirm it is
