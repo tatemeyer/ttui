@@ -70,6 +70,54 @@ A mismatch is a hard error naming the actual frame count and the
 extension it requires, rather than silently writing the wrong bytes
 under a misleading name.
 
+## Judging a screenshot
+
+An optional, on-demand, local vision-model judgment step — advisory
+only, never wired into CI, never a replacement for the mandatory human/
+reviewer-subagent visual review required before merge
+(`.claude/rules/development-conventions.md`'s "Visual review" section).
+Useful for fast iteration while developing an example, or as a second
+opinion alongside a full review.
+
+**Prerequisites:** [Ollama](https://ollama.com) installed and running
+locally, with a vision-capable model pulled:
+
+```
+ollama pull moondream
+```
+
+**Judge an already-captured screenshot:**
+
+```
+cargo run -p visual-snapshot -- judge <path.png> [--context "description"] [--model <name>]
+```
+
+**Judge immediately after capturing** (judges the final frame — for a
+multi-step script, that's the end state after all steps run):
+
+```
+cargo run -p visual-snapshot -- --example <name> --script <path.json> --out <path> --review [--context "description"]
+```
+
+- `--context "description"` — tells the model what the screenshot is
+  supposed to show. Without it, the model can only catch gross
+  corruption (garbled glyphs, overlapping text) — it has no notion of
+  what "correct" means for a specific example otherwise.
+- `--model <name>` — Ollama model to use. Defaults to `moondream`
+  (small, CPU-friendly). Override with a more capable model (e.g.
+  `llava`) if you have a GPU.
+- A judge failure (Ollama unreachable, model not pulled, malformed
+  response) is printed to stderr and never changes `--review`'s
+  capture success or exit code — judging and capturing are independent
+  outcomes.
+
+The fixed prompt sent to the model: "You are reviewing a screenshot of
+a terminal UI rendered by an automated test tool. [This is supposed to
+show: `{context}`.] Look for: garbled or missing glyphs, broken layout
+(overlapping text, content cut off unexpectedly), or anything that
+looks visually wrong. Respond with a brief verdict (LOOKS OK / POSSIBLE
+ISSUE) followed by 1-3 sentences of reasoning."
+
 ## Known glyph-coverage limitation
 
 The rasterizer maps each terminal cell's character to an 8x8 bitmap via
