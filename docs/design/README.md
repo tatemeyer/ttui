@@ -19,6 +19,9 @@ This directory holds:
   app of its own).
 - `falcon/` — a fifth themed example app (a scrappy smuggler-freighter
   cockpit), built from `TTUI-Ideas/vision/UI/idea-4-Falcon.md`.
+- `mission-control/` — a sixth example app (a NASA-style ground-control
+  telemetry console) and the `BarChart`/`Sparkline` data-viz widgets it
+  was built to prove out — spec-derived rather than vision-doc-derived.
 - A new bucket is added here the first time a genuinely new Arc starts
   (e.g. a fourth example app) — this list, not the file count inside
   each bucket, is what stays small as the docs tree grows.

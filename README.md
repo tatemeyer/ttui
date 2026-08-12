@@ -3,32 +3,39 @@
 A terminal UI framework built from first principles: direct control over
 text rendering, color, pane layout, and multiplexing.
 
-**Status:** v1 core is implemented — a five-stage, input-driven render
-pipeline (`App` state → view builder → `Layout` → paint → diff →
-terminal writer), a constraint-based layout engine, and a `Text`/
-`List`/`Table`/`Block` widget set, proven out by `examples/demo.rs`.
-An opt-in animation tick and a minimal `Theme` were added on top
-("Rev B"), validated by `examples/omnitrix.rs`.
+**Status:** the core render pipeline (`App` state → view builder →
+`Layout` → paint → diff → terminal writer), a constraint-based layout
+engine, alpha-compositing buffer layering, and a growing set of
+widgets and primitives — `Text`/`List`/`Table`/`Block` plus glitch
+effects, particle systems, a fixed-forward perspective-projection
+camera, a general key/chord input binder, and data-viz widgets among
+them — are implemented and exercised by nine example apps: the
+original `demo`/`omnitrix` core-framework smoke tests, four full
+themed vision-doc apps (`tardis`, `smash_crabs`, `falcon`, and a
+cross-app `launcher`), two research spikes, and a telemetry dashboard.
+See `docs/design/README.md` for the full Arc history and
+`examples/README.md` for what each example demonstrates.
 
 ## Try it
 
 ```
-cargo run --example demo      # nested panes, Tab focus, Up/Down navigation
-cargo run --example omnitrix  # tick-driven pulsing themed border
+cargo run --example demo             # nested panes, Tab focus, Up/Down navigation
+cargo run --example launcher         # cross-app portal nexus (omnitrix/tardis/smash_crabs)
+cargo run --example falcon           # windshield + HUD + input-bound Easter egg
+cargo run --example mission_control  # animated bar-chart/sparkline telemetry dashboard
 ```
+
+See `examples/README.md` for the full list and what each one demonstrates.
 
 ## Design docs
 
+- `docs/design/README.md` — the living index of Arcs (one line per
+  subsystem or example-app bucket) and how specs, plans, and tasks
+  relate.
 - `docs/design/specs/2026-08-04-ttui-core-framework-design.md` (Rev A)
-  — the core render pipeline, layout engine, widget set, and
-  input-driven event loop.
-- `docs/design/specs/2026-08-05-ttui-rev-b-vision-alignment-design.md`
-  (Rev B) — an opt-in tick subscription and a minimal semantic `Theme`,
-  reconciling ideas from a sibling `TTUI-Ideas` vision repo against the
-  Rev A core. Buffer layering and a camera/viewport abstraction remain
-  deferred, pending further validation.
-- `docs/design/README.md` explains how specs and their implementation
-  plans (Arc → Slice → Task) relate.
+  and `docs/design/specs/2026-08-05-ttui-rev-b-vision-alignment-design.md`
+  (Rev B) — the original core-framework and tick/theme design docs.
+  Everything since is organized per-Arc under `docs/design/specs/<arc>/`.
 
 ## Workflow
 
