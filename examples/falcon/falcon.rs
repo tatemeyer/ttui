@@ -14,6 +14,8 @@ use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
 
 #[path = "boot.rs"]
 mod boot;
+#[path = "hud.rs"]
+mod hud;
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS, matches every other app
 const BOOT_TOTAL_MS: u64 = 1400;
@@ -29,27 +31,8 @@ const CANOPY_FAR_Z: f32 = 10.0;
 const CANOPY_HALF_W: f32 = 5.0;
 const CANOPY_HALF_H: f32 = 3.0;
 const HYPERDRIVE_PHASE_SPEED: f32 = 1.5; // radians/sec
-const HYPERDRIVE_DASH_COUNT: usize = 8;
-const HYPERDRIVE_START: Point3 = Point3 {
-    x: 0.0,
-    y: 0.0,
-    z: 2.5,
-};
-const HYPERDRIVE_END: Point3 = Point3 {
-    x: 6.0,
-    y: 2.0,
-    z: 22.0,
-};
 const SENSOR_SWEEP_SPEED: f32 = std::f32::consts::TAU / 4.0; // one revolution per ~4s
-const SENSOR_PLANE_Z: f32 = 6.0;
-const SENSOR_RADIUS: f32 = 3.0;
-const SENSOR_TRAIL_COUNT: usize = 4;
-const SENSOR_TRAIL_STEP: f32 = 0.25; // radians between trailing lines
 const WEAPONS_PULSE_SPEED: f32 = 3.0; // radians/sec
-const WEAPONS_PLANE_Z: f32 = 5.0;
-const WEAPONS_BASE_HALF_SIZE: f32 = 2.0;
-const WEAPONS_PULSE_AMPLITUDE: f32 = 0.15;
-const WEAPONS_BRACKET_LEN: f32 = 0.7;
 
 /// The canopy's 8 corners: two parallel rectangles (near/far) of the
 /// same world-space size, connected by 4 verticals — the perspective
@@ -412,150 +395,6 @@ impl Falcon {
         self.render_canopy(area, buf, canopy_edges_shown);
         if show_hud {
             self.render_hud(area, buf);
-        }
-    }
-
-    fn render_hud_hyperdrive(&self, area: Rect, buf: &mut LayerStack) {
-        let center_x = area.width as f32 / 2.0;
-        let center_y = area.height as f32 / 2.0;
-        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
-        let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
-        for i in 0..HYPERDRIVE_DASH_COUNT {
-            let t0 = i as f32 / HYPERDRIVE_DASH_COUNT as f32;
-            let t1 = (i + 1) as f32 / HYPERDRIVE_DASH_COUNT as f32;
-            let seg = Line3 {
-                start: Point3 {
-                    x: lerp(HYPERDRIVE_START.x, HYPERDRIVE_END.x, t0),
-                    y: lerp(HYPERDRIVE_START.y, HYPERDRIVE_END.y, t0),
-                    z: lerp(HYPERDRIVE_START.z, HYPERDRIVE_END.z, t0),
-                },
-                end: Point3 {
-                    x: lerp(HYPERDRIVE_START.x, HYPERDRIVE_END.x, t1),
-                    y: lerp(HYPERDRIVE_START.y, HYPERDRIVE_END.y, t1),
-                    z: lerp(HYPERDRIVE_START.z, HYPERDRIVE_END.z, t1),
-                },
-            };
-            let phase_offset = i as f32 * (std::f32::consts::TAU / HYPERDRIVE_DASH_COUNT as f32);
-            let brightness = 0.3 + 0.7 * (0.5 + 0.5 * (self.hyperdrive_phase - phase_offset).sin());
-            let color =
-                ttui::easing::lerp_color(self.theme.background, self.theme.accent, brightness);
-            if let Some((x0, y0, x1, y1)) = self.camera.project_line(
-                seg,
-                center_x,
-                center_y,
-                area.width as f32 - 1.0 / 2.0,
-                area.height as f32 - 1.0 / 4.0,
-                2.0,
-                4.0,
-                0.0,
-            ) {
-                canvas.line(x0, y0, x1, y1, color);
-            }
-        }
-        canvas.blit(buf, area.x, area.y);
-    }
-
-    fn render_hud_sensors(&self, area: Rect, buf: &mut LayerStack) {
-        let center_x = area.width as f32 / 2.0;
-        let center_y = area.height as f32 / 2.0;
-        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
-        let center = Point3 {
-            x: 0.0,
-            y: 0.0,
-            z: SENSOR_PLANE_Z,
-        };
-        for k in 0..=SENSOR_TRAIL_COUNT {
-            let angle = self.sensor_sweep_angle - k as f32 * SENSOR_TRAIL_STEP;
-            let tip = Point3 {
-                x: SENSOR_RADIUS * angle.cos(),
-                y: SENSOR_RADIUS * angle.sin(),
-                z: SENSOR_PLANE_Z,
-            };
-            let brightness = 1.0 - (k as f32 / (SENSOR_TRAIL_COUNT + 1) as f32);
-            let color =
-                ttui::easing::lerp_color(self.theme.background, self.theme.secondary, brightness);
-            let line = Line3 {
-                start: center,
-                end: tip,
-            };
-            if let Some((x0, y0, x1, y1)) = self.camera.project_line(
-                line,
-                center_x,
-                center_y,
-                area.width as f32 - 1.0 / 2.0,
-                area.height as f32 - 1.0 / 4.0,
-                2.0,
-                4.0,
-                0.0,
-            ) {
-                canvas.line(x0, y0, x1, y1, color);
-            }
-        }
-        canvas.blit(buf, area.x, area.y);
-    }
-
-    fn render_hud_weapons(&self, area: Rect, buf: &mut LayerStack) {
-        let center_x = area.width as f32 / 2.0;
-        let center_y = area.height as f32 / 2.0;
-        let half = WEAPONS_BASE_HALF_SIZE
-            * (1.0 + WEAPONS_PULSE_AMPLITUDE * self.weapons_pulse_phase.sin());
-        let mut canvas = Canvas::new(area.width, area.height, CanvasMode::Braille);
-        let corners = [(-half, -half), (half, -half), (half, half), (-half, half)];
-        for &(cx, cy) in &corners {
-            let dx = if cx < 0.0 {
-                WEAPONS_BRACKET_LEN
-            } else {
-                -WEAPONS_BRACKET_LEN
-            };
-            let dy = if cy < 0.0 {
-                WEAPONS_BRACKET_LEN
-            } else {
-                -WEAPONS_BRACKET_LEN
-            };
-            let corner = Point3 {
-                x: cx,
-                y: cy,
-                z: WEAPONS_PLANE_Z,
-            };
-            let horiz = Line3 {
-                start: corner,
-                end: Point3 {
-                    x: cx + dx,
-                    y: cy,
-                    z: WEAPONS_PLANE_Z,
-                },
-            };
-            let vert = Line3 {
-                start: corner,
-                end: Point3 {
-                    x: cx,
-                    y: cy + dy,
-                    z: WEAPONS_PLANE_Z,
-                },
-            };
-            for seg in [horiz, vert] {
-                if let Some((x0, y0, x1, y1)) = self.camera.project_line(
-                    seg,
-                    center_x,
-                    center_y,
-                    area.width as f32 - 1.0 / 2.0,
-                    area.height as f32 - 1.0 / 4.0,
-                    2.0,
-                    4.0,
-                    0.0,
-                ) {
-                    canvas.line(x0, y0, x1, y1, self.theme.tertiary);
-                }
-            }
-        }
-        canvas.blit(buf, area.x, area.y);
-    }
-
-    fn render_hud(&self, area: Rect, buf: &mut LayerStack) {
-        match PANELS[self.focused] {
-            PanelKind::Hyperdrive => self.render_hud_hyperdrive(area, buf),
-            PanelKind::Sensors => self.render_hud_sensors(area, buf),
-            PanelKind::Weapons => self.render_hud_weapons(area, buf),
         }
     }
 }
