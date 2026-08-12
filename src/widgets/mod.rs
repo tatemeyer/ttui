@@ -26,6 +26,8 @@ pub mod roundel;
 pub mod scuttle_cursor;
 /// Three-ring beveled border, drawn inward.
 pub mod smash_border;
+/// Single-row auto-scaled trend indicator.
+pub mod sparkline;
 /// Header-row-plus-data-rows table.
 pub mod table;
 /// Single-line plain text.
