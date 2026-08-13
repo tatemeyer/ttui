@@ -19,12 +19,17 @@ pub struct Terminal {
 }
 
 impl Terminal {
-    /// Enables raw mode, enters the alternate screen, and hides the
-    /// cursor.
+    /// Enables raw mode, enters the alternate screen, hides the cursor,
+    /// and enables mouse capture.
     pub fn new() -> std::io::Result<Self> {
         terminal::enable_raw_mode()?;
         let mut out = BufWriter::new(stdout());
-        execute!(out, terminal::EnterAlternateScreen, cursor::Hide)?;
+        execute!(
+            out,
+            terminal::EnterAlternateScreen,
+            cursor::Hide,
+            event::EnableMouseCapture
+        )?;
         Ok(Terminal { out })
     }
 
@@ -41,13 +46,38 @@ impl Terminal {
     }
 
     /// Polls for one input event, up to `timeout`; `None` on timeout.
+    /// Motion-only mouse events (`Moved`/`Drag`) are discarded rather
+    /// than returned — see `is_ignorable_mouse_motion` for why.
     pub fn next_event(&self, timeout: Duration) -> std::io::Result<Option<Event>> {
-        if event::poll(timeout)? {
-            Ok(Some(event::read()?))
-        } else {
-            Ok(None)
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Ok(None);
+            }
+            if !event::poll(remaining)? {
+                return Ok(None);
+            }
+            let event = event::read()?;
+            if !is_ignorable_mouse_motion(&event) {
+                return Ok(Some(event));
+            }
         }
     }
+}
+
+/// Whether `next_event` should silently discard this event instead of
+/// returning it. `?1003h` "any-motion" mouse tracking (enabled as part of
+/// `EnableMouseCapture`) reports every mouse movement over the terminal,
+/// far faster than any example's poll timeout — left undiscarded, this
+/// would starve `App::on_tick` (only fires on a real timeout) and force a
+/// redraw on every pixel of movement, in every example, not just ones
+/// that use the mouse.
+fn is_ignorable_mouse_motion(event: &Event) -> bool {
+    matches!(
+        event,
+        Event::Mouse(m) if matches!(m.kind, event::MouseEventKind::Moved | event::MouseEventKind::Drag(_))
+    )
 }
 
 /// Encodes `diffs` as terminal control sequences into `writer`,
@@ -144,7 +174,12 @@ impl Drop for Terminal {
     fn drop(&mut self) {
         let _ = execute!(self.out, SetAttribute(Attribute::Reset));
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(self.out, terminal::LeaveAlternateScreen, cursor::Show);
+        let _ = execute!(
+            self.out,
+            event::DisableMouseCapture,
+            terminal::LeaveAlternateScreen,
+            cursor::Show
+        );
     }
 }
 
@@ -155,7 +190,12 @@ pub fn install_panic_hook() {
     std::panic::set_hook(Box::new(move |info| {
         let _ = execute!(stdout(), SetAttribute(Attribute::Reset));
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(stdout(), terminal::LeaveAlternateScreen, cursor::Show);
+        let _ = execute!(
+            stdout(),
+            event::DisableMouseCapture,
+            terminal::LeaveAlternateScreen,
+            cursor::Show
+        );
         default_hook(info);
     }));
 }
@@ -441,7 +481,45 @@ mod render_diff_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, MouseButton, MouseEvent, MouseEventKind};
     use crossterm::terminal;
+
+    fn mouse_event(kind: MouseEventKind) -> Event {
+        Event::Mouse(MouseEvent {
+            kind,
+            column: 0,
+            row: 0,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        })
+    }
+
+    #[test]
+    fn moved_mouse_events_are_ignorable() {
+        assert!(is_ignorable_mouse_motion(&mouse_event(
+            MouseEventKind::Moved
+        )));
+    }
+
+    #[test]
+    fn drag_mouse_events_are_ignorable() {
+        assert!(is_ignorable_mouse_motion(&mouse_event(
+            MouseEventKind::Drag(MouseButton::Left)
+        )));
+    }
+
+    #[test]
+    fn click_mouse_events_are_not_ignorable() {
+        assert!(!is_ignorable_mouse_motion(&mouse_event(
+            MouseEventKind::Down(MouseButton::Left)
+        )));
+    }
+
+    #[test]
+    fn key_events_are_not_ignorable() {
+        assert!(!is_ignorable_mouse_motion(&Event::Key(KeyEvent::from(
+            KeyCode::Char('a')
+        ))));
+    }
 
     #[test]
     #[ignore = "requires a real terminal (TTY); run with `cargo test -- --ignored`"]

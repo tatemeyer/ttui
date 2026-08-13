@@ -30,7 +30,7 @@ cargo run -p visual-snapshot -- --example <name> --size <cols>x<rows> --script <
 
 ## Script format
 
-A script is a flat JSON array of steps, each one of two shapes:
+A script is a flat JSON array of steps, each one of three shapes:
 
 - `{"wait_ms": N}` — sleep `N` real milliseconds before the next
   capture. This is what actually exercises an app's `tick_rate()`-driven
@@ -40,6 +40,8 @@ A script is a flat JSON array of steps, each one of two shapes:
   names: `Up`, `Down`, `Left`, `Right`, `Enter`, `Esc`, `Tab`, any single
   ASCII character (`"a"`, `"Q"`, `"5"`), and `Ctrl+<letter>` combos
   (`"Ctrl+C"`). See `src/keys.rs` for the exact table.
+- `{"x": N, "y": N}` — send a left-button click at cell `(x, y)`
+  (0-indexed) to the spawned example.
 
 Example — navigate right, wait for a transition, then confirm:
 

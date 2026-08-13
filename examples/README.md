@@ -44,6 +44,10 @@ against a specific vision doc (`TTUI-Ideas/vision/UI/`). Run with
   bar chart of subsystem health, all animating via a deterministic
   random walk. Built from
   `docs/design/specs/mission-control/2026-08-12-mission-control-design.md`.
+- **`control_panel`** — a retro sci-fi console where clicking is the
+  primary interaction: a LAUNCH button (spawns a particle burst),
+  three clickable toggle switches, and a clickable mode dial. Built
+  from `docs/design/specs/control-panel/2026-08-12-control-panel-design.md`.
 
 Each themed app's `App` type lives in `examples/<app>/<app>.rs` and is
 reused by `launcher` via `#[path]`; `examples/<app>/main.rs` is a thin

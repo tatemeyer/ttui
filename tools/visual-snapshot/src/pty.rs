@@ -312,16 +312,17 @@ impl Session {
     /// consecutive-poll-match path.
     ///
     /// Used specifically for the capture immediately following a `Key`
-    /// step in `run_script`. `wait_for_further_output`'s fast path starts
-    /// comparing polls with no baseline from before the key was sent, so
-    /// it can (and, against a real app, did) declare "quiescent" after
-    /// just two poll intervals purely because the screen hasn't changed
-    /// *yet* — not because the app has finished reacting to the keypress.
-    /// A `Wait` step and a session's true first capture don't have this
-    /// problem (nothing was just sent that the screen is expected to
-    /// react to), so they keep using `capture_frame`'s existing behavior;
-    /// this method exists only for the "just sent a key, must observe the
-    /// reaction" case. See the final-review fix report's finding #4.
+    /// or `Click` step in `run_script`. `wait_for_further_output`'s fast
+    /// path starts comparing polls with no baseline from before the key
+    /// or click was sent, so it can (and, against a real app, did)
+    /// declare "quiescent" after just two poll intervals purely because
+    /// the screen hasn't changed *yet* — not because the app has
+    /// finished reacting to the input. A `Wait` step and a session's
+    /// true first capture don't have this problem (nothing was just
+    /// sent that the screen is expected to react to), so they keep using
+    /// `capture_frame`'s existing behavior; this method exists only for
+    /// the "just sent a key or click, must observe the reaction" case.
+    /// See the final-review fix report's finding #4.
     pub fn capture_frame_after_key(&mut self) -> Result<image::RgbaImage, PtyError> {
         let deadline = Instant::now() + MAX_SETTLE_WAIT;
         self.wait_for_first_output(deadline);
@@ -469,8 +470,9 @@ impl Session {
 const KEY_STEP_DISPLAY_DURATION: Duration = Duration::from_millis(150);
 
 /// Spawns `binary`, drives it through `steps` (real key bytes / real
-/// wall-clock waits), and returns one rendered frame per step plus an
-/// initial frame captured before any step runs.
+/// wall-clock waits / real click byte sequences), and returns one
+/// rendered frame per step plus an initial frame captured before any
+/// step runs.
 pub fn run_script(
     binary: &Path,
     rows: u16,
@@ -496,6 +498,16 @@ pub fn run_script(
                 // Must observe the child's actual reaction, not just two
                 // stable polls — see `capture_frame_after_key`'s doc
                 // comment and the final-review fix report's finding #4.
+                frames.push((
+                    session.capture_frame_after_key()?,
+                    KEY_STEP_DISPLAY_DURATION,
+                ));
+            }
+            Step::Click { x, y } => {
+                session.send(&keys::encode_click(*x, *y))?;
+                // Same "wait for the child's actual reaction" quiescence
+                // strategy Key steps already use — a click should also
+                // produce an observable reaction.
                 frames.push((
                     session.capture_frame_after_key()?,
                     KEY_STEP_DISPLAY_DURATION,

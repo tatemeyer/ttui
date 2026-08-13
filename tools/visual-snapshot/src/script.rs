@@ -1,11 +1,11 @@
-//! Parses a snapshot script — a flat JSON array of wait/key steps that
-//! `pty::run_script` drives a spawned example through.
+//! Parses a snapshot script — a flat JSON array of wait/key/click steps
+//! that `pty::run_script` drives a spawned example through.
 
 use serde::Deserialize;
 use std::path::Path;
 
-/// One step of a snapshot script: either a real wall-clock pause or a
-/// named key press sent to the spawned example.
+/// One step of a snapshot script: a real wall-clock pause, a named key
+/// press, or a click, sent to the spawned example.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(untagged)]
 pub enum Step {
@@ -18,6 +18,14 @@ pub enum Step {
     Key {
         /// The key's name, as written in the script (e.g. `"Right"`).
         key: String,
+    },
+    /// Send a left-button click at the given cell coordinates to the
+    /// spawned example.
+    Click {
+        /// Column (0-indexed) to click.
+        x: u16,
+        /// Row (0-indexed) to click.
+        y: u16,
     },
 }
 
@@ -49,8 +57,8 @@ impl std::fmt::Display for ScriptError {
 }
 impl std::error::Error for ScriptError {}
 
-/// Reads and parses a snapshot script: a flat JSON array of `{"wait_ms": N}`
-/// and `{"key": "Name"}` steps.
+/// Reads and parses a snapshot script: a flat JSON array of `{"wait_ms": N}`,
+/// `{"key": "Name"}`, and `{"x": N, "y": N}` steps.
 pub fn parse_script(path: &Path) -> Result<Vec<Step>, ScriptError> {
     let contents = std::fs::read_to_string(path)?;
     let steps = serde_json::from_str(&contents)?;
@@ -110,5 +118,36 @@ mod tests {
     fn missing_file_is_an_error() {
         let missing = std::path::Path::new("/does/not/exist.json");
         assert!(matches!(parse_script(missing), Err(ScriptError::Io(_))));
+    }
+
+    #[test]
+    fn parses_a_click_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("script.json");
+        std::fs::write(&path, r#"[{"x":10,"y":5}]"#).unwrap();
+
+        let steps = parse_script(&path).unwrap();
+
+        assert_eq!(steps, vec![Step::Click { x: 10, y: 5 }]);
+    }
+
+    #[test]
+    fn parses_a_mix_of_wait_key_and_click_steps() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("script.json");
+        std::fs::write(&path, r#"[{"wait_ms":16},{"key":"Enter"},{"x":10,"y":5}]"#).unwrap();
+
+        let steps = parse_script(&path).unwrap();
+
+        assert_eq!(
+            steps,
+            vec![
+                Step::Wait { wait_ms: 16 },
+                Step::Key {
+                    key: "Enter".to_string()
+                },
+                Step::Click { x: 10, y: 5 },
+            ]
+        );
     }
 }

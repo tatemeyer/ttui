@@ -1,7 +1,8 @@
 //! Encodes a snapshot script's named `{"key": "..."}` steps into the raw
 //! byte sequences a real terminal would send for them — arrow keys as CSI
 //! sequences, `Ctrl+`-combos as control bytes, everything else as a
-//! literal ASCII byte.
+//! literal ASCII byte. Also encodes `{"x": N, "y": N}` click steps
+//! (`encode_click`) as SGR mouse-protocol press/release sequences.
 
 /// A script step's `"key"` name that doesn't match any known encoding.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +43,18 @@ pub fn encode_key(name: &str) -> Result<Vec<u8>, KeyEncodeError> {
     }
 }
 
+/// Encodes a left-button click at cell `(x, y)` (0-indexed) into the
+/// raw SGR mouse-protocol byte sequence a real terminal would send: a
+/// press immediately followed by a release, both at the same
+/// position. SGR coordinates are 1-indexed.
+pub fn encode_click(x: u16, y: u16) -> Vec<u8> {
+    let press = format!("\x1b[<0;{};{}M", x + 1, y + 1);
+    let release = format!("\x1b[<0;{};{}m", x + 1, y + 1);
+    let mut bytes = press.into_bytes();
+    bytes.extend(release.into_bytes());
+    bytes
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -80,5 +93,18 @@ mod tests {
     fn unknown_key_name_is_an_error() {
         let err = encode_key("Nonsense").unwrap_err();
         assert_eq!(err, KeyEncodeError::Unknown("Nonsense".to_string()));
+    }
+
+    #[test]
+    fn encode_click_produces_the_expected_sgr_press_and_release_sequence() {
+        let bytes = encode_click(3, 7);
+        // 1-indexed SGR coords: x=3->4, y=7->8. Button 0 = left.
+        assert_eq!(bytes, b"\x1b[<0;4;8M\x1b[<0;4;8m".to_vec());
+    }
+
+    #[test]
+    fn encode_click_at_the_origin_is_1_indexed_correctly() {
+        let bytes = encode_click(0, 0);
+        assert_eq!(bytes, b"\x1b[<0;1;1M\x1b[<0;1;1m".to_vec());
     }
 }
