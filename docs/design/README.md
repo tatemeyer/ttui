@@ -22,6 +22,13 @@ This directory holds:
 - `mission-control/` — a sixth example app (a NASA-style ground-control
   telemetry console) and the `BarChart`/`Sparkline` data-viz widgets it
   was built to prove out — spec-derived rather than vision-doc-derived.
+- `control-panel/` — a seventh example app (a physical-control-panel-
+  style console: click-toggle switches, a click-advance dial, a launch
+  button) built to prove out real mouse support (`Rect::contains`,
+  `Terminal` mouse capture, `tools/visual-snapshot` click-scripting).
+- `governance/` — release-process work (SemVer policy, label taxonomy,
+  triage rules) rather than an example app or framework subsystem;
+  first Arc under the TTUI v1.0.0 initiative.
 - A new bucket is added here the first time a genuinely new Arc starts
   (e.g. a fourth example app) — this list, not the file count inside
   each bucket, is what stays small as the docs tree grows.
