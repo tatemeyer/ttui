@@ -173,13 +173,17 @@ pub fn render_diff(writer: &mut impl Write, diffs: &[CellDiff]) -> std::io::Resu
 impl Drop for Terminal {
     fn drop(&mut self) {
         let _ = execute!(self.out, SetAttribute(Attribute::Reset));
+        // DisableMouseCapture must run before disable_raw_mode(): on
+        // Windows, crossterm's mouse-capture toggle caches the console
+        // mode at EnableMouseCapture time and restores exactly that
+        // snapshot on DisableMouseCapture. Since EnableMouseCapture runs
+        // after enable_raw_mode() in `new()`, that cached snapshot still
+        // has raw mode on — running DisableMouseCapture after
+        // disable_raw_mode() would silently re-enable raw mode by
+        // restoring over it.
+        let _ = execute!(self.out, event::DisableMouseCapture);
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(
-            self.out,
-            event::DisableMouseCapture,
-            terminal::LeaveAlternateScreen,
-            cursor::Show
-        );
+        let _ = execute!(self.out, terminal::LeaveAlternateScreen, cursor::Show);
     }
 }
 
@@ -189,13 +193,10 @@ pub fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = execute!(stdout(), SetAttribute(Attribute::Reset));
+        // See the matching comment in `Drop for Terminal` — order matters.
+        let _ = execute!(stdout(), event::DisableMouseCapture);
         let _ = terminal::disable_raw_mode();
-        let _ = execute!(
-            stdout(),
-            event::DisableMouseCapture,
-            terminal::LeaveAlternateScreen,
-            cursor::Show
-        );
+        let _ = execute!(stdout(), terminal::LeaveAlternateScreen, cursor::Show);
         default_hook(info);
     }));
 }
