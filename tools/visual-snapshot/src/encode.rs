@@ -41,6 +41,15 @@ pub fn write_png(img: &RgbaImage, path: &Path) -> Result<(), EncodeError> {
     Ok(())
 }
 
+/// Encodes a single frame as in-memory PNG bytes, for callers (like
+/// `--review`) that need the encoded bytes without writing to disk.
+pub fn png_bytes(img: &RgbaImage) -> Result<Vec<u8>, EncodeError> {
+    let mut buf = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut buf);
+    img.write_to(&mut cursor, image::ImageFormat::Png)?;
+    Ok(buf)
+}
+
 /// Floor applied to a GIF frame's display delay: some viewers treat a 0ms
 /// delay oddly (skipping the frame entirely, or racing through it faster
 /// than intended), and the initial frame's recorded duration is always
@@ -107,5 +116,16 @@ mod tests {
             .collect_frames()
             .unwrap();
         assert_eq!(decoded_frames.len(), 2);
+    }
+
+    #[test]
+    fn png_bytes_round_trips_dimensions_and_pixels() {
+        let img = solid(4, 2, Rgba([10, 20, 30, 255]));
+
+        let bytes = png_bytes(&img).unwrap();
+
+        let reopened = image::load_from_memory(&bytes).unwrap().to_rgba8();
+        assert_eq!(reopened.dimensions(), (4, 2));
+        assert_eq!(*reopened.get_pixel(0, 0), Rgba([10, 20, 30, 255]));
     }
 }

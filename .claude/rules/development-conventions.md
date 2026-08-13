@@ -145,6 +145,19 @@ freeform Verification section
 (`.claude/templates/github/PULL_REQUEST_TEMPLATE.md`), the same pattern
 already used for real-TTY test results below.
 
+**Optional local vision-model second opinion:** `tools/visual-snapshot`
+also has a `judge` subcommand and a `--review` flag (see its README's
+"Judging a screenshot" section) that ask a local Ollama instance for a
+vision-model judgment on a captured screenshot. This is a fast,
+optional aid for iterating on an example or getting a second opinion —
+it is never a substitute for the mandatory review above, never wired
+into CI, and never gates a build or merge. Its live HTTP call to a real
+Ollama instance is real-TTY-style exempt from automated testing (no
+Ollama instance exists in CI or this project's sandboxed dev
+environment) — verified manually, the same pattern already used for
+real-TTY tests above, and noted in the PR template's Verification
+section when used.
+
 ## Commit conventions
 
 Conventional Commits: `type(scope): description`.
