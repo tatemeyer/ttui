@@ -2484,6 +2484,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "ttui",
  "ureq",
  "vt100",
 ]
