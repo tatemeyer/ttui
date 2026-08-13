@@ -42,7 +42,8 @@ See `examples/README.md` for the full list and what each one demonstrates.
 This project is developed using [superpowers](https://github.com/obra/superpowers)
 — every feature goes through brainstorm → design doc → plan → subagent-
 driven implementation. See `.claude/rules/` for project-specific
-conventions layered on top of that.
+conventions layered on top of that, including `.claude/rules/code-forge.md`
+for how work is labeled, attributed, filed, and versioned.
 
 ## Development knowledge graph
 
