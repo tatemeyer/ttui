@@ -84,8 +84,11 @@ gets real box-drawing borders with zero code changes on its part.
 explicitly inside a full `Theme` literal, so they pick up
 `single_line()`'s box-drawing corners automatically:
 `showcase/showcase.rs`, `examples/control_panel.rs`,
-`examples/mission_control.rs`, `examples/falcon/falcon.rs`,
-`src/widgets/cockpit_panel.rs`.
+`examples/mission_control.rs`, `examples/falcon/falcon.rs`.
+(`src/widgets/cockpit_panel.rs` is not actually a `BorderSet` consumer —
+`CockpitPanel::render` hardcodes its own `'+'`/`'¤'` corner glyphs and
+never reads `theme.border`; its only `BorderSet::default()` usage is in
+its `#[cfg(test)] test_theme()` helper, which doesn't affect rendering.)
 
 **Mechanical field-rename, same visual result** — these already hand-write
 a custom `BorderSet` literal with `horizontal`/`vertical`/a single
