@@ -3,7 +3,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::App;
-use ttui::buffer::{Buffer, Cell, LayerStack};
+use ttui::buffer::{Buffer, Cell, CellStyle, Intensity, LayerStack};
 use ttui::camera;
 use ttui::easing;
 use ttui::layout::Rect;
@@ -143,7 +143,14 @@ impl Omnitrix {
                 vertical: '#',
                 corner: '+',
             },
-            border_bold: brightness > 0.6,
+            border_style: CellStyle {
+                intensity: if brightness > 0.6 {
+                    Intensity::Bold
+                } else {
+                    Intensity::Normal
+                },
+                ..Default::default()
+            },
             border_thick: false,
         }
     }

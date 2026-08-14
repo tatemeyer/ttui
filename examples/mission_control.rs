@@ -2,7 +2,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::{run, App};
-use ttui::buffer::LayerStack;
+use ttui::buffer::{CellStyle, LayerStack};
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::theme::{BorderSet, Theme};
 use ttui::widgets::{bar_chart::BarChart, block::Block, sparkline::Sparkline};
@@ -41,7 +41,7 @@ fn mission_control_theme() -> Theme {
         },
         primary_end: None,
         border: BorderSet::default(),
-        border_bold: false,
+        border_style: CellStyle::default(),
         border_thick: false,
     }
 }

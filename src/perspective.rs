@@ -35,6 +35,28 @@ pub struct Polygon3 {
     pub vertices: Vec<Point3>,
 }
 
+/// Screen/subpixel parameters for `Camera::project_line` — bundles
+/// everything except the line itself, since Falcon's HUD (the first
+/// real consumer beyond the depth/perspective spike) call sites were
+/// becoming hard to read with 7 trailing positional `f32`s.
+#[derive(Clone, Copy, Debug)]
+pub struct ProjectLineParams {
+    /// Screen-space projection center, x.
+    pub center_x: f32,
+    /// Screen-space projection center, y.
+    pub center_y: f32,
+    /// Visible screen width in cells, for clipping.
+    pub screen_w: f32,
+    /// Visible screen height in cells, for clipping.
+    pub screen_h: f32,
+    /// Canvas subpixel columns per cell.
+    pub subpixels_x: f32,
+    /// Canvas subpixel rows per cell.
+    pub subpixels_y: f32,
+    /// Minimum projected scale for the line to be drawn at all.
+    pub min_scale: f32,
+}
+
 /// A fixed-forward pinhole camera: positioned at the origin, looking
 /// down `+Z`. No position/orientation fields — general camera
 /// movement is out of scope.
@@ -153,29 +175,31 @@ impl Camera {
     /// last subpixel) rather than a panic, so this half-open/closed
     /// boundary mismatch is a known cosmetic quirk, not a bug to fix
     /// here.
-    #[allow(clippy::too_many_arguments)]
     pub fn project_line(
         &self,
         line: Line3,
-        center_x: f32,
-        center_y: f32,
-        screen_w: f32,
-        screen_h: f32,
-        subpixels_x: f32,
-        subpixels_y: f32,
-        min_scale: f32,
+        params: ProjectLineParams,
     ) -> Option<(u16, u16, u16, u16)> {
-        let (sx0, sy0, scale0) = self.project(line.start, center_x, center_y)?;
-        let (sx1, sy1, scale1) = self.project(line.end, center_x, center_y)?;
-        if scale0.max(scale1) < min_scale {
+        let (sx0, sy0, scale0) = self.project(line.start, params.center_x, params.center_y)?;
+        let (sx1, sy1, scale1) = self.project(line.end, params.center_x, params.center_y)?;
+        if scale0.max(scale1) < params.min_scale {
             return None;
         }
-        let (cx0, cy0, cx1, cy1) = clip_to_screen(sx0, sy0, sx1, sy1, screen_w, screen_h)?;
+        let (cx0, cy0, cx1, cy1) =
+            clip_to_screen(sx0, sy0, sx1, sy1, params.screen_w, params.screen_h)?;
         Some((
-            (cx0 * subpixels_x).round().clamp(0.0, u16::MAX as f32) as u16,
-            (cy0 * subpixels_y).round().clamp(0.0, u16::MAX as f32) as u16,
-            (cx1 * subpixels_x).round().clamp(0.0, u16::MAX as f32) as u16,
-            (cy1 * subpixels_y).round().clamp(0.0, u16::MAX as f32) as u16,
+            (cx0 * params.subpixels_x)
+                .round()
+                .clamp(0.0, u16::MAX as f32) as u16,
+            (cy0 * params.subpixels_y)
+                .round()
+                .clamp(0.0, u16::MAX as f32) as u16,
+            (cx1 * params.subpixels_x)
+                .round()
+                .clamp(0.0, u16::MAX as f32) as u16,
+            (cy1 * params.subpixels_y)
+                .round()
+                .clamp(0.0, u16::MAX as f32) as u16,
         ))
     }
 
@@ -380,7 +404,18 @@ mod tests {
             },
         };
         assert_eq!(
-            cam.project_line(line, 5.0, 5.0, 10.0, 10.0, 2.0, 4.0, 0.0),
+            cam.project_line(
+                line,
+                ProjectLineParams {
+                    center_x: 5.0,
+                    center_y: 5.0,
+                    screen_w: 10.0,
+                    screen_h: 10.0,
+                    subpixels_x: 2.0,
+                    subpixels_y: 4.0,
+                    min_scale: 0.0,
+                }
+            ),
             None
         );
     }
@@ -402,7 +437,18 @@ mod tests {
             },
         };
         assert_eq!(
-            cam.project_line(line, 5.0, 5.0, 10.0, 10.0, 2.0, 4.0, 0.1),
+            cam.project_line(
+                line,
+                ProjectLineParams {
+                    center_x: 5.0,
+                    center_y: 5.0,
+                    screen_w: 10.0,
+                    screen_h: 10.0,
+                    subpixels_x: 2.0,
+                    subpixels_y: 4.0,
+                    min_scale: 0.1,
+                }
+            ),
             None
         );
     }
@@ -412,8 +458,13 @@ mod tests {
         let cam = camera();
         // Both points at z=4.0: x=-1 -> ndc_x=-0.25 -> screen_x=5+(-0.25*8*2)=1.0
         //                        x=1  -> ndc_x=0.25  -> screen_x=5+(0.25*8*2)=9.0
-        // Both within [0,10]x[0,10] -> no clipping. Subpixel factors (2.0,4.0):
-        // (1.0*2, 5.0*4, 9.0*2, 5.0*4) = (2, 20, 18, 20).
+        //                        y=0  -> ndc_y=0.0   -> screen_y=3.0 (center_y, unchanged by y)
+        // Both within [0,10]x[0,6] -> no clipping. screen_w=10/screen_h=6 are
+        // asymmetric (catches a screen_w/screen_h swap in clip_to_screen), and
+        // center_x=5.0/center_y=3.0 are asymmetric (catches a center_x/center_y
+        // swap in project) — both mutants verified live to fail this test
+        // before being reverted; see perspective.rs's design spec / fix brief.
+        // Subpixel factors (2.0,4.0): (1.0*2, 3.0*4, 9.0*2, 3.0*4) = (2, 12, 18, 12).
         let line = Line3 {
             start: Point3 {
                 x: -1.0,
@@ -426,8 +477,19 @@ mod tests {
                 z: 4.0,
             },
         };
-        let result = cam.project_line(line, 5.0, 5.0, 10.0, 10.0, 2.0, 4.0, 0.0);
-        assert_eq!(result, Some((2, 20, 18, 20)));
+        let result = cam.project_line(
+            line,
+            ProjectLineParams {
+                center_x: 5.0,
+                center_y: 3.0,
+                screen_w: 10.0,
+                screen_h: 6.0,
+                subpixels_x: 2.0,
+                subpixels_y: 4.0,
+                min_scale: 0.0,
+            },
+        );
+        assert_eq!(result, Some((2, 12, 18, 12)));
     }
 
     #[test]
@@ -450,7 +512,18 @@ mod tests {
             },
         };
         let result = cam
-            .project_line(line, 5.0, 5.0, 10.0, 10.0, 2.0, 4.0, 0.0)
+            .project_line(
+                line,
+                ProjectLineParams {
+                    center_x: 5.0,
+                    center_y: 5.0,
+                    screen_w: 10.0,
+                    screen_h: 10.0,
+                    subpixels_x: 2.0,
+                    subpixels_y: 4.0,
+                    min_scale: 0.0,
+                },
+            )
             .expect("line crosses into the visible screen");
         // Clipped start lands at screen (10.0, 5.0) -> subpixel (20, 20).
         assert_eq!(result, (20, 20, 10, 20));

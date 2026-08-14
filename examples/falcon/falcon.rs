@@ -2,13 +2,13 @@ use crossterm::event::{Event, KeyCode};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::App;
-use ttui::buffer::{Cell, LayerStack};
+use ttui::buffer::{Cell, CellStyle, LayerStack};
 use ttui::canvas::{Canvas, CanvasMode};
 use ttui::glitch::GlitchBuffer;
 use ttui::input::{InputBinder, KeyPress};
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
-use ttui::perspective::{Camera, Line3, Point3};
+use ttui::perspective::{Camera, Line3, Point3, ProjectLineParams};
 use ttui::theme::{BorderSet, Theme};
 use ttui::transition::Transition;
 use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
@@ -120,7 +120,7 @@ fn falcon_theme() -> Theme {
         },
         primary_end: None,
         border: BorderSet::default(),
-        border_bold: false,
+        border_style: CellStyle::default(),
         border_thick: false,
     }
 }
@@ -364,13 +364,15 @@ impl Falcon {
             // which at 80 columns culls one of the canopy's near-rectangle pillars.
             if let Some((x0, y0, x1, y1)) = self.camera.project_line(
                 line,
-                center_x,
-                center_y,
-                area.width as f32 - 1.0 / 2.0,
-                area.height as f32 - 1.0 / 4.0,
-                2.0,
-                4.0,
-                0.0,
+                ProjectLineParams {
+                    center_x,
+                    center_y,
+                    screen_w: area.width as f32 - 1.0 / 2.0,
+                    screen_h: area.height as f32 - 1.0 / 4.0,
+                    subpixels_x: 2.0,
+                    subpixels_y: 4.0,
+                    min_scale: 0.0,
+                },
             ) {
                 canvas.line(x0, y0, x1, y1, self.theme.secondary);
             }
