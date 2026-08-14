@@ -11,6 +11,8 @@ use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
 use ttui::transition::Transition;
 
+#[path = "boot.rs"]
+mod boot;
 #[path = "mascot.rs"]
 mod mascot;
 #[path = "menu.rs"]
@@ -137,7 +139,7 @@ impl App for ShowcaseApp {
     fn view(&self, area: Rect, buf: &mut LayerStack) {
         self.last_area.set(area);
         if let Some(t) = &self.booting {
-            let _ = t.progress();
+            boot::render_boot(area, &self.theme, t.progress(), buf);
             return;
         }
         if self.screen == Screen::Menu {
