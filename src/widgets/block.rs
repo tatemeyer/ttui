@@ -118,7 +118,7 @@ impl<'a> Block<'a> {
                 ring_area.x,
                 ring_area.y,
                 Cell {
-                    symbol: border.corner,
+                    symbol: border.top_left,
                     ..plain(ring_area.x, ring_area.y)
                 },
             );
@@ -126,7 +126,7 @@ impl<'a> Block<'a> {
                 ring_area.x + ring_area.width - 1,
                 ring_area.y,
                 Cell {
-                    symbol: border.corner,
+                    symbol: border.top_right,
                     ..plain(ring_area.x + ring_area.width - 1, ring_area.y)
                 },
             );
@@ -134,7 +134,7 @@ impl<'a> Block<'a> {
                 ring_area.x,
                 ring_area.y + ring_area.height - 1,
                 Cell {
-                    symbol: border.corner,
+                    symbol: border.bottom_left,
                     ..plain(ring_area.x, ring_area.y + ring_area.height - 1)
                 },
             );
@@ -142,7 +142,7 @@ impl<'a> Block<'a> {
                 ring_area.x + ring_area.width - 1,
                 ring_area.y + ring_area.height - 1,
                 Cell {
-                    symbol: border.corner,
+                    symbol: border.bottom_right,
                     ..plain(
                         ring_area.x + ring_area.width - 1,
                         ring_area.y + ring_area.height - 1,
@@ -284,7 +284,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -318,7 +321,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle {
                 intensity: Intensity::Bold,
@@ -353,7 +359,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle {
                 underline: true,
@@ -388,7 +397,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle::default(),
             border_thick: true,
@@ -422,7 +434,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -467,7 +482,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle {
                 intensity: Intensity::Bold,
@@ -504,7 +522,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -548,7 +569,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -602,7 +626,10 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                corner: '*',
+                top_left: '*',
+                top_right: '*',
+                bottom_left: '*',
+                bottom_right: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -625,5 +652,41 @@ mod tests {
             assert_eq!(buf.get(0, y).fg, Color::Red);
             assert_eq!(buf.get(3, y).fg, Color::Red);
         }
+    }
+
+    #[test]
+    fn all_four_corners_render_their_own_distinct_glyph() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            primary_end: None,
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                top_left: '1',
+                top_right: '2',
+                bottom_left: '3',
+                bottom_right: '4',
+            },
+            border_style: CellStyle::default(),
+            border_thick: false,
+        };
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        assert_eq!(buf.get(0, 0).symbol, '1'); // top-left
+        assert_eq!(buf.get(3, 0).symbol, '2'); // top-right
+        assert_eq!(buf.get(0, 2).symbol, '3'); // bottom-left
+        assert_eq!(buf.get(3, 2).symbol, '4'); // bottom-right
     }
 }
