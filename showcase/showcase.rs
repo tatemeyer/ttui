@@ -13,8 +13,10 @@ use ttui::transition::Transition;
 
 #[path = "mascot.rs"]
 mod mascot;
+#[path = "menu.rs"]
+mod menu;
 
-use mascot::GripperMascot;
+use mascot::{GripperMascot, MascotPose};
 
 const BOOT_MS: u64 = 1200;
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
@@ -79,6 +81,8 @@ pub(crate) struct ShowcaseApp {
     booting: Option<Transition>,
     last_area: std::cell::Cell<Rect>,
     mascot: GripperMascot,
+    highlighted: usize,
+    tile_areas: std::cell::Cell<[Rect; 5]>,
     quit: bool,
 }
 
@@ -90,6 +94,8 @@ impl ShowcaseApp {
             booting: Some(Transition::start(Duration::from_millis(BOOT_MS))),
             last_area: std::cell::Cell::new(ZERO_RECT),
             mascot: GripperMascot::new(),
+            highlighted: 0,
+            tile_areas: std::cell::Cell::new([ZERO_RECT; 5]),
             quit: false,
         }
     }
@@ -102,8 +108,27 @@ impl App for ShowcaseApp {
         }
         if self.screen == Screen::Menu {
             if let Event::Key(k) = event {
-                if k.kind == KeyEventKind::Press && k.code == KeyCode::Char('q') {
-                    self.quit = true;
+                if k.kind != KeyEventKind::Press {
+                    return;
+                }
+                match k.code {
+                    KeyCode::Char('q') => self.quit = true,
+                    KeyCode::Left => {
+                        let prev = self.highlighted;
+                        self.highlighted =
+                            (self.highlighted + menu::TILES.len() - 1) % menu::TILES.len();
+                        if self.highlighted != prev {
+                            self.mascot.set_pose(MascotPose::Reacting);
+                        }
+                    }
+                    KeyCode::Right => {
+                        let prev = self.highlighted;
+                        self.highlighted = (self.highlighted + 1) % menu::TILES.len();
+                        if self.highlighted != prev {
+                            self.mascot.set_pose(MascotPose::Reacting);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -116,6 +141,14 @@ impl App for ShowcaseApp {
             return;
         }
         if self.screen == Screen::Menu {
+            let menu_area = Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width.saturating_sub(mascot::MASCOT_WIDTH + 4),
+                height: area.height,
+            };
+            let tile_areas = menu::render_menu(menu_area, &self.theme, self.highlighted, buf);
+            self.tile_areas.set(tile_areas);
             let mascot_area = Rect {
                 x: area.x + area.width.saturating_sub(mascot::MASCOT_WIDTH + 2),
                 y: area.y + 1,
@@ -123,8 +156,6 @@ impl App for ShowcaseApp {
                 height: mascot::MASCOT_HEIGHT,
             };
             self.mascot.render(mascot_area, buf);
-            // Task 3 replaces the rest of this block with the real tile menu.
-            let _ = &self.theme;
         }
     }
 
