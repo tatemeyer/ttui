@@ -3,18 +3,22 @@
 A terminal UI framework built from first principles: direct control over
 text rendering, color, pane layout, and multiplexing.
 
-**Status:** the core render pipeline (`App` state → view builder →
-`Layout` → paint → diff → terminal writer), a constraint-based layout
-engine, alpha-compositing buffer layering, and a growing set of
-widgets and primitives — `Text`/`List`/`Table`/`Block` plus glitch
-effects, particle systems, a fixed-forward perspective-projection
-camera, a general key/chord input binder, and data-viz widgets among
-them — are implemented and exercised by nine example apps: the
-original `demo`/`omnitrix` core-framework smoke tests, four full
-themed vision-doc apps (`tardis`, `smash_crabs`, `falcon`, and a
-cross-app `launcher`), two research spikes, and a telemetry dashboard.
-See `docs/design/README.md` for the full Arc history and
-`examples/README.md` for what each example demonstrates.
+**Status:** v1.0.0. The core render pipeline (`App` state → view
+builder → `Layout` → paint → diff → terminal writer), a
+constraint-based layout engine, alpha-compositing buffer layering, and
+a full set of widgets and primitives — `Text`/`List`/`Table`/`Block`
+plus glitch effects, particle systems, a fixed-forward
+perspective-projection camera, a general key/chord input binder, and
+data-viz widgets among them — are implemented and exercised by ten
+example apps: the original `demo`/`omnitrix` core-framework smoke
+tests, four full themed vision-doc apps (`tardis`, `smash_crabs`,
+`falcon`, and a cross-app `launcher`), two research spikes, a
+telemetry dashboard (`mission_control`), and a mouse-driven console
+(`control_panel`) — plus `showcase`, a flagship mascot-hosted demo
+reel pulling five of those systems together into one polished entry
+point. See `CHANGELOG.md` for the release history, `docs/design/README.md`
+for the full Arc history, and `examples/README.md` for what each
+example demonstrates.
 
 ## Try it
 
@@ -24,6 +28,7 @@ cargo run --example demo             # nested panes, Tab focus, Up/Down navigati
 cargo run --example launcher         # cross-app portal nexus (omnitrix/tardis/smash_crabs)
 cargo run --example falcon           # windshield + HUD + input-bound Easter egg
 cargo run --example mission_control  # animated bar-chart/sparkline telemetry dashboard
+cargo run --example control_panel    # click-driven retro console: toggles, a dial, a launch button
 ```
 
 See `examples/README.md` for the full list and what each one demonstrates.
