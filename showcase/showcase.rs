@@ -13,6 +13,8 @@ use ttui::transition::Transition;
 
 #[path = "boot.rs"]
 mod boot;
+#[path = "camera_glitch.rs"]
+mod camera_glitch;
 #[path = "mascot.rs"]
 mod mascot;
 #[path = "menu.rs"]
@@ -22,6 +24,7 @@ mod mouse_grab;
 #[path = "particle_vent.rs"]
 mod particle_vent;
 
+use camera_glitch::DiagnosticScanState;
 use mascot::{GripperMascot, MascotPose};
 use mouse_grab::AssemblyLineState;
 use particle_vent::OverloadVentState;
@@ -92,6 +95,7 @@ pub(crate) struct ShowcaseApp {
     quit: bool,
     assembly_line: Option<AssemblyLineState>,
     overload_vent: Option<OverloadVentState>,
+    diagnostic_scan: Option<DiagnosticScanState>,
 }
 
 impl ShowcaseApp {
@@ -107,6 +111,7 @@ impl ShowcaseApp {
             quit: false,
             assembly_line: None,
             overload_vent: None,
+            diagnostic_scan: None,
         }
     }
 
@@ -114,6 +119,7 @@ impl ShowcaseApp {
         match id {
             VignetteId::AssemblyLine => self.assembly_line = Some(AssemblyLineState::new()),
             VignetteId::OverloadVent => self.overload_vent = Some(OverloadVentState::new()),
+            VignetteId::DiagnosticScan => self.diagnostic_scan = Some(DiagnosticScanState::new()),
             _ => {}
         }
         self.screen = Screen::Vignette(id);
@@ -122,6 +128,7 @@ impl ShowcaseApp {
     fn exit_vignette(&mut self) {
         self.assembly_line = None;
         self.overload_vent = None;
+        self.diagnostic_scan = None;
         self.screen = Screen::Menu;
     }
 }
@@ -195,6 +202,13 @@ impl App for ShowcaseApp {
                         }
                     }
                 }
+                if id == VignetteId::DiagnosticScan {
+                    if let (Some(state), Event::Key(k)) = (&mut self.diagnostic_scan, event) {
+                        if k.kind == KeyEventKind::Press && k.code == KeyCode::Char(' ') {
+                            state.whack();
+                        }
+                    }
+                }
             }
         }
     }
@@ -232,6 +246,11 @@ impl App for ShowcaseApp {
             Screen::Vignette(VignetteId::OverloadVent) => {
                 if let Some(state) = &self.overload_vent {
                     state.render(buf);
+                }
+            }
+            Screen::Vignette(VignetteId::DiagnosticScan) => {
+                if let Some(state) = &self.diagnostic_scan {
+                    state.render(area, &self.theme, buf);
                 }
             }
             Screen::Vignette(_) => {}
@@ -275,6 +294,14 @@ impl App for ShowcaseApp {
             Screen::Vignette(VignetteId::OverloadVent) => {
                 if let Some(state) = &mut self.overload_vent {
                     state.on_tick(elapsed, area);
+                    if state.is_complete() {
+                        self.exit_vignette();
+                    }
+                }
+            }
+            Screen::Vignette(VignetteId::DiagnosticScan) => {
+                if let Some(state) = &mut self.diagnostic_scan {
+                    state.on_tick(elapsed);
                     if state.is_complete() {
                         self.exit_vignette();
                     }
