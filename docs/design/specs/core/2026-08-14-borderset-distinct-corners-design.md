@@ -81,14 +81,20 @@ gets real box-drawing borders with zero code changes on its part.
 ## Migration (all ~13 call sites, mechanical per site)
 
 **No code changes needed** — these already construct `BorderSet::default()`
-explicitly inside a full `Theme` literal, so they pick up
+explicitly inside a full `Theme` literal, and render their borders via
+`Block` (which does read `theme.border`), so they pick up
 `single_line()`'s box-drawing corners automatically:
 `showcase/showcase.rs`, `examples/control_panel.rs`,
-`examples/mission_control.rs`, `examples/falcon/falcon.rs`.
+`examples/mission_control.rs`.
 (`src/widgets/cockpit_panel.rs` is not actually a `BorderSet` consumer —
 `CockpitPanel::render` hardcodes its own `'+'`/`'¤'` corner glyphs and
 never reads `theme.border`; its only `BorderSet::default()` usage is in
-its `#[cfg(test)] test_theme()` helper, which doesn't affect rendering.)
+its `#[cfg(test)] test_theme()` helper, which doesn't affect rendering.
+`examples/falcon/falcon.rs` constructs `BorderSet::default()` too, but
+its only bordered widget — its HUD panels (`falcon.rs:271`) and boot
+screen (`boot.rs:48`) — is `CockpitPanel`, not `Block`, so it inherits
+the same non-consumption: falcon's panel corners are unaffected by this
+change, for the identical reason as `cockpit_panel.rs` above.)
 
 **Mechanical field-rename, same visual result** — these already hand-write
 a custom `BorderSet` literal with `horizontal`/`vertical`/a single
