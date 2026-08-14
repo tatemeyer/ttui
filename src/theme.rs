@@ -2,6 +2,7 @@
 //! `Block`/`SmashBorder`; other widgets take plain color params
 //! instead of a whole `Theme`.
 
+use crate::buffer::CellStyle;
 use crossterm::style::Color;
 
 /// The glyphs a bordered widget draws its edges/corners with.
@@ -53,8 +54,11 @@ pub struct Theme {
     pub primary_end: Option<Color>,
     /// Border glyph set.
     pub border: BorderSet,
-    /// Whether borders render bold.
-    pub border_bold: bool,
+    /// Style applied to every border cell (not title cells — see
+    /// `Block::render`). Reuses `Cell`'s own style type rather than a
+    /// narrower bool, so future border attributes (underline, etc.)
+    /// need no further `Theme` field growth.
+    pub border_style: CellStyle,
     /// Whether `Block` draws an outward second border ring.
     pub border_thick: bool,
 }
@@ -69,7 +73,7 @@ impl Default for Theme {
             accent: Color::Reset,
             primary_end: None,
             border: BorderSet::default(),
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: false,
         }
     }
@@ -99,8 +103,8 @@ mod tests {
     }
 
     #[test]
-    fn default_theme_border_bold_is_false() {
-        assert!(!Theme::default().border_bold);
+    fn default_theme_border_style_is_default() {
+        assert_eq!(Theme::default().border_style, CellStyle::default());
     }
 
     #[test]

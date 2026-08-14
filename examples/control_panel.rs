@@ -2,7 +2,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::{run, App};
-use ttui::buffer::LayerStack;
+use ttui::buffer::{CellStyle, LayerStack};
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::{BorderSet, Theme};
@@ -41,7 +41,7 @@ fn control_panel_theme() -> Theme {
         },
         primary_end: None,
         border: BorderSet::default(),
-        border_bold: false,
+        border_style: CellStyle::default(),
         border_thick: false,
     }
 }

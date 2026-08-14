@@ -2,7 +2,7 @@ use crossterm::event::{Event, KeyCode};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::App;
-use ttui::buffer::{Cell, LayerStack};
+use ttui::buffer::{Cell, CellStyle, LayerStack};
 use ttui::canvas::{Canvas, CanvasMode};
 use ttui::glitch::GlitchBuffer;
 use ttui::input::{InputBinder, KeyPress};
@@ -120,7 +120,7 @@ fn falcon_theme() -> Theme {
         },
         primary_end: None,
         border: BorderSet::default(),
-        border_bold: false,
+        border_style: CellStyle::default(),
         border_thick: false,
     }
 }

@@ -1,7 +1,7 @@
 //! Bordered container, with an optional outward second border ring
 //! for a "glow" look when `Theme.border_thick` is set.
 
-use crate::buffer::{Buffer, Cell, CellStyle, Intensity};
+use crate::buffer::{Buffer, Cell, CellStyle};
 use crate::layout::Rect;
 use crate::theme::{BorderSet, Theme};
 use crossterm::style::Color;
@@ -40,12 +40,12 @@ impl<'a> Block<'a> {
         if area.width < 2 || area.height < 2 {
             return area;
         }
-        let (border, fg, bg, border_bold, border_thick, primary_end) = match self.theme {
+        let (border, fg, bg, border_style, border_thick, primary_end) = match self.theme {
             Some(t) => (
                 t.border,
                 t.primary,
                 t.background,
-                t.border_bold,
+                t.border_style,
                 t.border_thick,
                 t.primary_end,
             ),
@@ -53,7 +53,7 @@ impl<'a> Block<'a> {
                 BorderSet::default(),
                 Color::Reset,
                 Color::Reset,
-                false,
+                CellStyle::default(),
                 false,
                 None,
             ),
@@ -73,14 +73,7 @@ impl<'a> Block<'a> {
             symbol: ' ',
             fg: ring_fg(x, y),
             bg,
-            style: CellStyle {
-                intensity: if border_bold {
-                    Intensity::Bold
-                } else {
-                    Intensity::Normal
-                },
-                ..Default::default()
-            },
+            style: border_style,
             alpha: 1.0,
         };
 
@@ -293,7 +286,7 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);
@@ -314,7 +307,7 @@ mod tests {
     }
 
     #[test]
-    fn border_cells_are_bold_when_theme_border_bold_is_true() {
+    fn border_cells_are_bold_when_theme_border_style_is_bold() {
         let theme = Theme {
             background: Color::Black,
             primary: Color::Green,
@@ -327,7 +320,10 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
-            border_bold: true,
+            border_style: CellStyle {
+                intensity: Intensity::Bold,
+                ..Default::default()
+            },
             border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);
@@ -359,7 +355,7 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: true,
         };
         let mut buf = Buffer::new(6, 5);
@@ -393,7 +389,7 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: false,
         };
         let mut buf = Buffer::new(6, 5);
@@ -425,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn title_cells_are_not_bold_even_when_theme_border_bold_is_true() {
+    fn title_cells_are_not_bold_even_when_theme_border_style_is_bold() {
         let theme = Theme {
             background: Color::Black,
             primary: Color::Green,
@@ -438,7 +434,10 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
-            border_bold: true,
+            border_style: CellStyle {
+                intensity: Intensity::Bold,
+                ..Default::default()
+            },
             border_thick: false,
         };
         let mut buf = Buffer::new(6, 3);
@@ -472,7 +471,7 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);
@@ -516,7 +515,7 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);
@@ -570,7 +569,7 @@ mod tests {
                 vertical: '#',
                 corner: '*',
             },
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: false,
         };
         let mut buf = Buffer::new(4, 3);

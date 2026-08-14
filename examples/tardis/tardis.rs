@@ -5,7 +5,7 @@ use rodio::Source;
 use std::time::Duration;
 use ttui::app::App;
 use ttui::audio::AudioSink;
-use ttui::buffer::{Buffer, Cell, LayerStack};
+use ttui::buffer::{Buffer, Cell, CellStyle, LayerStack};
 use ttui::camera::{self, Camera};
 use ttui::easing;
 use ttui::effects;
@@ -84,7 +84,7 @@ fn tardis_theme() -> Theme {
             vertical: '#',
             corner: '+',
         },
-        border_bold: false,
+        border_style: CellStyle::default(),
         border_thick: false,
     }
 }
