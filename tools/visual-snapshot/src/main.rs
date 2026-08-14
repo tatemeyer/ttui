@@ -11,8 +11,13 @@ struct Args {
     command: Option<Command>,
 
     // Capture path (existing behavior; unused when `command` is Some).
+    // Exactly one of `example`/`bin` is required — see `resolve_target`.
     #[arg(long)]
     example: Option<String>,
+    /// Name of a `[[bin]]` target (as opposed to `--example`, an
+    /// `[[example]]` target) to build and capture.
+    #[arg(long)]
+    bin: Option<String>,
     #[arg(long, default_value = "80x24")]
     size: String,
     #[arg(long)]
@@ -50,6 +55,29 @@ enum Command {
         #[arg(long, default_value = "moondream")]
         model: String,
     },
+}
+
+/// Which kind of cargo target `--example`/`--bin` named, resolved from
+/// the two mutually-exclusive CLI flags by `resolve_target`.
+#[derive(Debug, PartialEq)]
+enum Target<'a> {
+    Example(&'a str),
+    Bin(&'a str),
+}
+
+/// Picks exactly one of `--example`/`--bin` (erroring if both or
+/// neither were given) so the build/capture path below has a single
+/// target to work with, regardless of which flag the caller used.
+fn resolve_target<'a>(
+    example: Option<&'a str>,
+    bin: Option<&'a str>,
+) -> Result<Target<'a>, String> {
+    match (example, bin) {
+        (Some(name), None) => Ok(Target::Example(name)),
+        (None, Some(name)) => Ok(Target::Bin(name)),
+        (Some(_), Some(_)) => Err("pass exactly one of --example or --bin, not both".to_string()),
+        (None, None) => Err("--example or --bin is required".to_string()),
+    }
 }
 
 fn parse_size(s: &str) -> Result<(u16, u16), String> {
@@ -111,12 +139,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let example = args.example.ok_or("--example is required")?;
+    let target = resolve_target(args.example.as_deref(), args.bin.as_deref())?;
     let (cols, rows) = parse_size(&args.size)?;
     let script_path = args.script.ok_or("--script is required")?;
     let out = args.out.ok_or("--out is required")?;
 
-    let binary = pty::build_example(&example)?;
+    let binary = match target {
+        Target::Example(name) => pty::build_example(name)?,
+        Target::Bin(name) => pty::build_bin(name)?,
+    };
     let steps = script::parse_script(&script_path)?;
     let frames = pty::run_script(&binary, rows, cols, &steps)?;
 
@@ -274,5 +305,52 @@ mod tests {
             Some(Command::Judge { model, .. }) => assert_eq!(model, judge::DEFAULT_MODEL),
             None => panic!("expected Command::Judge to parse"),
         }
+    }
+
+    /// Guards the `--bin` gap found while running Flagship Showcase Task
+    /// 2's mandatory visual verification against `showcase` (a `[[bin]]`
+    /// target, not an `[[example]]`) — see issue #126.
+    #[test]
+    fn bin_flag_parses_as_an_alternative_to_example() {
+        let args = Args::try_parse_from([
+            "visual-snapshot",
+            "--bin",
+            "showcase",
+            "--script",
+            "s.json",
+            "--out",
+            "o.png",
+        ])
+        .unwrap();
+        assert_eq!(args.bin.as_deref(), Some("showcase"));
+        assert!(args.example.is_none());
+    }
+
+    #[test]
+    fn resolve_target_accepts_example_alone() {
+        assert!(matches!(
+            resolve_target(Some("tardis"), None),
+            Ok(Target::Example("tardis"))
+        ));
+    }
+
+    #[test]
+    fn resolve_target_accepts_bin_alone() {
+        assert!(matches!(
+            resolve_target(None, Some("showcase")),
+            Ok(Target::Bin("showcase"))
+        ));
+    }
+
+    #[test]
+    fn resolve_target_rejects_both_example_and_bin() {
+        let err = resolve_target(Some("tardis"), Some("showcase")).unwrap_err();
+        assert!(err.contains("--example"));
+        assert!(err.contains("--bin"));
+    }
+
+    #[test]
+    fn resolve_target_rejects_neither_example_nor_bin() {
+        assert!(resolve_target(None, None).is_err());
     }
 }

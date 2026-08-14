@@ -97,6 +97,42 @@ pub fn build_example(name: &str) -> Result<PathBuf, PtyError> {
     Ok(path)
 }
 
+/// Resolves the directory `cargo build --bin` places compiled `[[bin]]`
+/// target binaries into: `$CARGO_TARGET_DIR/debug` if that override is
+/// set, otherwise the workspace-relative `target/debug` this crate
+/// assumes by default. Counterpart to `examples_dir` for `[[bin]]`
+/// targets (e.g. `showcase`), which land directly under `debug/`
+/// rather than `debug/examples/`.
+pub fn bin_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("CARGO_TARGET_DIR") {
+        let mut path = PathBuf::from(dir);
+        path.push("debug");
+        return path;
+    }
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.push("../../target/debug");
+    path
+}
+
+/// Builds `cargo build --bin <name>` against the root `ttui` crate and
+/// returns the resulting binary's path. Counterpart to `build_example`
+/// for `[[bin]]` targets.
+pub fn build_bin(name: &str) -> Result<PathBuf, PtyError> {
+    let status = StdCommand::new("cargo")
+        .args(["build", "--bin", name, "--manifest-path"])
+        .arg(root_manifest_path())
+        .status()?;
+    if !status.success() {
+        return Err(PtyError::Pty(format!("cargo build --bin {name} failed")));
+    }
+    let mut path = bin_dir();
+    path.push(name);
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+    Ok(path)
+}
+
 /// Interval between polls of the shared output buffer while
 /// `capture_frame` waits for the child's current draw to quiesce.
 pub const POLL_INTERVAL: Duration = Duration::from_millis(20);
