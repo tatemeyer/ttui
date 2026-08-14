@@ -166,8 +166,12 @@ grabbing (claw closes):
 ```
 
 **Behavior:** idles beside the tile menu, playing `reacting` briefly
-whenever the highlighted tile changes (arrow key or hover-to-select),
-then returning to `idle`. `grabbing` plays once at the moment Assembly
+whenever the highlighted tile changes via the arrow keys, then
+returning to `idle`. (Not hover-triggered — `Terminal::next_event`
+filters out `Moved`/`Drag` mouse events before any app sees them, so
+hover-to-select isn't reachable without a framework change; the Menu
+section below already correctly scopes highlight-changing input to
+arrow keys and a direct click.) `grabbing` plays once at the moment Assembly
 Line's vignette successfully catches a crate (the mascot is rendered
 both beside the menu and inside that specific vignette, reusing the
 same frames — not two separate mascot implementations). Frame
