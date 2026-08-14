@@ -25,12 +25,15 @@ mod menu;
 mod mouse_grab;
 #[path = "particle_vent.rs"]
 mod particle_vent;
+#[path = "telemetry.rs"]
+mod telemetry;
 
 use camera_glitch::DiagnosticScanState;
 use chord_override::OverrideSequenceState;
 use mascot::{GripperMascot, MascotPose};
 use mouse_grab::AssemblyLineState;
 use particle_vent::OverloadVentState;
+use telemetry::TelemetryState;
 
 const BOOT_MS: u64 = 1200;
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
@@ -100,6 +103,7 @@ pub(crate) struct ShowcaseApp {
     overload_vent: Option<OverloadVentState>,
     diagnostic_scan: Option<DiagnosticScanState>,
     override_sequence: Option<OverrideSequenceState>,
+    telemetry: Option<TelemetryState>,
 }
 
 impl ShowcaseApp {
@@ -117,6 +121,7 @@ impl ShowcaseApp {
             overload_vent: None,
             diagnostic_scan: None,
             override_sequence: None,
+            telemetry: None,
         }
     }
 
@@ -128,7 +133,7 @@ impl ShowcaseApp {
             VignetteId::OverrideSequence => {
                 self.override_sequence = Some(OverrideSequenceState::new())
             }
-            _ => {}
+            VignetteId::Telemetry => self.telemetry = Some(TelemetryState::new()),
         }
         self.screen = Screen::Vignette(id);
     }
@@ -138,6 +143,7 @@ impl ShowcaseApp {
         self.overload_vent = None;
         self.diagnostic_scan = None;
         self.override_sequence = None;
+        self.telemetry = None;
         self.screen = Screen::Menu;
     }
 }
@@ -273,7 +279,11 @@ impl App for ShowcaseApp {
                 }
                 self.mascot.render(mascot_area, buf);
             }
-            Screen::Vignette(_) => {}
+            Screen::Vignette(VignetteId::Telemetry) => {
+                if let Some(state) = &self.telemetry {
+                    state.render(area, &self.theme, buf);
+                }
+            }
         }
     }
 
@@ -338,7 +348,14 @@ impl App for ShowcaseApp {
                     }
                 }
             }
-            Screen::Vignette(_) => {}
+            Screen::Vignette(VignetteId::Telemetry) => {
+                if let Some(state) = &mut self.telemetry {
+                    state.on_tick(elapsed);
+                    if state.is_complete() {
+                        self.exit_vignette();
+                    }
+                }
+            }
         }
     }
 }
