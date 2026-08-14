@@ -39,7 +39,10 @@ pub(crate) fn draw(
         border: BorderSet {
             horizontal: '─',
             vertical: '│',
-            corner: if focused { '◆' } else { '·' },
+            top_left: if focused { '◆' } else { '·' },
+            top_right: if focused { '◆' } else { '·' },
+            bottom_left: if focused { '◆' } else { '·' },
+            bottom_right: if focused { '◆' } else { '·' },
         },
         border_style: CellStyle {
             intensity: if focused && pulse > 0.5 {

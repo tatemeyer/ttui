@@ -82,7 +82,10 @@ fn tardis_theme() -> Theme {
         border: BorderSet {
             horizontal: '=',
             vertical: '#',
-            corner: '+',
+            top_left: '+',
+            top_right: '+',
+            bottom_left: '+',
+            bottom_right: '+',
         },
         border_style: CellStyle::default(),
         border_thick: false,
