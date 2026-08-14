@@ -34,7 +34,13 @@ This directory holds:
   input, data-viz) pulled together into one polished entry point, run
   via its own `showcase` `[[bin]]` target rather than cataloged as
   another `examples/` vision-doc app; fifth sub-project of the TTUI
-  v1.0.0 initiative, the last content Arc before cutting the tag.
+  v1.0.0 initiative.
+- `showcase-polish/` — a follow-up Arc to `showcase/`: mascot idle
+  animation and a redesigned eye/blink, plus a full Assembly Line
+  rework (a real crate sprite, the mascot sliding to and reaching down
+  for a caught crate) — deferred out of `showcase/`'s own final review
+  rather than folded into it. Sub-project #5.1 of the TTUI v1.0.0
+  initiative.
 - A new bucket is added here the first time a genuinely new Arc starts
   (e.g. a fourth example app) — this list, not the file count inside
   each bucket, is what stays small as the docs tree grows.
