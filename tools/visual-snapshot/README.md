@@ -1,12 +1,12 @@
 # visual-snapshot
 
-Headless visual review for TTUI example apps. Spawns a compiled example
-binary under a real OS pseudo-console (`portable-pty`, ConPTY on
-Windows), drives it with a scripted sequence of key presses and
-real-time waits, captures its terminal output via `vt100`, and
-rasterizes the result to a PNG (single frame) or animated GIF (multiple
-frames) — an image an agent can `Read` directly, without a real
-interactive TTY.
+Headless visual review for TTUI example apps and `[[bin]]` targets
+(e.g. `showcase`). Spawns a compiled example or bin binary under a real
+OS pseudo-console (`portable-pty`, ConPTY on Windows), drives it with a
+scripted sequence of key presses and real-time waits, captures its
+terminal output via `vt100`, and rasterizes the result to a PNG (single
+frame) or animated GIF (multiple frames) — an image an agent can `Read`
+directly, without a real interactive TTY.
 
 See `docs/design/specs/core/2026-08-09-visual-snapshot-tooling-design.md`
 for the full design rationale, and
@@ -17,11 +17,16 @@ for when running this tool is mandatory.
 
 ```
 cargo run -p visual-snapshot -- --example <name> --size <cols>x<rows> --script <path.json> --out <path>
+cargo run -p visual-snapshot -- --bin <name> --size <cols>x<rows> --script <path.json> --out <path>
 ```
 
 - `--example <name>` — an example binary name under `examples/`
   (`launcher`, `omnitrix`, `tardis`, `smash_crabs`, ...). Built
   automatically via `cargo build --example <name>` before spawning.
+- `--bin <name>` — a `[[bin]]` target name (e.g. `showcase`), as
+  opposed to `--example`, an `[[example]]` target. Built automatically
+  via `cargo build --bin <name>` before spawning. Exactly one of
+  `--example`/`--bin` is required.
 - `--size <cols>x<rows>` — pseudo-console size, e.g. `120x40`. Defaults
   to `80x24`.
 - `--script <path.json>` — path to a script file (see below).

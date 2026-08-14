@@ -13,6 +13,10 @@ this project follows the SemVer policy defined in
   (`.claude/rules/code-forge.md`).
 - `GlitchBuffer::with_alpha` — partial-transparency glitch overlays (#115).
 - `perspective::ProjectLineParams` (#119).
+- `showcase` — the flagship demo reel: a mascot-hosted tile menu of 5
+  vignettes, run via `cargo run --bin showcase`.
+- `tools/visual-snapshot`'s `--bin` flag — captures a `[[bin]]` target
+  (e.g. `showcase`), alongside the existing `--example` capture path.
 
 ### Changed
 

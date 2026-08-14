@@ -20,3 +20,7 @@ harness = false
 [[example]]
 name = "launcher"
 test = true
+
+[[bin]]
+name = "showcase"
+path = "showcase/main.rs"

@@ -19,6 +19,7 @@ See `docs/design/README.md` for the full Arc history and
 ## Try it
 
 ```
+cargo run --bin showcase             # flagship demo reel: mascot-hosted showcase of 5 vignettes
 cargo run --example demo             # nested panes, Tab focus, Up/Down navigation
 cargo run --example launcher         # cross-app portal nexus (omnitrix/tardis/smash_crabs)
 cargo run --example falcon           # windshield + HUD + input-bound Easter egg

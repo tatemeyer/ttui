@@ -24,3 +24,6 @@ __pycache__/
 # Rev B validation artifacts
 omnitrix_perf.log
 
+# Superpowers brainstorming companion mockups
+.superpowers/
+
