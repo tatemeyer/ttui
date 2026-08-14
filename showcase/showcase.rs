@@ -146,11 +146,32 @@ impl ShowcaseApp {
         self.telemetry = None;
         self.screen = Screen::Menu;
     }
+
+    /// The mascot's on-screen area for a given full render `area` —
+    /// factored out so `view()` and `on_tick()` compute the identical
+    /// rect (the latter needs it to anchor Overload Vent's particle
+    /// emitters near the mascot rather than at raw screen center).
+    fn mascot_area(&self, area: Rect) -> Rect {
+        Rect {
+            x: area.x + area.width.saturating_sub(mascot::MASCOT_WIDTH + 2),
+            y: area.y + 1,
+            width: mascot::MASCOT_WIDTH,
+            height: mascot::MASCOT_HEIGHT,
+        }
+    }
 }
 
 impl App for ShowcaseApp {
     fn update(&mut self, event: &Event) {
         if self.booting.is_some() {
+            // Handled here (ahead of the boot guard's early return) so
+            // `q` still quits during the boot sequence, rather than
+            // being silently swallowed until boot completes.
+            if let Event::Key(k) = event {
+                if k.kind == KeyEventKind::Press && k.code == KeyCode::Char('q') {
+                    self.quit = true;
+                }
+            }
             return;
         }
         let screen = self.screen;
@@ -192,6 +213,7 @@ impl App for ShowcaseApp {
                         for (i, area) in self.tile_areas.get().iter().enumerate() {
                             if area.contains(m.column, m.row) {
                                 let id = menu::TILES[i].0;
+                                self.highlighted = i;
                                 self.enter_vignette(id);
                                 return;
                             }
@@ -239,12 +261,7 @@ impl App for ShowcaseApp {
             boot::render_boot(area, &self.theme, t.progress(), buf);
             return;
         }
-        let mascot_area = Rect {
-            x: area.x + area.width.saturating_sub(mascot::MASCOT_WIDTH + 2),
-            y: area.y + 1,
-            width: mascot::MASCOT_WIDTH,
-            height: mascot::MASCOT_HEIGHT,
-        };
+        let mascot_area = self.mascot_area(area);
         match self.screen {
             Screen::Menu => {
                 let menu_area = Rect {
@@ -265,8 +282,9 @@ impl App for ShowcaseApp {
             }
             Screen::Vignette(VignetteId::OverloadVent) => {
                 if let Some(state) = &self.overload_vent {
-                    state.render(buf);
+                    state.render(area, buf);
                 }
+                self.mascot.render(mascot_area, buf);
             }
             Screen::Vignette(VignetteId::DiagnosticScan) => {
                 if let Some(state) = &self.diagnostic_scan {
@@ -322,8 +340,9 @@ impl App for ShowcaseApp {
                 }
             }
             Screen::Vignette(VignetteId::OverloadVent) => {
+                let mascot_area = self.mascot_area(area);
                 if let Some(state) = &mut self.overload_vent {
-                    state.on_tick(elapsed, area);
+                    state.on_tick(elapsed, mascot_area);
                     if state.is_complete() {
                         self.exit_vignette();
                     }

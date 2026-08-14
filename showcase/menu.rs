@@ -36,11 +36,17 @@ pub(crate) fn render_menu(
     highlighted: usize,
     buf: &mut LayerStack,
 ) -> [Rect; 5] {
+    let tiles_area = Rect {
+        x: area.x,
+        y: area.y,
+        width: area.width,
+        height: area.height.saturating_sub(1),
+    };
     let cols = Layout::new(
         Direction::Horizontal,
         vec![Constraint::Fill(1); TILES.len()],
     )
-    .split(area);
+    .split(tiles_area);
     let mut areas = [ZERO_RECT; 5];
     for (i, col) in cols.iter().enumerate() {
         let (_, title, hint) = TILES[i];
@@ -53,5 +59,12 @@ pub(crate) fn render_menu(
         };
         Text::new(&label).render(inner, buf);
     }
+    let hint_row = Rect {
+        x: area.x,
+        y: area.y + area.height.saturating_sub(1),
+        width: area.width,
+        height: area.height.saturating_sub(1).min(1),
+    };
+    Text::new("Left/Right move * Enter launch * click tile * q quit").render(hint_row, buf);
     areas
 }

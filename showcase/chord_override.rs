@@ -12,6 +12,7 @@ use ttui::input::{InputBinder, KeyPress};
 use ttui::layout::Rect;
 use ttui::theme::Theme;
 use ttui::transition::Transition;
+use ttui::widgets::text::Text;
 
 const CHORD_TIMEOUT: Duration = Duration::from_millis(1500);
 const FLASH_DURATION: Duration = Duration::from_millis(500);
@@ -116,6 +117,13 @@ impl OverrideSequenceState {
             self.flash
                 .render(area, theme.accent, self.tick_count, overlay);
         }
+        let hint_row = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width,
+            height: area.height.saturating_sub(1).min(1),
+        };
+        Text::new("Esc back * Left Right Left Right").render(hint_row, buf);
     }
 }
 

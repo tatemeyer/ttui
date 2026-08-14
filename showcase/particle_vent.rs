@@ -16,6 +16,7 @@ use ttui::buffer::LayerStack;
 use ttui::layout::Rect;
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::transition::Transition;
+use ttui::widgets::text::Text;
 
 const VENT_DURATION: Duration = Duration::from_millis(3500);
 const EMIT_INTERVAL: Duration = Duration::from_millis(60);
@@ -38,7 +39,11 @@ impl OverloadVentState {
         }
     }
 
-    pub(crate) fn on_tick(&mut self, elapsed: Duration, area: Rect) {
+    /// `mascot_area` is the same rect `showcase.rs` renders the mascot
+    /// sprite into — emitters anchor near its shoulder/joint band (a
+    /// few rows down from the top) so the vent visibly emanates from
+    /// the mascot rather than raw screen center.
+    pub(crate) fn on_tick(&mut self, elapsed: Duration, mascot_area: Rect) {
         self.transition.tick(elapsed);
         self.particles.update(elapsed);
         if self.transition.is_complete() {
@@ -49,8 +54,8 @@ impl OverloadVentState {
             return;
         }
         self.emit_elapsed = Duration::ZERO;
-        let cx = area.x as f32 + area.width as f32 / 2.0;
-        let cy = area.y as f32 + area.height as f32 / 2.0;
+        let cx = mascot_area.x as f32 + mascot_area.width as f32 / 2.0;
+        let cy = mascot_area.y as f32 + 3.0;
         for (i, &(ox, oy)) in EMITTER_OFFSETS.iter().enumerate() {
             let base_angle = (i as f32 / EMITTER_OFFSETS.len() as f32) * std::f32::consts::TAU
                 + self.transition.progress() * std::f32::consts::TAU * 4.0;
@@ -82,15 +87,34 @@ impl OverloadVentState {
         self.transition.is_complete() && self.particles.is_empty()
     }
 
-    pub(crate) fn render(&self, buf: &mut LayerStack) {
+    pub(crate) fn render(&self, area: Rect, buf: &mut LayerStack) {
         let overlay = buf.push_layer();
         self.particles.render(overlay);
+        let hint_row = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width,
+            height: area.height.saturating_sub(1).min(1),
+        };
+        Text::new("Esc back").render(hint_row, buf);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Stands in for the mascot's on-screen rect (the same shape
+    // showcase.rs computes via `ShowcaseApp::mascot_area`), not a full
+    // screen area — `on_tick` anchors emitters relative to this.
+    fn mascot_area() -> Rect {
+        Rect {
+            x: 26,
+            y: 1,
+            width: 12,
+            height: 12,
+        }
+    }
 
     fn area() -> Rect {
         Rect {
@@ -104,7 +128,7 @@ mod tests {
     #[test]
     fn emits_particles_from_all_three_emitters_on_first_interval() {
         let mut s = OverloadVentState::new();
-        s.on_tick(EMIT_INTERVAL, area());
+        s.on_tick(EMIT_INTERVAL, mascot_area());
         assert_eq!(
             s.particles.len(),
             EMITTER_OFFSETS.len() * PARTICLES_PER_EMITTER
@@ -114,24 +138,24 @@ mod tests {
     #[test]
     fn stops_emitting_once_the_vent_duration_completes() {
         let mut s = OverloadVentState::new();
-        s.on_tick(VENT_DURATION, area()); // completes the transition
+        s.on_tick(VENT_DURATION, mascot_area()); // completes the transition
         let count_at_completion = s.particles.len();
-        s.on_tick(EMIT_INTERVAL, area()); // would emit more if still active
+        s.on_tick(EMIT_INTERVAL, mascot_area()); // would emit more if still active
         assert_eq!(s.particles.len().saturating_sub(count_at_completion), 0);
     }
 
     #[test]
     fn is_complete_once_duration_elapses_and_particles_fade() {
         let mut s = OverloadVentState::new();
-        s.on_tick(VENT_DURATION, area());
-        s.on_tick(Duration::from_secs(2), area()); // long enough for sparks to expire
+        s.on_tick(VENT_DURATION, mascot_area());
+        s.on_tick(Duration::from_secs(2), mascot_area()); // long enough for sparks to expire
         assert!(s.is_complete());
     }
 
     #[test]
     fn not_complete_while_duration_is_still_running() {
         let mut s = OverloadVentState::new();
-        s.on_tick(Duration::from_millis(100), area());
+        s.on_tick(Duration::from_millis(100), mascot_area());
         assert!(!s.is_complete());
     }
 
@@ -145,9 +169,41 @@ mod tests {
     #[test]
     fn particle_population_grows_across_consecutive_bursts() {
         let mut s = OverloadVentState::new();
-        s.on_tick(EMIT_INTERVAL, area());
+        s.on_tick(EMIT_INTERVAL, mascot_area());
         let after_first_burst = s.particles.len();
-        s.on_tick(EMIT_INTERVAL, area());
+        s.on_tick(EMIT_INTERVAL, mascot_area());
         assert!(s.particles.len() > after_first_burst);
+    }
+
+    /// Regression guard for the final-review fix (2026-08-14): emitters
+    /// must anchor near the mascot's rect, not a separately-passed
+    /// screen area — moving `mascot_area()` far from origin must still
+    /// spawn the same particle count without panicking on out-of-range
+    /// coordinates.
+    #[test]
+    fn emitting_relative_to_a_mascot_area_far_from_origin_still_spawns_particles() {
+        let mut s = OverloadVentState::new();
+        let far_mascot_area = Rect {
+            x: 200,
+            y: 50,
+            width: 12,
+            height: 12,
+        };
+        s.on_tick(EMIT_INTERVAL, far_mascot_area);
+        assert_eq!(
+            s.particles.len(),
+            EMITTER_OFFSETS.len() * PARTICLES_PER_EMITTER
+        );
+    }
+
+    #[test]
+    fn render_draws_the_esc_back_hint_on_the_bottom_row() {
+        let s = OverloadVentState::new();
+        let mut stack = LayerStack::new(area().width, area().height);
+        s.render(area(), &mut stack);
+        let bottom_row = area().height - 1;
+        assert_eq!(stack.get(0, bottom_row).symbol, 'E');
+        assert_eq!(stack.get(1, bottom_row).symbol, 's');
+        assert_eq!(stack.get(2, bottom_row).symbol, 'c');
     }
 }

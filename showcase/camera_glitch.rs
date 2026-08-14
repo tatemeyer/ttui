@@ -10,6 +10,7 @@ use ttui::glitch::GlitchBuffer;
 use ttui::layout::Rect;
 use ttui::perspective::{Camera, Line3, Point3, ProjectLineParams};
 use ttui::theme::Theme;
+use ttui::widgets::text::Text;
 
 const ROTATION_SPEED: f32 = 1.2; // radians/second
 const GLITCH_TRIGGER_AT: [Duration; 2] = [Duration::from_millis(1500), Duration::from_millis(3500)];
@@ -122,6 +123,13 @@ impl DiagnosticScanState {
             self.glitch
                 .render(area, theme.tertiary, self.tick_count, overlay);
         }
+        let hint_row = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width,
+            height: area.height.saturating_sub(1).min(1),
+        };
+        Text::new("Esc back * Space whack").render(hint_row, buf);
     }
 }
 

@@ -10,6 +10,7 @@ use ttui::buffer::{Cell, LayerStack};
 use ttui::layout::Rect;
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::Theme;
+use ttui::widgets::text::Text;
 
 const CRATE_COUNT: usize = 6;
 // Tuned for real human reaction time, not just script-precise clicks: at
@@ -160,6 +161,13 @@ impl AssemblyLineState {
         }
         let overlay = buf.push_layer();
         self.puff.render(overlay);
+        let hint_row = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width,
+            height: area.height.saturating_sub(1).min(1),
+        };
+        Text::new("Esc back * click a crate").render(hint_row, buf);
     }
 }
 

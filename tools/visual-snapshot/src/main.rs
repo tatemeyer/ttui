@@ -12,6 +12,8 @@ struct Args {
 
     // Capture path (existing behavior; unused when `command` is Some).
     // Exactly one of `example`/`bin` is required — see `resolve_target`.
+    /// Name of an `[[example]]` target (as opposed to `--bin`, a
+    /// `[[bin]]` target) to build and capture.
     #[arg(long)]
     example: Option<String>,
     /// Name of a `[[bin]]` target (as opposed to `--example`, an

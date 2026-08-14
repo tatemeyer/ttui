@@ -7,7 +7,7 @@ use ttui::buffer::LayerStack;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::theme::Theme;
 use ttui::transition::Transition;
-use ttui::widgets::{bar_chart::BarChart, block::Block, sparkline::Sparkline};
+use ttui::widgets::{bar_chart::BarChart, block::Block, sparkline::Sparkline, text::Text};
 
 const TELEMETRY_DURATION: Duration = Duration::from_millis(5500);
 const GRIP_STEP: f32 = 6.0;
@@ -87,6 +87,14 @@ impl TelemetryState {
             .theme(theme)
             .render(cols[1], buf);
         BarChart::new(&stats, 100.0, theme.secondary).render(stats_inner, buf);
+
+        let hint_row = Rect {
+            x: area.x,
+            y: area.y + area.height.saturating_sub(1),
+            width: area.width,
+            height: area.height.saturating_sub(1).min(1),
+        };
+        Text::new("Esc back").render(hint_row, buf);
     }
 }
 

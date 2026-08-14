@@ -12,17 +12,10 @@ use ttui::layout::Rect;
 pub(crate) const MASCOT_WIDTH: u16 = 12;
 pub(crate) const MASCOT_HEIGHT: u16 = 12;
 
-// `Reacting`/`Grabbing` and their hold durations aren't driven from
-// outside this module yet — Task 3 and Task 5 wire up `set_pose`
-// calls that switch to them. Only exercised by this module's own
-// tests until then.
-#[allow(dead_code)]
 const REACT_HOLD: Duration = Duration::from_millis(300);
-#[allow(dead_code)]
 const GRAB_HOLD: Duration = Duration::from_millis(400);
 
 #[derive(Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 pub(crate) enum MascotPose {
     Idle,
     Reacting,
@@ -123,7 +116,6 @@ impl GripperMascot {
 
     /// Switches pose immediately. `Reacting`/`Grabbing` auto-settle
     /// back to `Idle` after their hold duration elapses via `tick`.
-    #[allow(dead_code)]
     pub(crate) fn set_pose(&mut self, pose: MascotPose) {
         self.pose = pose;
         self.hold = match pose {

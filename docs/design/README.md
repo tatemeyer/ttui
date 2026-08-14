@@ -29,6 +29,12 @@ This directory holds:
 - `governance/` — release-process work (SemVer policy, label taxonomy,
   triage rules) rather than an example app or framework subsystem;
   first Arc under the TTUI v1.0.0 initiative.
+- `showcase/` — the flagship demo reel: a mascot-hosted tile menu of
+  five vignettes (mouse interaction, particles, camera+glitch, chord
+  input, data-viz) pulled together into one polished entry point, run
+  via its own `showcase` `[[bin]]` target rather than cataloged as
+  another `examples/` vision-doc app; fifth sub-project of the TTUI
+  v1.0.0 initiative, the last content Arc before cutting the tag.
 - A new bucket is added here the first time a genuinely new Arc starts
   (e.g. a fourth example app) — this list, not the file count inside
   each bucket, is what stays small as the docs tree grows.
