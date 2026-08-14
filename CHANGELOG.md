@@ -7,6 +7,8 @@ this project follows the SemVer policy defined in
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-08-14
+
 ### Added
 
 - Release governance: SemVer policy, label taxonomy, filing-work rule
