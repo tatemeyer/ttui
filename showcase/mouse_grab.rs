@@ -164,17 +164,22 @@ impl AssemblyLineState {
                     c.exited = true;
                 }
             }
-        }
-        self.spawn_elapsed += elapsed;
-        if self.spawned < CRATE_COUNT && self.spawn_elapsed >= SPAWN_INTERVAL {
-            self.spawn_elapsed = Duration::ZERO;
-            self.spawned += 1;
-            self.crates.push(CrateItem {
-                x: x0,
-                targeted: false,
-                caught: false,
-                exited: false,
-            });
+            // The spawn clock must pause too, not just movement — this
+            // is the same "whole line holds still" contract, and
+            // letting it run during a reach cycle silently compresses
+            // the next crate's spacing below CRATE_WIDTH (reopening
+            // #128's chain-overlap on essentially every catch).
+            self.spawn_elapsed += elapsed;
+            if self.spawned < CRATE_COUNT && self.spawn_elapsed >= SPAWN_INTERVAL {
+                self.spawn_elapsed = Duration::ZERO;
+                self.spawned += 1;
+                self.crates.push(CrateItem {
+                    x: x0,
+                    targeted: false,
+                    caught: false,
+                    exited: false,
+                });
+            }
         }
 
         self.slide.tick(elapsed);
@@ -237,8 +242,11 @@ impl AssemblyLineState {
     /// on-screen `Rect` (cached row from the last `render` call, same
     /// `row_y`-style pattern `control_panel` established, extended to
     /// a full 2D box now that the crate genuinely occupies one).
-    /// Retargeting mid-slide abandons the previous target (it resumes
-    /// scrolling) rather than special-casing a queue.
+    /// Retargeting during the horizontal slide phase abandons the
+    /// previous target (it resumes scrolling) rather than
+    /// special-casing a queue; retargeting during the `Down`/`Up`
+    /// reach phases has a known, separately tracked issue (#132) and
+    /// is left alone here.
     pub(crate) fn handle_click(&mut self, mx: u16, my: u16) {
         let ly = self.lane_y.get();
         let hit = self
@@ -266,19 +274,34 @@ impl AssemblyLineState {
             self.crates[i].targeted = true;
             self.targeted_crate = Some(i);
             self.slide_from_x = self.mascot_x;
-            self.mascot_target_x = self.crates[i].x;
+            // Center the claw (roughly mid-sprite) on the crate's own
+            // center, not the sprite's left edge on the crate's left
+            // edge — otherwise the claw lands on the crate's right
+            // edge/corner instead of its middle, visibly offset from
+            // where the puff (spawned at the crate's true center)
+            // appears.
+            self.mascot_target_x =
+                self.crates[i].x + CRATE_WIDTH as f32 / 2.0 - mascot::MASCOT_WIDTH as f32 / 2.0;
             self.slide = Transition::start(MASCOT_SLIDE_DURATION);
         }
     }
 
     /// One-shot: true exactly once, the first call after the mascot's
-    /// slide actually arrived at a targeted crate.
+    /// reach-down actually arrived at a targeted crate (not merely
+    /// after the horizontal slide arrives above it).
     pub(crate) fn take_caught(&mut self) -> bool {
         std::mem::take(&mut self.just_caught)
     }
 
+    /// Also requires `reach_phase == None`, not just every crate
+    /// caught/exited — otherwise catching the *last* crate would flip
+    /// this true on the exact tick the catch fires, and `showcase.rs`
+    /// would call `exit_vignette()` before the retract animation, the
+    /// `Grabbing` pose, or the freshly spawned puff ever render.
     pub(crate) fn is_complete(&self) -> bool {
-        self.spawned == CRATE_COUNT && self.crates.iter().all(|c| c.caught || c.exited)
+        self.spawned == CRATE_COUNT
+            && self.crates.iter().all(|c| c.caught || c.exited)
+            && self.reach_phase == ReachPhase::None
     }
 
     /// The mascot's current on-screen area for this vignette —
@@ -568,6 +591,45 @@ mod tests {
         s.handle_click(s.crates[0].x as u16, ly);
         s.on_tick(MASCOT_SLIDE_DURATION, area());
         let after = s.mascot_area(area());
-        assert_eq!(after.x, s.crates[0].x as u16);
+        // The claw (roughly mid-sprite) centers on the crate's own
+        // center, not the sprite's left edge on the crate's left edge.
+        let expected_x =
+            s.crates[0].x + CRATE_WIDTH as f32 / 2.0 - mascot::MASCOT_WIDTH as f32 / 2.0;
+        assert_eq!(after.x, expected_x as u16);
+    }
+
+    #[test]
+    fn reach_down_offset_is_deep_enough_to_reach_the_lane() {
+        // Regression guard coupling the reach depth to the lane gap:
+        // shrinking REACH_DOWN_OFFSET (or growing the gap) without
+        // updating the other would silently leave the claw short of
+        // the lane it's supposed to reach into.
+        assert!(mascot_y(area()) + REACH_DOWN_OFFSET + mascot::MASCOT_HEIGHT > lane_y(area()));
+    }
+
+    #[test]
+    fn a_full_catch_cycle_does_not_compress_spacing_below_crate_width() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(s.crates[0].x as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area()); // horizontal slide arrives, reach-down begins; pause starts now
+        let follower_x_when_pause_begins = s.crates[1].x;
+        let spawn_elapsed_when_pause_begins = s.spawn_elapsed;
+        s.on_tick(REACH_DURATION, area()); // catch fires, reach_phase -> Up
+        s.on_tick(REACH_DURATION, area()); // retract completes, reach_phase -> None
+                                           // Both the follower crate's position AND the spawn clock must
+                                           // be exactly what they were when the pause began — not just
+                                           // "the crate didn't move" (movement was already correctly
+                                           // gated before this fix), but specifically that
+                                           // `spawn_elapsed` itself didn't keep advancing during the
+                                           // 400ms (REACH_DURATION * 2) reach-down/retract cycle. Before
+                                           // the fix, `spawn_elapsed` kept accumulating during the pause,
+                                           // silently compressing the next crate's spacing below
+                                           // CRATE_WIDTH once movement resumed.
+        assert_eq!(s.crates[1].x, follower_x_when_pause_begins);
+        assert_eq!(s.spawn_elapsed, spawn_elapsed_when_pause_begins);
     }
 }

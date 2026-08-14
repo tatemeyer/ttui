@@ -221,12 +221,22 @@ impl GripperMascot {
         };
         for (row, cells) in grid.iter().enumerate() {
             let y = area.y + row as u16;
-            if y >= area.y + area.height {
+            // Clipped against the buffer's actual bounds, not
+            // `area.height`/`area.width` — `area` here is always the
+            // mascot's own 12x12 rect, so `row`/`col` (both < 12)
+            // could never trip a check against it. Without this, a
+            // vignette that positions the mascot near the bottom/right
+            // edge of a small terminal (e.g. Assembly Line's
+            // reach-down, which needs `MASCOT_Y_OFFSET +
+            // REACH_DOWN_OFFSET + MASCOT_HEIGHT` rows) would panic in
+            // `Buffer::set` the moment it tried to draw past the real
+            // buffer.
+            if y >= buf.height {
                 break;
             }
             for (col, &code) in cells.iter().enumerate() {
                 let x = area.x + col as u16;
-                if x >= area.x + area.width {
+                if x >= buf.width {
                     break;
                 }
                 if let Some(color) = palette(code) {
