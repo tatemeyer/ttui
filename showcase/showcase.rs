@@ -15,6 +15,8 @@ use ttui::transition::Transition;
 mod boot;
 #[path = "camera_glitch.rs"]
 mod camera_glitch;
+#[path = "chord_override.rs"]
+mod chord_override;
 #[path = "mascot.rs"]
 mod mascot;
 #[path = "menu.rs"]
@@ -25,6 +27,7 @@ mod mouse_grab;
 mod particle_vent;
 
 use camera_glitch::DiagnosticScanState;
+use chord_override::OverrideSequenceState;
 use mascot::{GripperMascot, MascotPose};
 use mouse_grab::AssemblyLineState;
 use particle_vent::OverloadVentState;
@@ -96,6 +99,7 @@ pub(crate) struct ShowcaseApp {
     assembly_line: Option<AssemblyLineState>,
     overload_vent: Option<OverloadVentState>,
     diagnostic_scan: Option<DiagnosticScanState>,
+    override_sequence: Option<OverrideSequenceState>,
 }
 
 impl ShowcaseApp {
@@ -112,6 +116,7 @@ impl ShowcaseApp {
             assembly_line: None,
             overload_vent: None,
             diagnostic_scan: None,
+            override_sequence: None,
         }
     }
 
@@ -120,6 +125,9 @@ impl ShowcaseApp {
             VignetteId::AssemblyLine => self.assembly_line = Some(AssemblyLineState::new()),
             VignetteId::OverloadVent => self.overload_vent = Some(OverloadVentState::new()),
             VignetteId::DiagnosticScan => self.diagnostic_scan = Some(DiagnosticScanState::new()),
+            VignetteId::OverrideSequence => {
+                self.override_sequence = Some(OverrideSequenceState::new())
+            }
             _ => {}
         }
         self.screen = Screen::Vignette(id);
@@ -129,6 +137,7 @@ impl ShowcaseApp {
         self.assembly_line = None;
         self.overload_vent = None;
         self.diagnostic_scan = None;
+        self.override_sequence = None;
         self.screen = Screen::Menu;
     }
 }
@@ -209,6 +218,11 @@ impl App for ShowcaseApp {
                         }
                     }
                 }
+                if id == VignetteId::OverrideSequence {
+                    if let Some(state) = &mut self.override_sequence {
+                        state.handle_key(event);
+                    }
+                }
             }
         }
     }
@@ -252,6 +266,12 @@ impl App for ShowcaseApp {
                 if let Some(state) = &self.diagnostic_scan {
                     state.render(area, &self.theme, buf);
                 }
+            }
+            Screen::Vignette(VignetteId::OverrideSequence) => {
+                if let Some(state) = &self.override_sequence {
+                    state.render(area, &self.theme, buf);
+                }
+                self.mascot.render(mascot_area, buf);
             }
             Screen::Vignette(_) => {}
         }
@@ -302,6 +322,17 @@ impl App for ShowcaseApp {
             Screen::Vignette(VignetteId::DiagnosticScan) => {
                 if let Some(state) = &mut self.diagnostic_scan {
                     state.on_tick(elapsed);
+                    if state.is_complete() {
+                        self.exit_vignette();
+                    }
+                }
+            }
+            Screen::Vignette(VignetteId::OverrideSequence) => {
+                if let Some(state) = &mut self.override_sequence {
+                    state.on_tick(elapsed);
+                    if state.take_reaction() {
+                        self.mascot.set_pose(MascotPose::Reacting);
+                    }
                     if state.is_complete() {
                         self.exit_vignette();
                     }
