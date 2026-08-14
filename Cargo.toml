@@ -2,6 +2,12 @@
 name = "ttui"
 version = "1.0.0"
 edition = "2021"
+description = "A terminal UI framework built from first principles: direct control over text rendering, color, pane layout, and multiplexing."
+license = "MIT"
+repository = "https://github.com/tatemeyer/ttui"
+readme = "README.md"
+keywords = ["tui", "terminal", "cli", "ui", "console"]
+categories = ["command-line-interface"]
 
 [workspace]
 members = [".", "tools/visual-snapshot"]
