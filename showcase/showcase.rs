@@ -127,7 +127,9 @@ impl ShowcaseApp {
 
     fn enter_vignette(&mut self, id: VignetteId) {
         match id {
-            VignetteId::AssemblyLine => self.assembly_line = Some(AssemblyLineState::new()),
+            VignetteId::AssemblyLine => {
+                self.assembly_line = Some(AssemblyLineState::new(self.last_area.get()))
+            }
             VignetteId::OverloadVent => self.overload_vent = Some(OverloadVentState::new()),
             VignetteId::DiagnosticScan => self.diagnostic_scan = Some(DiagnosticScanState::new()),
             VignetteId::OverrideSequence => {
@@ -276,9 +278,9 @@ impl App for ShowcaseApp {
             }
             Screen::Vignette(VignetteId::AssemblyLine) => {
                 if let Some(state) = &self.assembly_line {
-                    state.render(area, &self.theme, buf);
+                    state.render(area, buf);
+                    self.mascot.render(state.mascot_area(area), buf);
                 }
-                self.mascot.render(mascot_area, buf);
             }
             Screen::Vignette(VignetteId::OverloadVent) => {
                 if let Some(state) = &self.overload_vent {

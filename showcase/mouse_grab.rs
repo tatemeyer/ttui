@@ -1,34 +1,85 @@
-//! Assembly Line — crates scroll across a fixed row; clicking one
-//! before it exits triggers the mascot's grabbing pose and a small
-//! particle puff where it was caught. Reuses control_panel's click
-//! hit-testing pattern (a std::cell::Cell<u16> caching the clickable
-//! row's y-coordinate from the last render, read back on click).
+//! Assembly Line — crates scroll across a fixed lane; clicking one
+//! marks it targeted, freezing it in place while the mascot slides
+//! over from its current position to grab it. The crate is only
+//! actually caught (puff + Grabbing pose + removed) once the
+//! mascot's slide animation arrives — not on click. Hit-testing is a
+//! real 2D bounding-box check against each crate's own Rect
+//! (ttui::layout::Rect::contains), matching control_panel's
+//! click-hit-testing pattern; the mascot's on-screen position is
+//! owned here (not ShowcaseApp's shared top-right position) since
+//! it's vignette-local for this one vignette only.
 
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::buffer::{Cell, LayerStack};
 use ttui::layout::Rect;
 use ttui::particles::{Particle, ParticleSystem};
-use ttui::theme::Theme;
+use ttui::transition::Transition;
 use ttui::widgets::text::Text;
 
-const CRATE_COUNT: usize = 6;
-// Tuned for real human reaction time, not just script-precise clicks: at
-// the original 10.0 cells/sec + 6-wide crate + exact-row hit test, a
-// crate was only catchable for ~0.6s on one exact terminal row — fine
-// for a scripted visual-snapshot click computed from a static frame,
-// not for someone watching a moving target and clicking in real time.
-const CRATE_SPEED: f32 = 4.5; // cells/second
-const CRATE_WIDTH: u16 = 8;
-// `handle_click`'s row hit-test accepts this many rows above/below the
-// cached `row_y`, absorbing real mouse/terminal imprecision (a human
-// aiming at "the crate's row" by eye won't always land the exact cell).
-const ROW_TOLERANCE: u16 = 1;
-const SPAWN_INTERVAL: Duration = Duration::from_millis(700);
+use super::mascot;
+
+const CRATE_COUNT: usize = 4;
+const CRATE_WIDTH: u16 = 6;
+const CRATE_HEIGHT: u16 = 3;
+const CRATE_SPEED: f32 = 6.0; // cells/second
+const SPAWN_INTERVAL: Duration = Duration::from_millis(1100);
+// A fixed span, independent of terminal width — the main lever that
+// brings total vignette duration down from the original ~26s to
+// roughly double the passive vignettes' scale rather than 5-6x it.
+const LANE_TRAVEL_WIDTH: f32 = 50.0;
 const PUFF_LIFETIME_MS: u64 = 300;
+const MASCOT_SLIDE_DURATION: Duration = Duration::from_millis(300);
+// Vertical placement: the mascot sits a couple rows below the
+// vignette's top edge, and the crate lane aligns with its claw
+// (pixel rows 9-11 of its 12-row sprite), not an arbitrary mid-screen
+// row.
+const MASCOT_Y_OFFSET: u16 = 2;
+const LANE_Y_OFFSET_FROM_MASCOT_TOP: u16 = 9;
+
+fn mascot_y(area: Rect) -> u16 {
+    area.y + MASCOT_Y_OFFSET
+}
+
+fn lane_y(area: Rect) -> u16 {
+    mascot_y(area) + LANE_Y_OFFSET_FROM_MASCOT_TOP
+}
+
+fn lane_x0(area: Rect) -> f32 {
+    area.x as f32 + (area.width as f32 - LANE_TRAVEL_WIDTH) / 2.0
+}
+
+fn palette(code: u8) -> Option<Color> {
+    match code {
+        10 => Some(Color::Rgb {
+            r: 74,
+            g: 47,
+            b: 26,
+        }),
+        11 => Some(Color::Rgb {
+            r: 199,
+            g: 160,
+            b: 106,
+        }),
+        12 => Some(Color::Rgb {
+            r: 107,
+            g: 114,
+            b: 120,
+        }),
+        _ => None,
+    }
+}
+
+#[rustfmt::skip]
+const CRATE_SPRITE: [[u8; 6]; 3] = [
+    [10,10,10,10,10,10],
+    [10,11,12,12,11,10],
+    [10,10,10,10,10,10],
+];
 
 struct CrateItem {
     x: f32,
+    targeted: bool,
     caught: bool,
     exited: bool,
 }
@@ -39,40 +90,42 @@ pub(crate) struct AssemblyLineState {
     spawned: usize,
     just_caught: bool,
     puff: ParticleSystem,
-    row_y: std::cell::Cell<u16>,
+    lane_y: std::cell::Cell<u16>,
+    mascot_x: f32,
+    slide_from_x: f32,
+    mascot_target_x: f32,
+    slide: Transition,
+    targeted_crate: Option<usize>,
 }
 
 impl AssemblyLineState {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(area: Rect) -> Self {
+        let x0 = lane_x0(area);
         AssemblyLineState {
             crates: Vec::new(),
             spawn_elapsed: Duration::ZERO,
             spawned: 0,
             just_caught: false,
             puff: ParticleSystem::new(),
-            row_y: std::cell::Cell::new(0),
+            lane_y: std::cell::Cell::new(0),
+            mascot_x: x0,
+            slide_from_x: x0,
+            mascot_target_x: x0,
+            slide: Transition::start(MASCOT_SLIDE_DURATION),
+            targeted_crate: None,
         }
     }
 
     pub(crate) fn on_tick(&mut self, elapsed: Duration, area: Rect) {
-        // Do NOT reset `just_caught` here: `take_caught()` (`mem::take`)
-        // is the sole place that consumes it. `handle_click` (fired from
-        // `update`) always runs in a separate event from `on_tick`, so a
-        // reset here would always clear a catch before the app's own
-        // `on_tick` gets a chance to call `take_caught()` after this call
-        // returns — silently swallowing every catch.
         self.puff.update(elapsed);
-        // Move existing crates first, then spawn: a freshly spawned crate
-        // must not also advance in the same tick it's pushed, or it lands
-        // past `area.x` immediately (breaking hit-testing against the
-        // spawn position for that frame).
-        let right_edge = (area.x + area.width) as f32;
+        let x0 = lane_x0(area);
+        let x1 = x0 + LANE_TRAVEL_WIDTH;
         for c in &mut self.crates {
-            if c.caught {
-                continue;
+            if c.caught || c.targeted {
+                continue; // targeted crates freeze until the mascot arrives
             }
             c.x += CRATE_SPEED * elapsed.as_secs_f32();
-            if c.x > right_edge {
+            if c.x > x1 {
                 c.exited = true;
             }
         }
@@ -81,33 +134,24 @@ impl AssemblyLineState {
             self.spawn_elapsed = Duration::ZERO;
             self.spawned += 1;
             self.crates.push(CrateItem {
-                x: area.x as f32,
+                x: x0,
+                targeted: false,
                 caught: false,
                 exited: false,
             });
         }
-    }
 
-    /// Hit-tests a click against the row cached from the last
-    /// `render` call — mirrors `control_panel`'s `button_area`
-    /// pattern (a Cell populated at render time, read at click time).
-    /// Accepts `ROW_TOLERANCE` rows of slop either side of the exact
-    /// row, not just a pixel-perfect match.
-    pub(crate) fn handle_click(&mut self, mx: u16, my: u16) {
-        if my.abs_diff(self.row_y.get()) > ROW_TOLERANCE {
-            return;
-        }
-        for c in &mut self.crates {
-            if c.caught || c.exited {
-                continue;
-            }
-            let cx = c.x as u16;
-            if mx >= cx && mx < cx.saturating_add(CRATE_WIDTH) {
-                c.caught = true;
+        self.slide.tick(elapsed);
+        self.mascot_x =
+            self.slide_from_x + (self.mascot_target_x - self.slide_from_x) * self.slide.progress();
+        if self.slide.is_complete() {
+            if let Some(i) = self.targeted_crate.take() {
+                self.crates[i].caught = true;
                 self.just_caught = true;
+                let cx = self.crates[i].x;
                 self.puff.spawn(Particle {
-                    x: c.x + CRATE_WIDTH as f32 / 2.0,
-                    y: my as f32,
+                    x: cx + CRATE_WIDTH as f32 / 2.0,
+                    y: lane_y(area) as f32,
                     vx: 0.0,
                     vy: -3.0,
                     symbol: '*',
@@ -119,13 +163,50 @@ impl AssemblyLineState {
                     lifetime: Duration::from_millis(PUFF_LIFETIME_MS),
                     age: Duration::ZERO,
                 });
-                break;
             }
         }
     }
 
-    /// One-shot: true exactly once, the first call after a crate was
-    /// caught since the last call.
+    /// Hit-tests a click against every catchable crate's actual
+    /// on-screen `Rect` (cached row from the last `render` call, same
+    /// `row_y`-style pattern `control_panel` established, extended to
+    /// a full 2D box now that the crate genuinely occupies one).
+    /// Retargeting mid-slide abandons the previous target (it resumes
+    /// scrolling) rather than special-casing a queue.
+    pub(crate) fn handle_click(&mut self, mx: u16, my: u16) {
+        let ly = self.lane_y.get();
+        let hit = self
+            .crates
+            .iter()
+            .enumerate()
+            .find(|(_, c)| {
+                !c.caught
+                    && !c.exited
+                    && !c.targeted
+                    && Rect {
+                        x: c.x as u16,
+                        y: ly,
+                        width: CRATE_WIDTH,
+                        height: CRATE_HEIGHT,
+                    }
+                    .contains(mx, my)
+            })
+            .map(|(i, _)| i);
+
+        if let Some(i) = hit {
+            if let Some(prev) = self.targeted_crate {
+                self.crates[prev].targeted = false;
+            }
+            self.crates[i].targeted = true;
+            self.targeted_crate = Some(i);
+            self.slide_from_x = self.mascot_x;
+            self.mascot_target_x = self.crates[i].x;
+            self.slide = Transition::start(MASCOT_SLIDE_DURATION);
+        }
+    }
+
+    /// One-shot: true exactly once, the first call after the mascot's
+    /// slide actually arrived at a targeted crate.
     pub(crate) fn take_caught(&mut self) -> bool {
         std::mem::take(&mut self.just_caught)
     }
@@ -134,28 +215,53 @@ impl AssemblyLineState {
         self.spawned == CRATE_COUNT && self.crates.iter().all(|c| c.caught || c.exited)
     }
 
-    pub(crate) fn render(&self, area: Rect, theme: &Theme, buf: &mut LayerStack) {
-        let row_y = area.y + area.height / 2;
-        self.row_y.set(row_y);
+    /// The mascot's current on-screen area for this vignette —
+    /// consumed by `showcase.rs`'s `view()` in place of the shared
+    /// `ShowcaseApp::mascot_area`, since the mascot lives inside the
+    /// crate lane here rather than its usual top-right spot.
+    pub(crate) fn mascot_area(&self, area: Rect) -> Rect {
+        Rect {
+            x: self.mascot_x as u16,
+            y: mascot_y(area),
+            width: mascot::MASCOT_WIDTH,
+            height: mascot::MASCOT_HEIGHT,
+        }
+    }
+
+    /// No `theme` parameter — the crate sprite uses its own fixed
+    /// wood palette, not the app theme, matching the precedent set by
+    /// `OverloadVentState::render` (which also dropped an unused
+    /// `theme` param rather than silencing it with `let _ = theme;`).
+    pub(crate) fn render(&self, area: Rect, buf: &mut LayerStack) {
+        let ly = lane_y(area);
+        self.lane_y.set(ly);
         for c in &self.crates {
             if c.caught || c.exited {
                 continue;
             }
             let x = c.x as u16;
-            for dx in 0..CRATE_WIDTH {
-                let cx = x + dx;
-                if cx >= area.x && cx < area.x + area.width {
-                    buf.set(
-                        cx,
-                        row_y,
-                        Cell {
-                            symbol: '#',
-                            fg: theme.secondary,
-                            bg: Color::Reset,
-                            alpha: 1.0,
-                            ..Default::default()
-                        },
-                    );
+            for (row, cells) in CRATE_SPRITE.iter().enumerate() {
+                let y = ly + row as u16;
+                if y >= area.y + area.height {
+                    break;
+                }
+                for (col, &code) in cells.iter().enumerate() {
+                    let cx = x + col as u16;
+                    if cx >= area.x && cx < area.x + area.width {
+                        if let Some(color) = palette(code) {
+                            buf.set(
+                                cx,
+                                y,
+                                Cell {
+                                    symbol: ' ',
+                                    fg: Color::Reset,
+                                    bg: color,
+                                    alpha: 1.0,
+                                    ..Default::default()
+                                },
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -179,126 +285,138 @@ mod tests {
         Rect {
             x: 0,
             y: 0,
-            width: 40,
-            height: 10,
+            width: 100,
+            height: 20,
         }
     }
 
-    #[test]
-    fn a_crate_spawns_after_the_first_spawn_interval() {
-        let mut s = AssemblyLineState::new();
-        s.on_tick(SPAWN_INTERVAL, area());
-        assert_eq!(s.spawned, 1);
-        assert_eq!(s.crates.len(), 1);
+    fn render_to_cache_lane_y(s: &AssemblyLineState) {
+        let mut stack = LayerStack::new(100, 20);
+        s.render(area(), &mut stack);
     }
 
     #[test]
-    fn a_crate_past_the_right_edge_is_marked_exited() {
-        let mut s = AssemblyLineState::new();
+    fn a_crate_spawns_at_the_lane_start_after_the_first_spawn_interval() {
+        let mut s = AssemblyLineState::new(area());
         s.on_tick(SPAWN_INTERVAL, area());
-        s.on_tick(Duration::from_secs(10), area()); // plenty of time to cross a 40-wide area
+        assert_eq!(s.spawned, 1);
+        assert_eq!(s.crates.len(), 1);
+        assert_eq!(s.crates[0].x, lane_x0(area()));
+    }
+
+    #[test]
+    fn a_crate_past_the_lane_end_is_marked_exited() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        s.on_tick(Duration::from_secs(30), area()); // plenty of time to cross the 50-cell lane
         assert!(s.crates[0].exited);
     }
 
     #[test]
-    fn clicking_a_crate_at_the_cached_row_catches_it() {
-        let mut s = AssemblyLineState::new();
+    fn clicking_a_crate_targets_it_without_immediately_catching_it() {
+        let mut s = AssemblyLineState::new(area());
         s.on_tick(SPAWN_INTERVAL, area());
-        let theme = Theme::default();
-        let mut stack = LayerStack::new(40, 10);
-        s.render(area(), &theme, &mut stack);
-        let row_y = area().y + area().height / 2;
-        s.handle_click(0, row_y); // crate spawned at x=0
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(lane_x0(area()) as u16, ly);
+        assert!(s.crates[0].targeted);
+        assert!(!s.crates[0].caught);
+        assert!(!s.take_caught());
+    }
+
+    #[test]
+    fn the_slide_completing_actually_catches_the_targeted_crate() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(lane_x0(area()) as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area());
         assert!(s.crates[0].caught);
         assert!(s.take_caught());
     }
 
     #[test]
     fn take_caught_is_one_shot() {
-        let mut s = AssemblyLineState::new();
+        let mut s = AssemblyLineState::new(area());
         s.on_tick(SPAWN_INTERVAL, area());
-        let theme = Theme::default();
-        let mut stack = LayerStack::new(40, 10);
-        s.render(area(), &theme, &mut stack);
-        let row_y = area().y + area().height / 2;
-        s.handle_click(0, row_y);
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(lane_x0(area()) as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area());
         assert!(s.take_caught());
         assert!(!s.take_caught());
     }
 
-    /// Regression test for a real integration bug: `ShowcaseApp::on_tick`
-    /// (showcase.rs) calls `state.on_tick(..)` and THEN
-    /// `state.take_caught()` in the same call — the ordering the real
-    /// app always uses, since `handle_click` fires from a separate
-    /// `update` event, never inside `on_tick` itself. An earlier draft
-    /// reset `just_caught` at the top of `on_tick`, which silently
-    /// discarded every catch before the app could ever observe it.
     #[test]
-    fn caught_flag_survives_an_on_tick_call_before_being_read() {
-        let mut s = AssemblyLineState::new();
+    fn clicking_off_a_crate_does_nothing() {
+        let mut s = AssemblyLineState::new(area());
         s.on_tick(SPAWN_INTERVAL, area());
-        let theme = Theme::default();
-        let mut stack = LayerStack::new(40, 10);
-        s.render(area(), &theme, &mut stack);
-        let row_y = area().y + area().height / 2;
-        s.handle_click(0, row_y);
-        s.on_tick(Duration::from_millis(33), area());
-        assert!(s.take_caught());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(0, ly); // far from the crate's spawn position
+        assert!(!s.crates[0].targeted);
     }
 
     #[test]
-    fn clicking_off_row_does_not_catch() {
-        let mut s = AssemblyLineState::new();
+    fn a_targeted_crate_does_not_advance_while_frozen() {
+        let mut s = AssemblyLineState::new(area());
         s.on_tick(SPAWN_INTERVAL, area());
-        let theme = Theme::default();
-        let mut stack = LayerStack::new(40, 10);
-        s.render(area(), &theme, &mut stack);
-        s.handle_click(0, 0); // wrong row, well outside ROW_TOLERANCE
-        assert!(!s.crates[0].caught);
-    }
-
-    /// `handle_click`'s row hit-test forgives `ROW_TOLERANCE` rows of
-    /// slop either side of the cached row — a human aiming by eye at a
-    /// scrolling row won't always land the exact cell.
-    #[test]
-    fn clicking_one_row_off_within_tolerance_still_catches() {
-        let mut s = AssemblyLineState::new();
-        s.on_tick(SPAWN_INTERVAL, area());
-        let theme = Theme::default();
-        let mut stack = LayerStack::new(40, 10);
-        s.render(area(), &theme, &mut stack);
-        let row_y = area().y + area().height / 2;
-        s.handle_click(0, row_y + ROW_TOLERANCE); // one row below, still in tolerance
-        assert!(s.crates[0].caught);
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        let x_at_click = s.crates[0].x;
+        s.handle_click(lane_x0(area()) as u16, ly);
+        s.on_tick(Duration::from_millis(100), area()); // well under MASCOT_SLIDE_DURATION
+        assert_eq!(s.crates[0].x, x_at_click);
     }
 
     #[test]
-    fn clicking_beyond_row_tolerance_does_not_catch() {
-        let mut s = AssemblyLineState::new();
+    fn retargeting_mid_slide_abandons_the_previous_target() {
+        let mut s = AssemblyLineState::new(area());
         s.on_tick(SPAWN_INTERVAL, area());
-        let theme = Theme::default();
-        let mut stack = LayerStack::new(40, 10);
-        s.render(area(), &theme, &mut stack);
-        let row_y = area().y + area().height / 2;
-        s.handle_click(0, row_y + ROW_TOLERANCE + 1); // one row past tolerance
-        assert!(!s.crates[0].caught);
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(s.crates[0].x as u16, ly);
+        assert!(s.crates[0].targeted);
+        // Retarget onto crate 1 before crate 0's slide completes.
+        s.handle_click(s.crates[1].x as u16, ly);
+        assert!(
+            !s.crates[0].targeted,
+            "abandoned target should resume scrolling"
+        );
+        assert!(s.crates[1].targeted);
     }
 
     #[test]
     fn is_complete_once_all_spawned_crates_are_caught_or_exited() {
-        let mut s = AssemblyLineState::new();
+        let mut s = AssemblyLineState::new(area());
         for _ in 0..CRATE_COUNT {
             s.on_tick(SPAWN_INTERVAL, area());
         }
         assert_eq!(s.spawned, CRATE_COUNT);
-        s.on_tick(Duration::from_secs(10), area()); // everything exits
+        s.on_tick(Duration::from_secs(30), area()); // everything exits
         assert!(s.is_complete());
     }
 
     #[test]
     fn not_complete_until_every_crate_has_spawned() {
-        let mut s = AssemblyLineState::new();
+        let mut s = AssemblyLineState::new(area());
         s.on_tick(SPAWN_INTERVAL, area());
         assert!(!s.is_complete());
+    }
+
+    #[test]
+    fn mascot_area_tracks_the_current_slide_position() {
+        let mut s = AssemblyLineState::new(area());
+        let initial = s.mascot_area(area());
+        assert_eq!(initial.x, lane_x0(area()) as u16);
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(s.crates[0].x as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area());
+        let after = s.mascot_area(area());
+        assert_eq!(after.x, s.crates[0].x as u16);
     }
 }
