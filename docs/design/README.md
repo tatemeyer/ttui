@@ -26,6 +26,12 @@ This directory holds:
   style console: click-toggle switches, a click-advance dial, a launch
   button) built to prove out real mouse support (`Rect::contains`,
   `Terminal` mouse capture, `tools/visual-snapshot` click-scripting).
+- `visual-critic/` — a cross-project Claude Code plugin that gives the
+  visual-review step eyes and opinions: portable capture adapters plus
+  an adversarial multi-lens reviewer. Generalizes `tools/visual-
+  snapshot` out of this repo; lives in its own repository, with TTUI as
+  consumer #1 — the spec is filed here because this is where it was
+  designed.
 - `governance/` — release-process work (SemVer policy, label taxonomy,
   triage rules) rather than an example app or framework subsystem;
   first Arc under the TTUI v1.0.0 initiative.
