@@ -45,6 +45,30 @@ This directory holds:
   (e.g. a fourth example app) — this list, not the file count inside
   each bucket, is what stays small as the docs tree grows.
 
+## Arcs that live in another repository
+
+Two Arcs were designed here and moved out, because the code they
+describe is cross-project by definition and does not belong in TTUI.
+Both live in the **Parallax** repository (`D:/Dev/Projects/Parallax`).
+`specs/parallax/` and `specs/plumb/` in this tree are pointer stubs, not
+the documents.
+
+- `parallax/` — the master design binding TTUI, Model-Experiments, and
+  Plumb into one platform: a verification-tier ladder, a three-axis
+  autonomy model that TTUI's Direct/Gated/Human tiers project onto, the
+  `parallax.yaml` manifest, and a five-sub-project roadmap. TTUI is a
+  consumer, and its cockpit is `ttui`'s first genuine external consumer.
+- `plumb/` — sub-project #1: perceptual verification. Generalizes
+  `tools/visual-snapshot` into a portable Claude Code plugin and adds
+  the judgment half — a blinded, adversarial multi-lens reviewer
+  rendering GO / NO-GO / HOLD against `.plumb/taste.md`. TTUI is
+  consumer #1 and adopts it via the `command` adapter, keeping
+  `tools/visual-snapshot` verbatim and unmodified.
+
+TTUI keeps its own Plumb *project state* — `.plumb/taste.md` today,
+`.plumb/config.yaml` and `.plumb/scripts/` on adoption. Those are this
+repo's declared aesthetic and scenarios, not the tool.
+
 ## Arc / Slice / Task structure
 
 A spec's implementation plan is organized into three nested levels:
