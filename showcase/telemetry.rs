@@ -64,7 +64,14 @@ impl TelemetryState {
     }
 
     pub(crate) fn render(&self, area: Rect, theme: &Theme, buf: &mut LayerStack) {
-        let rows = Layout::new(Direction::Vertical, vec![Constraint::Fill(1); 2]).split(area);
+        let content_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: area.height.saturating_sub(1),
+        };
+        let rows =
+            Layout::new(Direction::Vertical, vec![Constraint::Fill(1); 2]).split(content_area);
         let grip_inner = Block::new()
             .title("Grip Force")
             .theme(theme)
