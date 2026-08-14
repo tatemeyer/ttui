@@ -1,14 +1,14 @@
-# Assay — Master Design
+# Parallax — Master Design
 
 **Status:** draft, pending your review before we move to planning.
 **Date:** 2026-08-14
 **Scope:** the master design binding TTUI, Model-Experiments, and
-`visual-critic` into one system. Specs sub-project #2
-(`platform-core`) properly; sketches #3–#5 as scoped follow-ons, each
+`plumb` into one system. Specs sub-project #2
+(`parallax-baseline`) properly; sketches #3–#5 as scoped follow-ons, each
 of which gets its own spec → plan cycle.
 
 **Relationship to prior work:** depends on
-`docs/design/specs/visual-critic/2026-08-14-visual-critic-design.md`
+`docs/design/specs/plumb/2026-08-14-plumb-design.md`
 (sub-project #1, already spec-complete) as the perceptual verification
 provider. Normalizes the autonomy vocabulary that
 `.claude/rules/git-github-standards.md` and `.claude/rules/code-forge.md`
@@ -32,11 +32,11 @@ better" — it is **build checkers for progressively fuzzier things**:
 | 0 | Compiles, types, lints | free, instant | both repos |
 | 1 | Tests pass | cheap, deterministic | both repos |
 | 2 | Numeric thresholds met | cheap, deterministic | Model-Experiments (CI) |
-| 3 | **Looks right; matches stated intent** | model-as-checker | `visual-critic` (new) |
+| 3 | **Looks right; matches stated intent** | model-as-checker | `plumb` (new) |
 | 4 | Is the result *interesting* / novel | unsolved | nobody — open frontier |
 
 Tiers 0–2 are settled practice. **Tier 3 is the frontier this system
-actually advances**, and `visual-critic` is its first instance. Tier 4
+actually advances**, and `plumb` is its first instance. Tier 4
 is named honestly as unsolved and is not in scope.
 
 ### Why these two repos
@@ -58,7 +58,7 @@ belongs in CI, not in a human's head* — and TTUI's entire visual-review
 convention exists precisely because a machine could not check "does it
 look right."
 
-That reframes `visual-critic`. It is not a TTUI tool that happens to be
+That reframes `plumb`. It is not a TTUI tool that happens to be
 portable. **It is the mechanism that lets Model-Experiments' philosophy
 reach TTUI's domain**: Bitter Lesson Engineering requires a verifiable
 success criterion, and for perceptual work none could be written. A
@@ -68,7 +68,41 @@ machine-checkable.
 The traffic runs both ways. Model-Experiments' `mx-viz` emits plots and
 PyVista 3D field renders that nothing currently has eyes on — a
 wrong-looking field visualization passes CI silently today. It is
-`visual-critic`'s second consumer with no modification to either.
+`plumb`'s second consumer with no modification to either.
+
+## Naming
+
+The platform is **Parallax**: determining a true position by observing
+the same object from two separated points. The name states the
+*mechanism* rather than the goal — Plumb's four blinded lenses, and the
+wider principle that a verdict from a single viewpoint is not a
+measurement.
+
+| Concept | Name | Crate |
+|---|---|---|
+| Platform | **Parallax** | — |
+| Core library; holds every project's references | **Baseline** | `parallax-baseline` |
+| Cockpit | **Panopticon** | `parallax-panopticon` |
+| Perceptual verification | **Plumb** | `parallax-plumb` |
+| Per-project manifest | — | `parallax.yaml` |
+| Reviewer persona | **Sim Sup** | — |
+| Verdict states | **GO / NO-GO / HOLD** | — |
+| Blocker alert in the cockpit | **Cloister Bell** | — |
+
+Each name does work. A *baseline* is the known separation between two
+viewpoints — the quantity that makes a parallax measurement possible at
+all — which is exactly what the core holds: every project's declared
+references. A *panopticon* is a structure built so one observer can see
+everything (and, in the register TTUI's examples already use, the Time
+Lord Capitol's seat of judgment). *Plumb* tests trueness against a
+reference; "out of plumb" is the verdict it renders. *Sim Sup* is
+NASA's Simulation Supervisor, whose job was inventing failures to see
+whether anyone caught them — the reviewer's stance in two words. The
+*Cloister Bell* rings only for impending catastrophe, which is the
+correct frequency for a blocker alert.
+
+`parallax-core` is already taken on crates.io; `parallax-baseline` is
+both free and the better name.
 
 ## What the platform normalizes — and what it deliberately does not
 
@@ -91,17 +125,17 @@ prematurely.
 Three layers, and a strict dependency direction:
 
 ```
-  cockpit (Bridge)          TUI frontend — depends on `ttui` crate
+  cockpit (Panopticon)          TUI frontend — depends on `ttui` crate
         │
-  platform-core             manifests, adapters, state, control actions
+  parallax-baseline             manifests, adapters, state, control actions
         │                   no UI, no TTY, fully headless-testable
         ├── work adapters          (github)
-        ├── verification adapters  (command, visual-critic)
+        ├── verification adapters  (command, plumb)
         ├── artifact adapters      (figure, metrics, capture)
         └── session adapters       (filesystem watch)
 ```
 
-`platform-core` is a Rust library that never touches a terminal. The
+`parallax-baseline` is a Rust library that never touches a terminal. The
 cockpit is its first frontend, not its only possible one. This mirrors
 TTUI's own `Buffer` / `Terminal::draw_diff` separation: everything
 upstream of rendering is pure data, testable without a TTY.
@@ -117,12 +151,13 @@ in-repo examples structurally cannot supply.
 
 ### The manifest
 
-A project joins the platform by declaring a manifest. Partial support is
+A project joins the platform by dropping a `parallax.yaml` in its root.
+Partial support is
 normal — a project that satisfies only the work adapter still shows up,
 just with less detail.
 
 ```yaml
-apiVersion: assay/v1
+apiVersion: parallax/v1
 project:
   name: ttui
   root: D:/Dev/Projects/TTUI
@@ -143,11 +178,11 @@ verification:
     adapter: command
     command: cargo test
   - kind: perceptual
-    adapter: visual-critic
-    config: .visual-critic/config.yaml
+    adapter: plumb
+    config: .plumb/config.yaml
 artifacts:
   - kind: capture
-    watch: .visual-critic/runs/**
+    watch: .plumb/runs/**
 sessions:
   watch: .claude/worktrees/*
 ```
@@ -172,7 +207,7 @@ verification:
     adapter: command
     command: uv run pytest
   - kind: perceptual
-    adapter: visual-critic          # judges mx-viz output
+    adapter: plumb          # judges mx-viz output
 artifacts:
   - kind: figure
     watch: projects/*/results/**/*.png
@@ -237,18 +272,18 @@ each source so stale data is never mistaken for current.
 
 ### Control actions
 
-Control lives in `platform-core` as a plain API, so the same actions are
+Control lives in `parallax-baseline` as a plain API, so the same actions are
 available headless. Each is classified by reversibility, and the cockpit
 requires explicit confirmation for anything in the second group:
 
-- **Reversible / additive:** rule on a `visual-critic` finding, set or
+- **Reversible / additive:** rule on a `plumb` finding, set or
   change an autonomy label, request a re-review, trigger a capture,
   dispatch an agent run.
 - **Confirmation required:** stop a running agent, merge a PR, push, or
   any action that is outward-facing or hard to undo.
 
 Ruling on findings is the action with the highest leverage: it is the
-one input `visual-critic`'s learned-rejection store depends on, and it
+one input `plumb`'s learned-rejection store depends on, and it
 currently has no home.
 
 ### Visualizing Model-Experiments
@@ -265,7 +300,7 @@ different treatment:
   fidelity, but live and inline.
 - **Pre-rendered PNG figures** cannot be shown at full fidelity in a
   terminal. Two honest options, both in scope for sub-project #4: show
-  metadata plus the `visual-critic` verdict and offer to open the file
+  metadata plus the `plumb` verdict and offer to open the file
   externally, or render a downsampled preview using half-block cells
   (`▀` with independent fg/bg = two pixels per cell) at 24-bit color.
   The preview is a preview and will be labelled as one.
@@ -277,24 +312,24 @@ the master only.
 
 | # | Sub-project | Depends on | Status |
 |---|---|---|---|
-| 1 | `visual-critic` | — | **spec complete**, ready to plan |
-| 2 | `platform-core` | — | specced by this document |
+| 1 | `plumb` | — | **spec complete**, ready to plan |
+| 2 | `parallax-baseline` | — | specced by this document |
 | 3 | Cockpit: observe | 2, `ttui` crate | sketched below |
 | 4 | Model-Experiments visualization | 3 | sketched below |
 | 5 | Cockpit: full control | 3 | sketched below |
 
 #1 and #2 share no dependency and can proceed in parallel.
 
-**#3 — Cockpit: observe.** A TUI over `platform-core`, read-only.
+**#3 — Cockpit: observe.** A TUI over `parallax-baseline`, read-only.
 Work in flight across all registered projects, CI and verification
-status, `visual-critic` verdicts, autonomy distribution, session
+status, `plumb` verdicts, autonomy distribution, session
 activity. Lands before any control surface because control without
 observation is not useful, and because this is where the "watch
 development" value actually sits.
 
 **#4 — Model-Experiments visualization.** Artifact-feed adapters plus
 the rendering described above. Pulled ahead of full control because it
-is a stated priority and because it exercises `platform-core`'s artifact
+is a stated priority and because it exercises `parallax-baseline`'s artifact
 path against a real, messy producer.
 
 **#5 — Cockpit: full control.** The control actions above, wired to the
@@ -317,7 +352,7 @@ UI with the confirmation contract enforced.
 
 ## Testing
 
-- **`platform-core`** — manifest parsing and validation, autonomy
+- **`parallax-baseline`** — manifest parsing and validation, autonomy
   projection (every row of the table above is a test case), state
   aggregation, artifact classification, control-action authorization
   (confirmation-required actions must refuse to execute unconfirmed).
@@ -325,9 +360,9 @@ UI with the confirmation contract enforced.
 - **Adapters** — integration-tested against recorded fixtures: captured
   GitHub API responses, sample `verdict.md` files, sample metrics JSONL.
   Live GitHub access is real-external-service exempt under the same
-  precedent `visual-critic` establishes and TTUI already applies to
+  precedent `plumb` establishes and TTUI already applies to
   real-TTY work.
-- **Cockpit** — verified through `visual-critic`. The cockpit is a TUI
+- **Cockpit** — verified through `plumb`. The cockpit is a TUI
   built with TTUI, so it is exactly the kind of artifact sub-project #1
   exists to judge. The system verifies its own interface with its own
   perceptual tier, which is both the cleanest available test and the
@@ -348,7 +383,7 @@ New repository. First-cut inventory for sub-project #2:
 ## Verification
 
 - `cargo test`, `cargo clippy --all-targets -- -D warnings`,
-  `cargo fmt --check` clean on `platform-core`.
+  `cargo fmt --check` clean on `parallax-baseline`.
 - Both real manifests parse, validate, and project their native
   autonomy labels onto the normalized axes matching the table above.
 - Adapter fixtures replay to correct aggregated state, including the

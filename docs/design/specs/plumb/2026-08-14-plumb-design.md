@@ -1,12 +1,12 @@
-# visual-critic — Design
+# Plumb — Design
 
 **Status:** draft, pending your review before we move to planning.
 **Date:** 2026-08-14
 **Relationship to prior work:** generalizes `tools/visual-snapshot`
 (`docs/design/specs/core/2026-08-09-visual-snapshot-tooling-design.md`)
 out of this repo into a cross-project Claude Code plugin, and
-supersedes the unmerged `worktree-local-vision-judge` branch's approach
-to judgment (see "Relationship to the local vision judge" below). The
+supersedes the local vision judge shipped in #107's approach to
+judgment (see "Relationship to the local vision judge" below). The
 research doc on `docs/rescue-visual-review`
 (`docs/tooling/visual-review.md`, 2026-08-06) remains the survey of
 capture options that led here; nothing in it is contradicted.
@@ -16,8 +16,8 @@ definition. This spec is written into TTUI because TTUI is consumer #1
 and this is where it was designed; it moves with the code once that
 repo exists.
 
-**Place in the roadmap:** sub-project #1 of the Assay platform
-(`docs/design/specs/assay/2026-08-14-assay-platform-design.md`), where
+**Place in the roadmap:** sub-project #1 of the Parallax platform
+(`docs/design/specs/parallax/2026-08-14-parallax-platform-design.md`), where
 it serves as the **perceptual verification provider** — tier 3 of that
 document's verification ladder, the first rung above what CI can reach.
 It has no dependency on the platform and ships standalone; the platform
@@ -48,17 +48,18 @@ The judgment half is not. Three problems compound:
    wrong. TTUI's examples are deliberately flashy; generic UI heuristics
    fight the entire point of the project.
 
-`visual-critic` addresses all three: a portable capture contract, an
+`plumb` addresses all three: a portable capture contract, an
 adversarial multi-lens reviewer that never sees the code it is judging,
 and a per-project taste profile the critique is measured against.
 
 ### Relationship to the local vision judge
 
-The unmerged `worktree-local-vision-judge` branch adds a `judge`
-subcommand to `visual-snapshot` that POSTs a frame to a local Ollama
-instance (default model `moondream`, ~1.8B) and prints a free-text
-"LOOKS OK / POSSIBLE ISSUE" verdict, explicitly advisory and never a
-gate.
+`tools/visual-snapshot` already ships a `judge` subcommand and a
+`--review` flag (landed on `main` in #107) that POST a frame to a local
+Ollama instance (default model `moondream`, ~1.8B) and print a
+free-text "LOOKS OK / POSSIBLE ISSUE" verdict, explicitly advisory and
+never a gate — see `.claude/rules/development-conventions.md`'s
+"Optional local vision-model second opinion".
 
 That design is sound for what it targets — cheap, offline, fast
 detection of gross corruption during iteration. It does not reach the
@@ -67,10 +68,10 @@ cannot hold a defensible opinion on visual hierarchy, spec conformance,
 or animation pacing. Those need frontier vision, which is what the
 adversarial-subagent judge below provides.
 
-The two are not in conflict and the branch is not invalidated: if
-merged, `--review` remains a useful inner-loop sanity check, and
-`visual-critic` is the outer-loop reviewer that carries authority. This
-spec does not depend on that branch and does not require it to land.
+The two are not in conflict and #107 is not invalidated: `--review`
+remains a useful inner-loop sanity check that costs nothing and runs
+offline, and Plumb is the outer-loop reviewer that carries authority.
+This spec neither depends on nor removes it.
 
 ## Design
 
@@ -79,12 +80,12 @@ spec does not depend on that branch and does not require it to land.
 A single git-installable Claude Code plugin. Capture is a *contract*
 (an adapter is anything that writes images to a path), judgment is a
 fan-out of narrow, blinded subagents, and per-project state lives in a
-`.visual-critic/` directory the plugin scaffolds on first use.
+`.plumb/` directory the plugin scaffolds on first use.
 
 ```
-visual-critic/
+plumb/
   .claude-plugin/plugin.json
-  commands/review.md              → /visual-critic:review
+  commands/review.md              → /plumb:review
   skills/visual-review/SKILL.md   → the orchestrator
   agents/
     critic-breakage.md            → blocker-capable
@@ -117,7 +118,7 @@ or cares which adapter produced a frame.
   Linux slot in behind the same contract later.
 - **`command`** — runs any shell command that writes images to a
   declared path. The escape hatch that makes adoption free: TTUI adopts
-  `visual-critic` by declaring `cargo run -p visual-snapshot -- ...`
+  `plumb` by declaring `cargo run -p visual-snapshot -- ...`
   and keeps its existing tool verbatim, unmodified.
 
 Adding a surface later means one new adapter behind the same contract
@@ -126,7 +127,7 @@ and no change anywhere else in the system.
 ### Per-project state
 
 ```
-.visual-critic/
+.plumb/
   config.yaml      scenarios: how to capture, and what each is for
   taste.md         the design language the design lens judges against
   rulings.jsonl    findings you overruled, and your reasoning
@@ -158,7 +159,7 @@ a diff select relevant scenarios instead of capturing everything.
 
 ### Flow
 
-1. **Trigger** — `/visual-critic:review` by hand; the skill invoked by a
+1. **Trigger** — `/plumb:review` by hand; the skill invoked by a
    project convention at task-completion or pre-PR; or
    `--scenario <name>` for a single targeted look while iterating.
 2. **Select** — diff the branch, match changed paths against each
@@ -166,7 +167,7 @@ a diff select relevant scenarios instead of capturing everything.
    named → say so and stop. Never silently review everything, never
    silently review nothing.
 3. **Capture** — run each selected scenario's adapter, writing to
-   `.visual-critic/runs/<timestamp>/<scenario>.{png,gif}` plus a run
+   `.plumb/runs/<timestamp>/<scenario>.{png,gif}` plus a run
    manifest recording size, frame count, and any disclosed caveats.
 4. **Fan out** — one subagent per applicable lens per scenario, in
    parallel.
@@ -217,11 +218,26 @@ unbalanced" cannot survive being forced to point at something.
 
 ### Gate semantics
 
-An unresolved `blocker` means the agent may not claim the task complete
-or open the PR. The mechanism is convention-enforced inside the harness
-— the skill instructs it, and `verdict.md` is a durable artifact a
-pre-PR check can read — not something the kernel prevents. Advisory
-findings are always reported and never block.
+Each lens reports its own verdict, and the run carries an overall one,
+borrowing NASA's launch-poll vocabulary rather than inventing a
+private one:
+
+- **GO** — no findings, or advisory findings only.
+- **NO-GO** — at least one unresolved `blocker` from a blocker-capable
+  lens. A single NO-GO holds the run, exactly as a single console's
+  no-go holds a launch.
+- **HOLD** — the lens could not reach a verdict: capture failed, or the
+  agent returned unparseable output twice. Explicitly *not* a GO.
+
+The poll structure is the point. Every lens reports on its own domain
+only, no lens can clear another's, and the aggregate is the most severe
+report received.
+
+A NO-GO means the agent may not claim the task complete or open the PR.
+The mechanism is convention-enforced inside the harness — the skill
+instructs it, and `verdict.md` is a durable artifact a pre-PR check can
+read — not something the kernel prevents. Advisory findings are always
+reported and never block.
 
 This maps onto `.claude/rules/git-github-standards.md`'s autonomy
 tiers without inventing a fourth: a clean or advisory-only verdict
@@ -246,6 +262,13 @@ instead of looking. Blinded, it has nothing to do but see.
 else's work, submitted for critique — never "verify my change" or
 "confirm this looks right." The reflex that produces "looks good!" is
 an artifact of authorship; removing the authorship removes it.
+
+The persona has a name: **Sim Sup**, after NASA's Simulation
+Supervisor, whose whole job during training was inventing failures to
+see whether the flight controllers caught them. The name is not
+decoration — it is the shortest available statement of the stance each
+lens agent is expected to take, and it sits in the agent definitions
+for exactly that reason.
 
 **No quota.** An empty findings list is a legitimate, expected outcome,
 stated explicitly in every agent prompt. Adversarial means *look hard
@@ -294,9 +317,9 @@ normalized claim), your reasoning, the date, and a **content hash of
 
 ### Failure handling
 
-**Capture failure is never a pass.** A scenario that fails to capture is
-reported as `CAPTURE FAILED` with the adapter's error; other scenarios
-proceed; the verdict is not clean.
+**Capture failure is never a GO.** A scenario that fails to capture is
+reported as `HOLD` with the adapter's error; other scenarios proceed
+normally; the run's overall verdict is not GO.
 
 The known realistic failure is already documented in this repo: the
 rasterizer hard-errors on unmapped glyphs (`✦`, `💥`, em dash — see
@@ -317,9 +340,9 @@ behavior for anyone who wants it.
 Other modes:
 
 - Subagent returns malformed or unparseable output → one retry, then
-  that lens is `INCONCLUSIVE`. Inconclusive is not a pass; if a
-  blocker-capable lens is inconclusive, the verdict says so explicitly.
-- No `.visual-critic/` directory → the skill offers to scaffold it from
+  that lens reports `HOLD`. A HOLD is never silently upgraded to a GO;
+  the verdict names which lens could not report and why.
+- No `.plumb/` directory → the skill offers to scaffold it from
   `templates/` rather than erroring.
 - Capture binary not built → build and cache it. A missing Rust
   toolchain is a clear, actionable message, not a stack trace.
@@ -340,7 +363,7 @@ Other modes:
 - **Prebuilt release binaries.** v1 builds the capture crate from
   bundled source on first use and caches it.
 - **Replacing `tools/visual-snapshot`.** TTUI keeps it and adopts
-  `visual-critic` via the `command` adapter.
+  `plumb` via the `command` adapter.
 
 ## Testing
 
@@ -376,15 +399,15 @@ New repository. First-cut inventory:
   out, merge, verdict.
 - `agents/critic-{breakage,intent,design,motion}.md` — the four lenses.
 - `templates/taste.md`, `templates/config.example.yaml` — scaffolding.
-- In TTUI, on adoption: `.visual-critic/config.yaml`,
-  `.visual-critic/taste.md`, and an additive note in
+- In TTUI, on adoption: `.plumb/config.yaml`,
+  `.plumb/taste.md`, and an additive note in
   `.claude/rules/development-conventions.md`'s "Visual review" section.
 
 ## Verification
 
 - Capture crate: `cargo test`, `cargo clippy --all-targets -- -D
   warnings`, `cargo fmt --check` clean.
-- End-to-end: `/visual-critic:review` against TTUI's `omnitrix` example
+- End-to-end: `/plumb:review` against TTUI's `omnitrix` example
   via the `command` adapter produces captured frames, four lens
   verdicts, and a merged `verdict.md`.
 - Blinding verified by construction: assert the dispatched agent
