@@ -149,6 +149,7 @@ impl Default for SmashBorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::CellStyle;
     use crate::theme::BorderSet;
 
     fn test_theme() -> Theme {
@@ -164,7 +165,7 @@ mod tests {
                 vertical: '|',
                 corner: '+',
             },
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: false,
         }
     }

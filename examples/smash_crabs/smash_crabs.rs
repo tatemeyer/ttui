@@ -119,7 +119,7 @@ fn arena_theme() -> Theme {
             vertical: '|',
             corner: '+',
         },
-        border_bold: false,
+        border_style: CellStyle::default(),
         border_thick: false,
     }
 }

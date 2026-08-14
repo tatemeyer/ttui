@@ -2,7 +2,7 @@
 // plus a centered glyph, app name, and tagline. The focused portal
 // glows (thick border ring) and pulses.
 use crossterm::style::Color;
-use ttui::buffer::Buffer;
+use ttui::buffer::{Buffer, CellStyle, Intensity};
 use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
 use ttui::widgets::block::Block;
@@ -41,7 +41,14 @@ pub(crate) fn draw(
             vertical: '│',
             corner: if focused { '◆' } else { '·' },
         },
-        border_bold: focused && pulse > 0.5,
+        border_style: CellStyle {
+            intensity: if focused && pulse > 0.5 {
+                Intensity::Bold
+            } else {
+                Intensity::Normal
+            },
+            ..Default::default()
+        },
         border_thick: focused,
     };
     let inner = Block::new().theme(&theme).render(slot, scene);

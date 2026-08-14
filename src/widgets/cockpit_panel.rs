@@ -125,6 +125,7 @@ fn set_cell(buf: &mut Buffer, x: u16, y: u16, symbol: char, color: Color) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::CellStyle;
     use crate::theme::BorderSet;
 
     fn test_theme() -> Theme {
@@ -144,7 +145,7 @@ mod tests {
             accent: Color::Yellow,
             primary_end: None,
             border: BorderSet::default(),
-            border_bold: false,
+            border_style: CellStyle::default(),
             border_thick: false,
         }
     }
