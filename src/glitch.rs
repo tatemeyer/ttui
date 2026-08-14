@@ -27,9 +27,12 @@ impl GlitchBuffer {
 
     /// Sets the alpha every rendered glitch cell carries, for a
     /// partially-transparent effect (e.g. "static laid over the
-    /// readout, not fully opaque"). Defaults to `1.0` (fully opaque)
-    /// — existing callers that never call this see no behavior
-    /// change.
+    /// readout, not fully opaque"). Expected range is `0.0`-`1.0`,
+    /// matching `Cell.alpha`'s own documented range — values outside
+    /// it are not clamped or validated (caller error, same as passing
+    /// an out-of-range alpha to `Cell` directly). Defaults to `1.0`
+    /// (fully opaque) — existing callers that never call this see no
+    /// behavior change.
     pub fn with_alpha(mut self, alpha: f32) -> Self {
         self.alpha = alpha;
         self

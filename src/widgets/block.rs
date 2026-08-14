@@ -342,6 +342,41 @@ mod tests {
     }
 
     #[test]
+    fn border_cells_carry_arbitrary_cellstyle_fields_not_just_intensity() {
+        let theme = Theme {
+            background: Color::Black,
+            primary: Color::Green,
+            secondary: Color::Reset,
+            tertiary: Color::Reset,
+            accent: Color::Reset,
+            primary_end: None,
+            border: BorderSet {
+                horizontal: '=',
+                vertical: '#',
+                corner: '*',
+            },
+            border_style: CellStyle {
+                underline: true,
+                ..Default::default()
+            },
+            border_thick: false,
+        };
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Block::new().theme(&theme).render(area, &mut buf);
+
+        assert!(buf.get(0, 0).style.underline); // corner
+        assert!(buf.get(1, 0).style.underline); // horizontal edge
+        assert!(buf.get(0, 1).style.underline); // vertical edge
+    }
+
+    #[test]
     fn thick_border_draws_a_second_ring_one_cell_outward() {
         let theme = Theme {
             background: Color::Black,

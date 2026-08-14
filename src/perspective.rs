@@ -458,8 +458,13 @@ mod tests {
         let cam = camera();
         // Both points at z=4.0: x=-1 -> ndc_x=-0.25 -> screen_x=5+(-0.25*8*2)=1.0
         //                        x=1  -> ndc_x=0.25  -> screen_x=5+(0.25*8*2)=9.0
-        // Both within [0,10]x[0,10] -> no clipping. Subpixel factors (2.0,4.0):
-        // (1.0*2, 5.0*4, 9.0*2, 5.0*4) = (2, 20, 18, 20).
+        //                        y=0  -> ndc_y=0.0   -> screen_y=3.0 (center_y, unchanged by y)
+        // Both within [0,10]x[0,6] -> no clipping. screen_w=10/screen_h=6 are
+        // asymmetric (catches a screen_w/screen_h swap in clip_to_screen), and
+        // center_x=5.0/center_y=3.0 are asymmetric (catches a center_x/center_y
+        // swap in project) — both mutants verified live to fail this test
+        // before being reverted; see perspective.rs's design spec / fix brief.
+        // Subpixel factors (2.0,4.0): (1.0*2, 3.0*4, 9.0*2, 3.0*4) = (2, 12, 18, 12).
         let line = Line3 {
             start: Point3 {
                 x: -1.0,
@@ -476,15 +481,15 @@ mod tests {
             line,
             ProjectLineParams {
                 center_x: 5.0,
-                center_y: 5.0,
+                center_y: 3.0,
                 screen_w: 10.0,
-                screen_h: 10.0,
+                screen_h: 6.0,
                 subpixels_x: 2.0,
                 subpixels_y: 4.0,
                 min_scale: 0.0,
             },
         );
-        assert_eq!(result, Some((2, 20, 18, 20)));
+        assert_eq!(result, Some((2, 12, 18, 12)));
     }
 
     #[test]
