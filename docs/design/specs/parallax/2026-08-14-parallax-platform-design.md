@@ -335,6 +335,53 @@ path against a real, messy producer.
 **#5 — Cockpit: full control.** The control actions above, wired to the
 UI with the confirmation contract enforced.
 
+## Governing this repo
+
+Parallax normalizes two opposed philosophies, which raises the obvious
+question of which one governs Parallax itself. The answer is neither
+wholesale: the repo declares a **rule** for when each applies, because
+deciding per unit of work is what Parallax's own three-axis autonomy
+model already does everywhere else.
+
+**The rule:**
+
+> Does this unit of work create or change a contract that other units
+> depend on?
+>
+> - **Yes → methodology-first.** Brainstorm → spec → plan before any
+>   code, per TTUI's convention. Contracts are expensive to get wrong
+>   and cheap to argue about on paper.
+> - **No → outcome-first.** File an intent issue stating the desired
+>   end state and how to verify it, let the implementation choose its
+>   own approach, and let CI decide done, per Model-Experiments'
+>   convention.
+
+"Contract" means: adapter traits, the manifest schema, the finding
+schema, the autonomy axes, verdict semantics, plugin and agent
+interfaces, and anything crossing a repo boundary. Everything behind an
+already-settled contract — a specific adapter implementation, a parser
+for a declared schema, mechanical build-out, fixes — is outcome-first
+work.
+
+**The tiebreaker, when the rule is unclear:** try to write the
+machine-checkable success criterion. If you can, it is outcome-first
+work by definition — you just produced the artifact that method
+requires. If you cannot, that inability *is* the signal that the
+contract is not settled yet, and it needs a design pass first.
+
+That tiebreaker is worth stating plainly because it collapses the two
+philosophies into one test. Model-Experiments' `needs-intent` label and
+TTUI's mandatory clarifying-questions gate are not two different
+process rules — they are the same mechanism, triggered by the same
+condition, wearing different names. The repos already agreed; nobody
+had written it down.
+
+**Interaction with the autonomy axes:** outcome-first work defaults to
+`implement: agent, merge: on-checks`. Contract work requires human
+sign-off on the *spec*; once the spec is approved, implementing it is
+ordinary `merge: on-checks` work like anything else. The sign-off is on
+the design, not on the diff.
+
 ## Non-goals
 
 - **Replacing CI or GitHub.** The platform reads and acts through them;

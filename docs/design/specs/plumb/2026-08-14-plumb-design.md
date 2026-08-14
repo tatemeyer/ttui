@@ -147,6 +147,7 @@ scenarios:
       The dial rotates through four alien modes; the selected mode's
       label sits centred beneath the dial and its glow border matches
       the mode colour.
+    expects: []                 # see "Intentional distortion" below
     touches:
       - src/widgets/dial.rs
       - src/effects.rs
@@ -193,6 +194,42 @@ must then be argued down.
 Concurrency is capped (default 8). If selection would exceed the cap,
 the orchestrator batches and **reports what it deferred**. A review that
 quietly covered half its scenarios reads as a pass it did not earn.
+
+### Intentional distortion
+
+Some UIs corrupt themselves on purpose. TTUI is one: `src/glitch.rs`
+and Falcon's percussive-maintenance mechanic deliberately garble glyphs
+and displace regions as a feature.
+
+This is a direct collision with the `breakage` lens, whose entire job
+is spotting garbled glyphs and displaced regions — and it is
+blocker-capable, so left unhandled it would return NO-GO on the
+project's most distinctive effect every single run. A reviewer that
+cries wolf on a feature is worse than no reviewer, because it trains
+you to skip the verdict.
+
+Inspection alone cannot separate deliberate corruption from a
+rendering bug; the two are identical in the image. So it is resolved by
+declaration, at the scenario level:
+
+```yaml
+expects:
+  - visual-corruption     # this scenario's distortion is the point
+```
+
+The breakage lens receives the scenario's `expects` list and is
+instructed not to raise findings for declared distortion. A scenario
+that declares nothing gets the default treatment, and garbled output is
+a defect — the burden is on the scenario to claim the exemption, never
+on the lens to guess at one.
+
+Two bounds keep this from becoming a blanket silencer:
+
+- **It suppresses a category, not a region.** `visual-corruption`
+  excuses garbling; it does not excuse a panel that failed to draw.
+- **Declared distortion is still bound by legibility.** A glitch that
+  momentarily disturbs a reading is the feature; one that permanently
+  destroys it is a defect, and the lens still reports it.
 
 ### Finding contract
 
