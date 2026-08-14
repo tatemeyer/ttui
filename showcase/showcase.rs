@@ -17,14 +17,16 @@ mod boot;
 mod mascot;
 #[path = "menu.rs"]
 mod menu;
+#[path = "mouse_grab.rs"]
+mod mouse_grab;
 
 use mascot::{GripperMascot, MascotPose};
+use mouse_grab::AssemblyLineState;
 
 const BOOT_MS: u64 = 1200;
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
 
 #[derive(Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 pub(crate) enum VignetteId {
     AssemblyLine,
     OverloadVent,
@@ -34,7 +36,6 @@ pub(crate) enum VignetteId {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-#[allow(dead_code)]
 enum Screen {
     Menu,
     Vignette(VignetteId),
@@ -86,6 +87,7 @@ pub(crate) struct ShowcaseApp {
     highlighted: usize,
     tile_areas: std::cell::Cell<[Rect; 5]>,
     quit: bool,
+    assembly_line: Option<AssemblyLineState>,
 }
 
 impl ShowcaseApp {
@@ -99,7 +101,20 @@ impl ShowcaseApp {
             highlighted: 0,
             tile_areas: std::cell::Cell::new([ZERO_RECT; 5]),
             quit: false,
+            assembly_line: None,
         }
+    }
+
+    fn enter_vignette(&mut self, id: VignetteId) {
+        if id == VignetteId::AssemblyLine {
+            self.assembly_line = Some(AssemblyLineState::new());
+        }
+        self.screen = Screen::Vignette(id);
+    }
+
+    fn exit_vignette(&mut self) {
+        self.assembly_line = None;
+        self.screen = Screen::Menu;
     }
 }
 
@@ -108,29 +123,69 @@ impl App for ShowcaseApp {
         if self.booting.is_some() {
             return;
         }
-        if self.screen == Screen::Menu {
-            if let Event::Key(k) = event {
-                if k.kind != KeyEventKind::Press {
-                    return;
+        let screen = self.screen;
+        match screen {
+            Screen::Menu => {
+                if let Event::Key(k) = event {
+                    if k.kind != KeyEventKind::Press {
+                        return;
+                    }
+                    match k.code {
+                        KeyCode::Char('q') => self.quit = true,
+                        KeyCode::Left => {
+                            let prev = self.highlighted;
+                            self.highlighted =
+                                (self.highlighted + menu::TILES.len() - 1) % menu::TILES.len();
+                            if self.highlighted != prev {
+                                self.mascot.set_pose(MascotPose::Reacting);
+                            }
+                        }
+                        KeyCode::Right => {
+                            let prev = self.highlighted;
+                            self.highlighted = (self.highlighted + 1) % menu::TILES.len();
+                            if self.highlighted != prev {
+                                self.mascot.set_pose(MascotPose::Reacting);
+                            }
+                        }
+                        KeyCode::Enter => {
+                            let id = menu::TILES[self.highlighted].0;
+                            self.enter_vignette(id);
+                        }
+                        _ => {}
+                    }
+                } else if let Event::Mouse(m) = event {
+                    if m.kind
+                        == crossterm::event::MouseEventKind::Down(
+                            crossterm::event::MouseButton::Left,
+                        )
+                    {
+                        for (i, area) in self.tile_areas.get().iter().enumerate() {
+                            if area.contains(m.column, m.row) {
+                                let id = menu::TILES[i].0;
+                                self.enter_vignette(id);
+                                return;
+                            }
+                        }
+                    }
                 }
-                match k.code {
-                    KeyCode::Char('q') => self.quit = true,
-                    KeyCode::Left => {
-                        let prev = self.highlighted;
-                        self.highlighted =
-                            (self.highlighted + menu::TILES.len() - 1) % menu::TILES.len();
-                        if self.highlighted != prev {
-                            self.mascot.set_pose(MascotPose::Reacting);
+            }
+            Screen::Vignette(id) => {
+                if let Event::Key(k) = event {
+                    if k.kind == KeyEventKind::Press && k.code == KeyCode::Esc {
+                        self.exit_vignette();
+                        return;
+                    }
+                }
+                if id == VignetteId::AssemblyLine {
+                    if let (Some(state), Event::Mouse(m)) = (&mut self.assembly_line, event) {
+                        if m.kind
+                            == crossterm::event::MouseEventKind::Down(
+                                crossterm::event::MouseButton::Left,
+                            )
+                        {
+                            state.handle_click(m.column, m.row);
                         }
                     }
-                    KeyCode::Right => {
-                        let prev = self.highlighted;
-                        self.highlighted = (self.highlighted + 1) % menu::TILES.len();
-                        if self.highlighted != prev {
-                            self.mascot.set_pose(MascotPose::Reacting);
-                        }
-                    }
-                    _ => {}
                 }
             }
         }
@@ -142,22 +197,31 @@ impl App for ShowcaseApp {
             boot::render_boot(area, &self.theme, t.progress(), buf);
             return;
         }
-        if self.screen == Screen::Menu {
-            let menu_area = Rect {
-                x: area.x,
-                y: area.y,
-                width: area.width.saturating_sub(mascot::MASCOT_WIDTH + 4),
-                height: area.height,
-            };
-            let tile_areas = menu::render_menu(menu_area, &self.theme, self.highlighted, buf);
-            self.tile_areas.set(tile_areas);
-            let mascot_area = Rect {
-                x: area.x + area.width.saturating_sub(mascot::MASCOT_WIDTH + 2),
-                y: area.y + 1,
-                width: mascot::MASCOT_WIDTH,
-                height: mascot::MASCOT_HEIGHT,
-            };
-            self.mascot.render(mascot_area, buf);
+        let mascot_area = Rect {
+            x: area.x + area.width.saturating_sub(mascot::MASCOT_WIDTH + 2),
+            y: area.y + 1,
+            width: mascot::MASCOT_WIDTH,
+            height: mascot::MASCOT_HEIGHT,
+        };
+        match self.screen {
+            Screen::Menu => {
+                let menu_area = Rect {
+                    x: area.x,
+                    y: area.y,
+                    width: area.width.saturating_sub(mascot::MASCOT_WIDTH + 4),
+                    height: area.height,
+                };
+                let tile_areas = menu::render_menu(menu_area, &self.theme, self.highlighted, buf);
+                self.tile_areas.set(tile_areas);
+                self.mascot.render(mascot_area, buf);
+            }
+            Screen::Vignette(VignetteId::AssemblyLine) => {
+                if let Some(state) = &self.assembly_line {
+                    state.render(area, &self.theme, buf);
+                }
+                self.mascot.render(mascot_area, buf);
+            }
+            Screen::Vignette(_) => {}
         }
     }
 
@@ -175,7 +239,27 @@ impl App for ShowcaseApp {
             if t.is_complete() {
                 self.booting = None;
             }
+            return;
         }
         self.mascot.tick(elapsed);
+        let area = self.last_area.get();
+        let screen = self.screen;
+        match screen {
+            Screen::Menu => {}
+            Screen::Vignette(VignetteId::AssemblyLine) => {
+                if let Some(state) = &mut self.assembly_line {
+                    state.on_tick(elapsed, area);
+                    let caught = state.take_caught();
+                    let done = state.is_complete();
+                    if caught {
+                        self.mascot.set_pose(MascotPose::Grabbing);
+                    }
+                    if done {
+                        self.exit_vignette();
+                    }
+                }
+            }
+            Screen::Vignette(_) => {}
+        }
     }
 }
