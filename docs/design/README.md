@@ -26,6 +26,11 @@ This directory holds:
   style console: click-toggle switches, a click-advance dial, a launch
   button) built to prove out real mouse support (`Rect::contains`,
   `Terminal` mouse capture, `tools/visual-snapshot` click-scripting).
+- `assay/` — the master Arc binding TTUI, Model-Experiments, and
+  `visual-critic` into one verification-first agentic development
+  platform, with a TTUI-built cockpit as its frontend. Decomposes into
+  five sub-projects, each of which gets its own spec/plan cycle; lives
+  in its own repository.
 - `visual-critic/` — a cross-project Claude Code plugin that gives the
   visual-review step eyes and opinions: portable capture adapters plus
   an adversarial multi-lens reviewer. Generalizes `tools/visual-

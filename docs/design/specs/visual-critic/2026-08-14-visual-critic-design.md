@@ -16,6 +16,14 @@ definition. This spec is written into TTUI because TTUI is consumer #1
 and this is where it was designed; it moves with the code once that
 repo exists.
 
+**Place in the roadmap:** sub-project #1 of the Assay platform
+(`docs/design/specs/assay/2026-08-14-assay-platform-design.md`), where
+it serves as the **perceptual verification provider** — tier 3 of that
+document's verification ladder, the first rung above what CI can reach.
+It has no dependency on the platform and ships standalone; the platform
+consumes it. Model-Experiments' `mx-viz` output is consumer #2, with no
+modification to either side.
+
 ## Context / Motivation
 
 `.claude/rules/development-conventions.md` mandates visual review
