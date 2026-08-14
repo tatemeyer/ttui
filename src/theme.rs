@@ -12,17 +12,46 @@ pub struct BorderSet {
     pub horizontal: char,
     /// Left/right edge glyph.
     pub vertical: char,
-    /// Corner glyph.
-    pub corner: char,
+    /// Top-left corner glyph.
+    pub top_left: char,
+    /// Top-right corner glyph.
+    pub top_right: char,
+    /// Bottom-left corner glyph.
+    pub bottom_left: char,
+    /// Bottom-right corner glyph.
+    pub bottom_right: char,
+}
+
+impl BorderSet {
+    /// Real box-drawing glyphs (`┌┐└┘─│`) — the default border look.
+    pub const fn single_line() -> Self {
+        BorderSet {
+            horizontal: '─',
+            vertical: '│',
+            top_left: '┌',
+            top_right: '┐',
+            bottom_left: '└',
+            bottom_right: '┘',
+        }
+    }
+
+    /// Plain ASCII (`-|+`), the same `+` at every corner — for apps
+    /// that want the pre-1.0 look.
+    pub const fn ascii() -> Self {
+        BorderSet {
+            horizontal: '-',
+            vertical: '|',
+            top_left: '+',
+            top_right: '+',
+            bottom_left: '+',
+            bottom_right: '+',
+        }
+    }
 }
 
 impl Default for BorderSet {
     fn default() -> Self {
-        BorderSet {
-            horizontal: '-',
-            vertical: '|',
-            corner: '+',
-        }
+        Self::single_line()
     }
 }
 
@@ -84,11 +113,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_border_set_matches_todays_hardcoded_glyphs() {
-        let b = BorderSet::default();
+    fn single_line_uses_real_box_drawing_glyphs() {
+        let b = BorderSet::single_line();
+        assert_eq!(b.horizontal, '─');
+        assert_eq!(b.vertical, '│');
+        assert_eq!(b.top_left, '┌');
+        assert_eq!(b.top_right, '┐');
+        assert_eq!(b.bottom_left, '└');
+        assert_eq!(b.bottom_right, '┘');
+    }
+
+    #[test]
+    fn ascii_uses_a_plus_at_every_corner() {
+        let b = BorderSet::ascii();
         assert_eq!(b.horizontal, '-');
         assert_eq!(b.vertical, '|');
-        assert_eq!(b.corner, '+');
+        assert_eq!(b.top_left, '+');
+        assert_eq!(b.top_right, '+');
+        assert_eq!(b.bottom_left, '+');
+        assert_eq!(b.bottom_right, '+');
+    }
+
+    #[test]
+    fn default_matches_single_line() {
+        assert_eq!(BorderSet::default(), BorderSet::single_line());
     }
 
     #[test]

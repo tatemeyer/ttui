@@ -22,8 +22,10 @@ this project follows the SemVer policy defined in
 - `showcase`'s Assembly Line vignette reworked: a real crate sprite
   (replacing a plain glyph row), and the mascot now slides to and
   reaches down for a caught crate instead of pose-flashing in place.
+- `BorderSet::single_line()` / `BorderSet::ascii()` presets (#130).
 
 ### Changed
 
 - **Breaking:** `Theme.border_bold: bool` → `Theme.border_style: CellStyle` (#108).
 - **Breaking:** `Camera::project_line` now takes `ProjectLineParams` instead of 7 positional `f32`s (#119).
+- **Breaking:** `BorderSet.corner: char` → `top_left`/`top_right`/`bottom_left`/`bottom_right`; `BorderSet::default()` now returns `single_line()` (real box-drawing glyphs) instead of the old ASCII look (#130).
