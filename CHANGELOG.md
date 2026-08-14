@@ -17,6 +17,11 @@ this project follows the SemVer policy defined in
   vignettes, run via `cargo run --bin showcase`.
 - `tools/visual-snapshot`'s `--bin` flag — captures a `[[bin]]` target
   (e.g. `showcase`), alongside the existing `--example` capture path.
+- `showcase`'s mascot: idle breathing animation and a redesigned
+  two-tone eye with a genuine blink.
+- `showcase`'s Assembly Line vignette reworked: a real crate sprite
+  (replacing a plain glyph row), and the mascot now slides to and
+  reaches down for a caught crate instead of pose-flashing in place.
 
 ### Changed
 
