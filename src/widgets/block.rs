@@ -233,9 +233,9 @@ mod tests {
                 height: 1
             }
         );
-        assert_eq!(buf.get(0, 0).symbol, '+');
-        assert_eq!(buf.get(1, 0).symbol, '-');
-        assert_eq!(buf.get(0, 1).symbol, '|');
+        assert_eq!(buf.get(0, 0).symbol, '┌');
+        assert_eq!(buf.get(1, 0).symbol, '─');
+        assert_eq!(buf.get(0, 1).symbol, '│');
     }
 
     #[test]
@@ -266,7 +266,7 @@ mod tests {
 
         Block::new().render(area, &mut buf);
 
-        assert_eq!(buf.get(0, 0).symbol, '+');
+        assert_eq!(buf.get(0, 0).symbol, '┌');
         assert_eq!(buf.get(0, 0).fg, Color::Reset);
         assert_eq!(buf.get(0, 0).bg, Color::Reset);
         assert_eq!(buf.get(0, 0).style.intensity, Intensity::Normal);
