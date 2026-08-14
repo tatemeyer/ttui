@@ -30,13 +30,15 @@ impl Falcon {
     fn hud_line(&self, area: Rect, canvas: &mut Canvas, seg: Line3, color: Color) {
         if let Some((x0, y0, x1, y1)) = self.camera.project_line(
             seg,
-            area.width as f32 / 2.0,
-            area.height as f32 / 2.0,
-            area.width as f32 - 1.0 / 2.0,
-            area.height as f32 - 1.0 / 4.0,
-            2.0,
-            4.0,
-            0.0,
+            ProjectLineParams {
+                center_x: area.width as f32 / 2.0,
+                center_y: area.height as f32 / 2.0,
+                screen_w: area.width as f32 - 1.0 / 2.0,
+                screen_h: area.height as f32 - 1.0 / 4.0,
+                subpixels_x: 2.0,
+                subpixels_y: 4.0,
+                min_scale: 0.0,
+            },
         ) {
             canvas.line(x0, y0, x1, y1, color);
         }
