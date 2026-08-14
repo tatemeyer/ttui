@@ -19,9 +19,12 @@ mod mascot;
 mod menu;
 #[path = "mouse_grab.rs"]
 mod mouse_grab;
+#[path = "particle_vent.rs"]
+mod particle_vent;
 
 use mascot::{GripperMascot, MascotPose};
 use mouse_grab::AssemblyLineState;
+use particle_vent::OverloadVentState;
 
 const BOOT_MS: u64 = 1200;
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
@@ -88,6 +91,7 @@ pub(crate) struct ShowcaseApp {
     tile_areas: std::cell::Cell<[Rect; 5]>,
     quit: bool,
     assembly_line: Option<AssemblyLineState>,
+    overload_vent: Option<OverloadVentState>,
 }
 
 impl ShowcaseApp {
@@ -102,18 +106,22 @@ impl ShowcaseApp {
             tile_areas: std::cell::Cell::new([ZERO_RECT; 5]),
             quit: false,
             assembly_line: None,
+            overload_vent: None,
         }
     }
 
     fn enter_vignette(&mut self, id: VignetteId) {
-        if id == VignetteId::AssemblyLine {
-            self.assembly_line = Some(AssemblyLineState::new());
+        match id {
+            VignetteId::AssemblyLine => self.assembly_line = Some(AssemblyLineState::new()),
+            VignetteId::OverloadVent => self.overload_vent = Some(OverloadVentState::new()),
+            _ => {}
         }
         self.screen = Screen::Vignette(id);
     }
 
     fn exit_vignette(&mut self) {
         self.assembly_line = None;
+        self.overload_vent = None;
         self.screen = Screen::Menu;
     }
 }
@@ -221,6 +229,11 @@ impl App for ShowcaseApp {
                 }
                 self.mascot.render(mascot_area, buf);
             }
+            Screen::Vignette(VignetteId::OverloadVent) => {
+                if let Some(state) = &self.overload_vent {
+                    state.render(buf);
+                }
+            }
             Screen::Vignette(_) => {}
         }
     }
@@ -255,6 +268,14 @@ impl App for ShowcaseApp {
                         self.mascot.set_pose(MascotPose::Grabbing);
                     }
                     if done {
+                        self.exit_vignette();
+                    }
+                }
+            }
+            Screen::Vignette(VignetteId::OverloadVent) => {
+                if let Some(state) = &mut self.overload_vent {
+                    state.on_tick(elapsed, area);
+                    if state.is_complete() {
                         self.exit_vignette();
                     }
                 }
