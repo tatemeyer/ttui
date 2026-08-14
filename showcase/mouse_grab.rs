@@ -1,13 +1,19 @@
 //! Assembly Line — crates scroll across a fixed lane; clicking one
 //! marks it targeted, freezing it in place while the mascot slides
-//! over from its current position to grab it. The crate is only
-//! actually caught (puff + Grabbing pose + removed) once the
-//! mascot's slide animation arrives — not on click. Hit-testing is a
-//! real 2D bounding-box check against each crate's own Rect
-//! (ttui::layout::Rect::contains), matching control_panel's
-//! click-hit-testing pattern; the mascot's on-screen position is
-//! owned here (not ShowcaseApp's shared top-right position) since
-//! it's vignette-local for this one vignette only.
+//! horizontally from its current position to above the target. Once
+//! that horizontal slide arrives, the mascot reaches its claw down
+//! into the lane (a separate, vertical `Transition`), and only then
+//! is the crate actually caught (puff + removed) — not at click, and
+//! not merely at slide-arrival either. The whole line pauses while
+//! the claw is reaching down or retracting, so nothing drifts under
+//! it mid-reach. Hit-testing is a real 2D bounding-box check against
+//! each crate's own Rect (ttui::layout::Rect::contains), matching
+//! control_panel's click-hit-testing pattern; the mascot's on-screen
+//! position is owned here (not ShowcaseApp's shared top-right
+//! position) since it's vignette-local for this one vignette only.
+//! The lane sits entirely below the mascot's own sprite at rest (see
+//! `LANE_Y_OFFSET_FROM_MASCOT_TOP`) so the two never overlap except
+//! during the deliberate reach-down motion.
 
 use crossterm::style::Color;
 use std::time::Duration;
@@ -31,11 +37,18 @@ const LANE_TRAVEL_WIDTH: f32 = 50.0;
 const PUFF_LIFETIME_MS: u64 = 300;
 const MASCOT_SLIDE_DURATION: Duration = Duration::from_millis(300);
 // Vertical placement: the mascot sits a couple rows below the
-// vignette's top edge, and the crate lane aligns with its claw
-// (pixel rows 9-11 of its 12-row sprite), not an arbitrary mid-screen
-// row.
+// vignette's top edge, and the crate lane sits one full row below the
+// mascot's entire 12-row sprite — never overlapping it at rest. The
+// claw only visits the lane during the deliberate reach-down motion
+// below (`REACH_DOWN_OFFSET`).
 const MASCOT_Y_OFFSET: u16 = 2;
-const LANE_Y_OFFSET_FROM_MASCOT_TOP: u16 = 9;
+const LANE_Y_OFFSET_FROM_MASCOT_TOP: u16 = 13;
+// How far (in rows) and how long the claw reaches down into the lane
+// after the horizontal slide arrives, before the catch fires and it
+// retracts. Reuses the same `Transition` pattern as the horizontal
+// slide, just driving a vertical offset instead of an x-position.
+const REACH_DOWN_OFFSET: u16 = 4;
+const REACH_DURATION: Duration = Duration::from_millis(200);
 
 fn mascot_y(area: Rect) -> u16 {
     area.y + MASCOT_Y_OFFSET
@@ -84,6 +97,17 @@ struct CrateItem {
     exited: bool,
 }
 
+/// Tracks the mascot's claw through its post-slide vertical motion:
+/// `None` while at rest or still sliding horizontally, `Down` while
+/// reaching into the lane (catch fires when this completes), `Up`
+/// while retracting back to the resting height.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ReachPhase {
+    None,
+    Down,
+    Up,
+}
+
 pub(crate) struct AssemblyLineState {
     crates: Vec<CrateItem>,
     spawn_elapsed: Duration,
@@ -96,6 +120,9 @@ pub(crate) struct AssemblyLineState {
     mascot_target_x: f32,
     slide: Transition,
     targeted_crate: Option<usize>,
+    reach_phase: ReachPhase,
+    reach: Transition,
+    mascot_y_offset: f32,
 }
 
 impl AssemblyLineState {
@@ -113,6 +140,9 @@ impl AssemblyLineState {
             mascot_target_x: x0,
             slide: Transition::start(MASCOT_SLIDE_DURATION),
             targeted_crate: None,
+            reach_phase: ReachPhase::None,
+            reach: Transition::start(REACH_DURATION),
+            mascot_y_offset: 0.0,
         }
     }
 
@@ -120,13 +150,19 @@ impl AssemblyLineState {
         self.puff.update(elapsed);
         let x0 = lane_x0(area);
         let x1 = x0 + LANE_TRAVEL_WIDTH;
-        for c in &mut self.crates {
-            if c.caught || c.targeted {
-                continue; // targeted crates freeze until the mascot arrives
-            }
-            c.x += CRATE_SPEED * elapsed.as_secs_f32();
-            if c.x > x1 {
-                c.exited = true;
+        // While the claw is reaching down or retracting, the whole
+        // line holds still — not just the targeted crate — so nothing
+        // drifts underneath a claw that's visually in the lane.
+        let line_paused = self.reach_phase != ReachPhase::None;
+        if !line_paused {
+            for c in &mut self.crates {
+                if c.caught || c.targeted {
+                    continue; // targeted crates freeze until the mascot arrives
+                }
+                c.x += CRATE_SPEED * elapsed.as_secs_f32();
+                if c.x > x1 {
+                    c.exited = true;
+                }
             }
         }
         self.spawn_elapsed += elapsed;
@@ -144,25 +180,55 @@ impl AssemblyLineState {
         self.slide.tick(elapsed);
         self.mascot_x =
             self.slide_from_x + (self.mascot_target_x - self.slide_from_x) * self.slide.progress();
-        if self.slide.is_complete() {
-            if let Some(i) = self.targeted_crate.take() {
-                self.crates[i].caught = true;
-                self.just_caught = true;
-                let cx = self.crates[i].x;
-                self.puff.spawn(Particle {
-                    x: cx + CRATE_WIDTH as f32 / 2.0,
-                    y: lane_y(area) as f32,
-                    vx: 0.0,
-                    vy: -3.0,
-                    symbol: '*',
-                    color: Color::Rgb {
-                        r: 255,
-                        g: 140,
-                        b: 66,
-                    },
-                    lifetime: Duration::from_millis(PUFF_LIFETIME_MS),
-                    age: Duration::ZERO,
-                });
+
+        match self.reach_phase {
+            ReachPhase::None => {
+                // Horizontal slide has arrived above the target: begin
+                // reaching the claw down. The freshly started
+                // `Transition` isn't ticked until the next call, same
+                // as `slide` isn't ticked in the same call
+                // `handle_click` starts it.
+                if self.slide.is_complete() && self.targeted_crate.is_some() {
+                    self.reach_phase = ReachPhase::Down;
+                    self.reach = Transition::start(REACH_DURATION);
+                }
+            }
+            ReachPhase::Down => {
+                self.reach.tick(elapsed);
+                self.mascot_y_offset = REACH_DOWN_OFFSET as f32 * self.reach.progress();
+                if self.reach.is_complete() {
+                    // The claw has arrived at the lane — catch fires
+                    // here, not at horizontal slide-arrival.
+                    if let Some(i) = self.targeted_crate.take() {
+                        self.crates[i].caught = true;
+                        self.just_caught = true;
+                        let cx = self.crates[i].x;
+                        self.puff.spawn(Particle {
+                            x: cx + CRATE_WIDTH as f32 / 2.0,
+                            y: lane_y(area) as f32,
+                            vx: 0.0,
+                            vy: -3.0,
+                            symbol: '*',
+                            color: Color::Rgb {
+                                r: 255,
+                                g: 140,
+                                b: 66,
+                            },
+                            lifetime: Duration::from_millis(PUFF_LIFETIME_MS),
+                            age: Duration::ZERO,
+                        });
+                    }
+                    self.reach_phase = ReachPhase::Up;
+                    self.reach = Transition::start(REACH_DURATION);
+                }
+            }
+            ReachPhase::Up => {
+                self.reach.tick(elapsed);
+                self.mascot_y_offset = REACH_DOWN_OFFSET as f32 * (1.0 - self.reach.progress());
+                if self.reach.is_complete() {
+                    self.mascot_y_offset = 0.0;
+                    self.reach_phase = ReachPhase::None;
+                }
             }
         }
     }
@@ -222,7 +288,7 @@ impl AssemblyLineState {
     pub(crate) fn mascot_area(&self, area: Rect) -> Rect {
         Rect {
             x: self.mascot_x as u16,
-            y: mascot_y(area),
+            y: mascot_y(area) + self.mascot_y_offset as u16,
             width: mascot::MASCOT_WIDTH,
             height: mascot::MASCOT_HEIGHT,
         }
@@ -324,14 +390,34 @@ mod tests {
         assert!(!s.take_caught());
     }
 
+    /// The horizontal slide arriving is only the halfway point now —
+    /// the claw still has to reach down before the catch fires. This
+    /// replaces the old "slide completing catches immediately"
+    /// behavior removed by the reach-down/pause fix (issue found in
+    /// live interactive testing of commit 7fa27ae: the lane used to
+    /// overlap the mascot's own sprite at rest).
     #[test]
-    fn the_slide_completing_actually_catches_the_targeted_crate() {
+    fn the_slide_arriving_alone_does_not_yet_catch_the_targeted_crate() {
         let mut s = AssemblyLineState::new(area());
         s.on_tick(SPAWN_INTERVAL, area());
         render_to_cache_lane_y(&s);
         let ly = lane_y(area());
         s.handle_click(lane_x0(area()) as u16, ly);
         s.on_tick(MASCOT_SLIDE_DURATION, area());
+        assert!(!s.crates[0].caught);
+        assert!(!s.take_caught());
+        assert_eq!(s.reach_phase, ReachPhase::Down);
+    }
+
+    #[test]
+    fn the_reach_down_phase_completing_actually_catches_the_targeted_crate() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(lane_x0(area()) as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area()); // horizontal slide arrives, reach-down begins
+        s.on_tick(REACH_DURATION, area()); // reach-down completes
         assert!(s.crates[0].caught);
         assert!(s.take_caught());
     }
@@ -344,8 +430,73 @@ mod tests {
         let ly = lane_y(area());
         s.handle_click(lane_x0(area()) as u16, ly);
         s.on_tick(MASCOT_SLIDE_DURATION, area());
+        s.on_tick(REACH_DURATION, area());
         assert!(s.take_caught());
         assert!(!s.take_caught());
+    }
+
+    #[test]
+    fn the_lane_sits_entirely_below_the_mascot_sprite_at_rest() {
+        // Regression guard for the overlap found in live testing: the
+        // lane's top row must be at or below the mascot's full height,
+        // never inside its 12-row sprite.
+        assert!(lane_y(area()) >= mascot_y(area()) + mascot::MASCOT_HEIGHT);
+    }
+
+    #[test]
+    fn reach_down_moves_the_mascot_offset_toward_full_depth() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(lane_x0(area()) as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area()); // reach-down begins, offset still 0
+        assert_eq!(s.mascot_y_offset, 0.0);
+        s.on_tick(REACH_DURATION / 2, area()); // halfway into the reach
+        assert!(s.mascot_y_offset > 0.0 && s.mascot_y_offset < REACH_DOWN_OFFSET as f32);
+        s.on_tick(REACH_DURATION / 2, area()); // reach-down completes
+        assert_eq!(s.mascot_y_offset, REACH_DOWN_OFFSET as f32);
+        assert_eq!(s.reach_phase, ReachPhase::Up);
+    }
+
+    #[test]
+    fn the_retract_phase_returns_the_mascot_offset_to_zero() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(lane_x0(area()) as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area()); // reach-down begins
+        s.on_tick(REACH_DURATION, area()); // reach-down completes, retract begins
+        assert_eq!(s.reach_phase, ReachPhase::Up);
+        s.on_tick(REACH_DURATION, area()); // retract completes
+        assert_eq!(s.mascot_y_offset, 0.0);
+        assert_eq!(s.reach_phase, ReachPhase::None);
+    }
+
+    #[test]
+    fn non_targeted_crates_freeze_while_the_claw_is_reaching_then_resume() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        s.handle_click(s.crates[0].x as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area()); // reach-down begins; line pauses
+        let x_during_reach = s.crates[1].x;
+        s.on_tick(Duration::from_millis(50), area()); // still within REACH_DURATION
+        assert_eq!(
+            s.crates[1].x, x_during_reach,
+            "non-targeted crate should not drift while the claw is reaching"
+        );
+        s.on_tick(REACH_DURATION, area()); // reach-down completes, retract begins
+        assert_eq!(s.crates[1].x, x_during_reach, "still paused during retract");
+        s.on_tick(REACH_DURATION, area()); // retract completes, line resumes
+        s.on_tick(Duration::from_millis(50), area());
+        assert!(
+            s.crates[1].x > x_during_reach,
+            "crate should resume scrolling once the reach phase returns to None"
+        );
     }
 
     #[test]
