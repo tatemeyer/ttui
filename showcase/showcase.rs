@@ -11,6 +11,11 @@ use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
 use ttui::transition::Transition;
 
+#[path = "mascot.rs"]
+mod mascot;
+
+use mascot::GripperMascot;
+
 const BOOT_MS: u64 = 1200;
 const TICK_INTERVAL: Duration = Duration::from_millis(33);
 
@@ -73,6 +78,7 @@ pub(crate) struct ShowcaseApp {
     screen: Screen,
     booting: Option<Transition>,
     last_area: std::cell::Cell<Rect>,
+    mascot: GripperMascot,
     quit: bool,
 }
 
@@ -83,6 +89,7 @@ impl ShowcaseApp {
             screen: Screen::Menu,
             booting: Some(Transition::start(Duration::from_millis(BOOT_MS))),
             last_area: std::cell::Cell::new(ZERO_RECT),
+            mascot: GripperMascot::new(),
             quit: false,
         }
     }
@@ -102,14 +109,21 @@ impl App for ShowcaseApp {
         }
     }
 
-    fn view(&self, area: Rect, _buf: &mut LayerStack) {
+    fn view(&self, area: Rect, buf: &mut LayerStack) {
         self.last_area.set(area);
         if let Some(t) = &self.booting {
             let _ = t.progress();
             return;
         }
         if self.screen == Screen::Menu {
-            // Task 3 replaces this with the real tile menu.
+            let mascot_area = Rect {
+                x: area.x + area.width.saturating_sub(mascot::MASCOT_WIDTH + 2),
+                y: area.y + 1,
+                width: mascot::MASCOT_WIDTH,
+                height: mascot::MASCOT_HEIGHT,
+            };
+            self.mascot.render(mascot_area, buf);
+            // Task 3 replaces the rest of this block with the real tile menu.
             let _ = &self.theme;
         }
     }
@@ -129,5 +143,6 @@ impl App for ShowcaseApp {
                 self.booting = None;
             }
         }
+        self.mascot.tick(elapsed);
     }
 }
