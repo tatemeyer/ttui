@@ -12,8 +12,17 @@ use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::Theme;
 
 const CRATE_COUNT: usize = 6;
-const CRATE_SPEED: f32 = 10.0; // cells/second
-const CRATE_WIDTH: u16 = 6;
+// Tuned for real human reaction time, not just script-precise clicks: at
+// the original 10.0 cells/sec + 6-wide crate + exact-row hit test, a
+// crate was only catchable for ~0.6s on one exact terminal row — fine
+// for a scripted visual-snapshot click computed from a static frame,
+// not for someone watching a moving target and clicking in real time.
+const CRATE_SPEED: f32 = 4.5; // cells/second
+const CRATE_WIDTH: u16 = 8;
+// `handle_click`'s row hit-test accepts this many rows above/below the
+// cached `row_y`, absorbing real mouse/terminal imprecision (a human
+// aiming at "the crate's row" by eye won't always land the exact cell).
+const ROW_TOLERANCE: u16 = 1;
 const SPAWN_INTERVAL: Duration = Duration::from_millis(700);
 const PUFF_LIFETIME_MS: u64 = 300;
 
@@ -81,8 +90,10 @@ impl AssemblyLineState {
     /// Hit-tests a click against the row cached from the last
     /// `render` call — mirrors `control_panel`'s `button_area`
     /// pattern (a Cell populated at render time, read at click time).
+    /// Accepts `ROW_TOLERANCE` rows of slop either side of the exact
+    /// row, not just a pixel-perfect match.
     pub(crate) fn handle_click(&mut self, mx: u16, my: u16) {
-        if my != self.row_y.get() {
+        if my.abs_diff(self.row_y.get()) > ROW_TOLERANCE {
             return;
         }
         for c in &mut self.crates {
@@ -234,7 +245,34 @@ mod tests {
         let theme = Theme::default();
         let mut stack = LayerStack::new(40, 10);
         s.render(area(), &theme, &mut stack);
-        s.handle_click(0, 0); // wrong row
+        s.handle_click(0, 0); // wrong row, well outside ROW_TOLERANCE
+        assert!(!s.crates[0].caught);
+    }
+
+    /// `handle_click`'s row hit-test forgives `ROW_TOLERANCE` rows of
+    /// slop either side of the cached row — a human aiming by eye at a
+    /// scrolling row won't always land the exact cell.
+    #[test]
+    fn clicking_one_row_off_within_tolerance_still_catches() {
+        let mut s = AssemblyLineState::new();
+        s.on_tick(SPAWN_INTERVAL, area());
+        let theme = Theme::default();
+        let mut stack = LayerStack::new(40, 10);
+        s.render(area(), &theme, &mut stack);
+        let row_y = area().y + area().height / 2;
+        s.handle_click(0, row_y + ROW_TOLERANCE); // one row below, still in tolerance
+        assert!(s.crates[0].caught);
+    }
+
+    #[test]
+    fn clicking_beyond_row_tolerance_does_not_catch() {
+        let mut s = AssemblyLineState::new();
+        s.on_tick(SPAWN_INTERVAL, area());
+        let theme = Theme::default();
+        let mut stack = LayerStack::new(40, 10);
+        s.render(area(), &theme, &mut stack);
+        let row_y = area().y + area().height / 2;
+        s.handle_click(0, row_y + ROW_TOLERANCE + 1); // one row past tolerance
         assert!(!s.crates[0].caught);
     }
 
