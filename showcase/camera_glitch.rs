@@ -174,7 +174,13 @@ mod tests {
     #[test]
     fn angle_advances_with_elapsed_time() {
         let mut s = DiagnosticScanState::new();
-        s.on_tick(Duration::from_millis(500));
-        assert!(s.angle > 0.0);
+        let elapsed = Duration::from_millis(500);
+        s.on_tick(elapsed);
+        let expected = (ROTATION_SPEED * elapsed.as_secs_f32()) % std::f32::consts::TAU;
+        assert!(
+            (s.angle - expected).abs() < 0.001,
+            "expected angle {expected}, got {}",
+            s.angle
+        );
     }
 }
