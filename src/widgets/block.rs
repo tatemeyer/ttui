@@ -118,7 +118,7 @@ impl<'a> Block<'a> {
                 ring_area.x,
                 ring_area.y,
                 Cell {
-                    symbol: border.top_left,
+                    symbol: border.corner,
                     ..plain(ring_area.x, ring_area.y)
                 },
             );
@@ -126,7 +126,7 @@ impl<'a> Block<'a> {
                 ring_area.x + ring_area.width - 1,
                 ring_area.y,
                 Cell {
-                    symbol: border.top_right,
+                    symbol: border.corner,
                     ..plain(ring_area.x + ring_area.width - 1, ring_area.y)
                 },
             );
@@ -134,7 +134,7 @@ impl<'a> Block<'a> {
                 ring_area.x,
                 ring_area.y + ring_area.height - 1,
                 Cell {
-                    symbol: border.bottom_left,
+                    symbol: border.corner,
                     ..plain(ring_area.x, ring_area.y + ring_area.height - 1)
                 },
             );
@@ -142,7 +142,7 @@ impl<'a> Block<'a> {
                 ring_area.x + ring_area.width - 1,
                 ring_area.y + ring_area.height - 1,
                 Cell {
-                    symbol: border.bottom_right,
+                    symbol: border.corner,
                     ..plain(
                         ring_area.x + ring_area.width - 1,
                         ring_area.y + ring_area.height - 1,
@@ -284,10 +284,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -321,10 +318,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle {
                 intensity: Intensity::Bold,
@@ -359,10 +353,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle {
                 underline: true,
@@ -397,10 +388,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle::default(),
             border_thick: true,
@@ -434,10 +422,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -482,10 +467,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle {
                 intensity: Intensity::Bold,
@@ -522,10 +504,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -569,10 +548,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,
@@ -626,10 +602,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '#',
-                top_left: '*',
-                top_right: '*',
-                bottom_left: '*',
-                bottom_right: '*',
+                corner: '*',
             },
             border_style: CellStyle::default(),
             border_thick: false,

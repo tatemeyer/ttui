@@ -24,7 +24,7 @@ impl SmashBorder {
             (
                 theme.border.horizontal,
                 theme.border.vertical,
-                theme.border.top_left,
+                theme.border.corner,
                 theme.primary,
             ),
             ('-', ':', '.', theme.tertiary),
@@ -163,10 +163,7 @@ mod tests {
             border: BorderSet {
                 horizontal: '=',
                 vertical: '|',
-                top_left: '+',
-                top_right: '+',
-                bottom_left: '+',
-                bottom_right: '+',
+                corner: '+',
             },
             border_style: CellStyle::default(),
             border_thick: false,
