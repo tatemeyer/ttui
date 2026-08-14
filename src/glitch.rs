@@ -13,12 +13,26 @@ const GLYPHS: [char; 4] = ['░', '▒', '▓', '█'];
 /// — trigger it, tick it each frame, render it while active.
 pub struct GlitchBuffer {
     transition: Option<Transition>,
+    alpha: f32,
 }
 
 impl GlitchBuffer {
     /// Creates an inactive `GlitchBuffer`.
     pub fn new() -> Self {
-        GlitchBuffer { transition: None }
+        GlitchBuffer {
+            transition: None,
+            alpha: 1.0,
+        }
+    }
+
+    /// Sets the alpha every rendered glitch cell carries, for a
+    /// partially-transparent effect (e.g. "static laid over the
+    /// readout, not fully opaque"). Defaults to `1.0` (fully opaque)
+    /// — existing callers that never call this see no behavior
+    /// change.
+    pub fn with_alpha(mut self, alpha: f32) -> Self {
+        self.alpha = alpha;
+        self
     }
 
     /// Starts (or restarts) the glitch, decaying over `duration`.
@@ -66,7 +80,7 @@ impl GlitchBuffer {
                             symbol: glyph,
                             fg: color,
                             bg: Color::Reset,
-                            alpha: 1.0,
+                            alpha: self.alpha,
                             ..Default::default()
                         },
                     );
@@ -148,6 +162,32 @@ mod tests {
                 assert_ne!(*cell, Cell::default());
                 assert_eq!(cell.fg, Color::Red);
                 assert!(GLYPHS.contains(&cell.symbol));
+            }
+        }
+    }
+
+    #[test]
+    fn default_alpha_is_1_0() {
+        let mut gb = GlitchBuffer::new();
+        gb.trigger(Duration::from_millis(500));
+        let mut buf = Buffer::new(3, 3);
+
+        gb.render(area(), Color::Red, 0, &mut buf);
+
+        assert_eq!(buf.get(1, 1).alpha, 1.0);
+    }
+
+    #[test]
+    fn with_alpha_sets_every_rendered_cells_alpha() {
+        let mut gb = GlitchBuffer::new().with_alpha(0.5);
+        gb.trigger(Duration::from_millis(500));
+        let mut buf = Buffer::new(3, 3);
+
+        gb.render(area(), Color::Red, 0, &mut buf);
+
+        for y in 0..3 {
+            for x in 0..3 {
+                assert_eq!(buf.get(x, y).alpha, 0.5);
             }
         }
     }
