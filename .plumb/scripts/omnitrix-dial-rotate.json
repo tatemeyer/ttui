@@ -1,0 +1,9 @@
+[
+  { "wait_ms": 400 },
+  { "key": "Right" },
+  { "wait_ms": 250 },
+  { "key": "Right" },
+  { "wait_ms": 250 },
+  { "key": "Enter" },
+  { "wait_ms": 400 }
+]

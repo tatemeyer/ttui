@@ -1,0 +1,19 @@
+scenarios:
+  - name: omnitrix-dial-rotate
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example omnitrix --size 120x40
+      --script .plumb/scripts/omnitrix-dial-rotate.json
+      --out {out}.gif
+    intent: >
+      The Omnitrix dial rotates through its alien modes as the selection
+      advances; the selected mode's label sits beneath the dial, and the
+      dial's glow border takes the selected mode's colour. Confirming a
+      selection transitions to that mode's screen.
+    expects: []
+    touches:
+      - src/widgets/**
+      - src/effects.rs
+      - src/canvas.rs
+      - examples/omnitrix/**
