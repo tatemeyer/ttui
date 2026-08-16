@@ -1,0 +1,9 @@
+[
+  { "wait_ms": 1600 },
+  { "key": "Up" },
+  { "key": "Up" },
+  { "key": "Down" },
+  { "key": "Down" },
+  { "wait_ms": 200 },
+  { "wait_ms": 600 }
+]

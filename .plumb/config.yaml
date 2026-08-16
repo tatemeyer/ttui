@@ -17,3 +17,39 @@ scenarios:
       - src/effects.rs
       - src/canvas.rs
       - examples/omnitrix/**
+  - name: tardis-console-idle
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example tardis --size 120x40
+      --script .plumb/scripts/tardis-console-idle.json
+      --out {out}.gif
+    intent: >
+      The TARDIS finishes its materialization boot sequence and settles
+      into the idle console hub. The time rotor rotates continuously in
+      the centre of the display, the currently selected face's name is
+      shown at the top, and the rotate/select/quit hint stays legible at
+      the bottom throughout.
+    expects: []
+    touches:
+      - src/widgets/**
+      - src/canvas.rs
+      - examples/tardis/**
+  - name: falcon-glitch-burst
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example falcon --size 120x40
+      --script .plumb/scripts/falcon-glitch-burst.json
+      --out {out}.gif
+    intent: >
+      Falcon boots, then percussive maintenance triggers a corruption
+      burst across all three cockpit instrument panels. The panels are
+      heavily garbled at the peak of the burst, then clear and settle
+      back into a legible, running dashboard.
+    expects:
+      - visual-corruption
+    touches:
+      - src/glitch.rs
+      - src/effects.rs
+      - examples/falcon/**
