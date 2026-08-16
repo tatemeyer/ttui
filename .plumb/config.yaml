@@ -7,15 +7,20 @@ scenarios:
       --script .plumb/scripts/omnitrix-dial-rotate.json
       --out {out}.gif
     intent: >
-      The Omnitrix dial rotates through its alien modes as the selection
-      advances; the selected mode's label sits beneath the dial, and the
-      dial's glow border takes the selected mode's colour. Confirming a
-      selection transitions to that mode's screen.
+      After boot clears, the Omnitrix settles on the Faceplate screen:
+      three alien-mode labels (Brainstorm, Fasttrack, Upgrade) sit at
+      fixed points around a dotted ring, with the currently selected
+      label shown in inverse video next to a centre pointer glyph. As
+      Tab is pressed, the highlighted label and pointer advance around
+      the ring in order: Brainstorm, then Fasttrack, then Upgrade. The
+      dashed green border and the "Tab/Shift+Tab cycle * Enter launch *
+      q quit" hint bar stay visible throughout and are not tied to the
+      selection.
     expects: []
     touches:
       - src/widgets/**
-      - src/effects.rs
-      - src/canvas.rs
+      - src/camera.rs
+      - src/easing.rs
       - examples/omnitrix/**
   - name: tardis-console-idle
     adapter: command
