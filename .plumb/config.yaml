@@ -84,3 +84,32 @@ scenarios:
       - src/widgets/bar_chart.rs
       - src/widgets/block.rs
       - examples/mission_control.rs
+  - name: control-panel-launch-click
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example control_panel --size 120x40
+      --script .plumb/scripts/control-panel-launch-click.json
+      --out {out}.gif
+    intent: >
+      Control Panel opens on a static idle screen: an empty LAUNCH
+      panel reading "Click to launch", three toggle panels (POWER,
+      SHIELDS, COMMS) each showing an unlit analog toggle, and a MODE
+      dial with STANDBY selected among a dotted ring of STEALTH,
+      PATROL and COMBAT. Clicking inside the LAUNCH panel spawns a
+      shower of accent-coloured asterisk sparks at the click point:
+      the frame immediately after the click shows a single spark,
+      and the following frame shows it has spread into a small
+      cluster of particles scattered around that point. By the final
+      frame the sparks have fully faded and the LAUNCH panel is empty
+      again. The toggles and MODE dial are never clicked in this
+      script and stay unchanged (all toggles unlit, STANDBY selected)
+      throughout.
+    expects: []
+    touches:
+      - src/widgets/analog_toggle.rs
+      - src/widgets/block.rs
+      - src/widgets/dial.rs
+      - src/widgets/text.rs
+      - src/particles.rs
+      - examples/control_panel.rs
