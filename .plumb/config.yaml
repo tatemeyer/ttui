@@ -58,3 +58,29 @@ scenarios:
       - src/glitch.rs
       - src/effects.rs
       - examples/falcon/**
+  - name: mission-control-telemetry
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example mission_control --size 120x40
+      --script .plumb/scripts/mission-control-telemetry.json
+      --out {out}.gif
+    intent: >
+      Mission Control shows a 2x2 grid of bordered panels: three
+      sparklines (Altitude, Velocity, Signal Strength, in blue, blue
+      and orange respectively) and one horizontal bar chart (Subsystem
+      Status) with five labelled bars (Engines, Life Support, Comms,
+      Nav, Power). All four panel titles stay legible throughout. The
+      sparkline traces are the clearest source of motion: each starts
+      as a near-empty stub in the earliest frame and builds left to
+      right into a full, continuously jittering trace spanning the
+      panel width by the final frames. The five subsystem bars stay
+      long throughout (each already near-full width in frame one,
+      reflecting healthy ~90% starting values) and drift only slightly
+      frame to frame.
+    expects: []
+    touches:
+      - src/widgets/sparkline.rs
+      - src/widgets/bar_chart.rs
+      - src/widgets/block.rs
+      - examples/mission_control.rs
