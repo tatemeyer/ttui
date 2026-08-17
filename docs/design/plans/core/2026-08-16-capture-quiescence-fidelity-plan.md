@@ -39,11 +39,25 @@ filed and triaged separately and this plan continues.
 
 ---
 
-## Slice 1 — Diagnosis (`research`)
+## Slice 1 — Diagnosis (`research`) — ✅ COMPLETE
 
-Settles the fork in the design's "The Slice 1 fork": is #139 a torn
+Settled the fork in the design's "The Slice 1 fork": is #139 a torn
 mid-flush capture (capture-layer, ours) or a lost glyph in
 `dim`/`blit` (render-layer, a `src/` bug)?
+
+**Verdict: neither — capture-layer, via colour-blindness.** The hourglass
+glyphs are present at rows 17-21, cols 57-61 with `fg = Rgb(0, 0, 0)` on
+a black fill. `render_boot` fades the hourglass in from exactly black
+(`scale_color` multiplies by `1.0 - factor`; `factor` starts at 1.0), so
+the opening of boot is a **colour-only animation** that
+`Screen::contents()` cannot see. Quiescence resolved after 3 polls at
+`progress == 0` — the blackest instant. `tardis`'s frame 0 is *not* black
+(0.189% non-black, cyan POLICE BOX, 77 polls), confirming the defect
+appears exactly where an app opens on a colour-only transition.
+
+**#139 is #131 on a different app**, and Slice 2 should close both. No
+`src/` bug found; #122 not implicated. Full detail in the design's
+"Verdict" section.
 
 ### Task 1: Instrument the moment quiescence resolves
 
@@ -52,27 +66,27 @@ mid-flush capture (capture-layer, ours) or a lost glyph in
 **Interfaces:** none — debug output only, behind an env var
 (`VS_DEBUG_QUIESCENCE=1`) so it cannot affect normal runs.
 
-- [ ] **Step 1:** At the point `wait_for_first_output` breaks, dump: elapsed time since spawn, which break path was taken (`changed_at_least_once` vs deadline), the poll count, and `Screen::contents()`.
-- [ ] **Step 2:** Also dump the pre-rasterization cell grid — for every non-empty cell, `(row, col, ch, fg, bg)` — so a screen that is "all spaces on black" is distinguishable from "glyphs present but colored black."
-- [ ] **Step 3:** Verify the instrumentation is inert when the env var is unset (`cargo test --workspace` unchanged).
+- [x] **Step 1:** At the point `wait_for_first_output` breaks, dump: elapsed time since spawn, which break path was taken (`changed_at_least_once` vs deadline), the poll count, and `Screen::contents()`.
+- [x] **Step 2:** Also dump the pre-rasterization cell grid — for every non-empty cell, `(row, col, ch, fg, bg)` — so a screen that is "all spaces on black" is distinguishable from "glyphs present but colored black."
+- [x] **Step 3:** Verify the instrumentation is inert when the env var is unset (`cargo test --workspace` unchanged).
 
 ### Task 2: Capture the evidence
 
 **Files:** none — this task runs the tool and records findings.
 
-- [ ] **Step 1:** Run the zero-step `omnitrix` capture under `VS_DEBUG_QUIESCENCE=1` at 120x40. Record elapsed time, break path, and the cell dump.
-- [ ] **Step 2:** Determine which case holds. **Torn frame:** the dump shows only the black fill, no hourglass cells — the capture landed mid-flush. **Lost glyph:** the dump shows hourglass cells present with a black or `Reset` fg — the cells arrived but rasterize invisibly.
-- [ ] **Step 3:** Repeat against `tardis` (its own `BOOT_MS = 3000`) to establish whether the behavior is omnitrix-specific or general. A general result is much stronger evidence for the capture-layer explanation.
-- [ ] **Step 4:** Post the instrumented evidence as a comment on #139, superseding the corrected-but-still-open root cause. State the verdict plainly, including "inconclusive" if that is the honest answer.
+- [x] **Step 1:** Run the zero-step `omnitrix` capture under `VS_DEBUG_QUIESCENCE=1` at 120x40. Record elapsed time, break path, and the cell dump.
+- [x] **Step 2:** Determine which case holds. **Torn frame:** the dump shows only the black fill, no hourglass cells — the capture landed mid-flush. **Lost glyph:** the dump shows hourglass cells present with a black or `Reset` fg — the cells arrived but rasterize invisibly.
+- [x] **Step 3:** Repeat against `tardis` (its own `BOOT_MS = 3000`) to establish whether the behavior is omnitrix-specific or general. A general result is much stronger evidence for the capture-layer explanation.
+- [x] **Step 4:** Post the instrumented evidence as a comment on #139, superseding the corrected-but-still-open root cause. State the verdict plainly, including "inconclusive" if that is the honest answer.
 
 ### Task 3: Route the verdict
 
 **Files:** `docs/design/specs/core/2026-08-16-capture-quiescence-fidelity-design.md`
 
-- [ ] **Step 1:** Record the verdict in the design's "The Slice 1 fork" section, replacing the two candidate explanations with what was actually found.
-- [ ] **Step 2:** If **render-layer**: file a new `src/` issue with the cell-dump evidence, triage per `code-forge.md` (no public API surface → `semver:patch`), cross-reference #122 if the non-`Rgb` `scale_color` fallback is implicated, and note on #139 that the capture tool is not at fault. **Do not fix it in this Arc.**
-- [ ] **Step 3:** If **capture-layer**: note on #139 that it is subsumed by Slice 2 and will close with it.
-- [ ] **Step 4:** Remove the spike instrumentation, or reduce it to whatever Slice 2 genuinely needs as permanent debug tooling. Confirm `cargo test --workspace` and `cargo clippy --all-targets -- -D warnings` are green.
+- [x] **Step 1:** Record the verdict in the design's "The Slice 1 fork" section, replacing the two candidate explanations with what was actually found.
+- [x] **Step 2:** ~~If **render-layer**: file a new `src/` issue…~~ **N/A** — not render-layer. `dim`, `scale_color` and `render_boot` are mutually consistent and behaving as written; no `src/` issue filed, #122 not implicated.
+- [x] **Step 3:** If **capture-layer**: note on #139 that it is subsumed by Slice 2 and will close with it. **Done** — #139 is the same defect as #131.
+- [x] **Step 4:** Spike instrumentation **kept**, not removed — the plan permits reducing it to what Slice 2 needs, and `VS_DEBUG_QUIESCENCE` is exactly the measurement harness Task 7's timing work requires. Its cell filter was narrowed to glyph cells (`ch != ' '`), since filtering on background drowned the 200-cell cap in a full-screen fill before reaching the glyphs. Gates confirmed green.
 
 ---
 

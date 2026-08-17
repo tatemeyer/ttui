@@ -541,7 +541,9 @@ impl Session {
                 };
                 let ch = cell.contents().chars().next().unwrap_or(' ');
                 let bg = cell.bgcolor();
-                if ch == ' ' && bg == vt100::Color::Default {
+                // Glyph cells only. Filtering on bg too drowns the cap in
+                // a full-screen background fill before reaching them.
+                if ch == ' ' {
                     continue;
                 }
                 let fg = cell.fgcolor();

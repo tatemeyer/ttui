@@ -116,26 +116,54 @@ be well under `0.4`, which means it should also have blitted the
 hourglass via `camera::dim(&scratch, factor)` at near-full brightness.
 That should be visibly green. It is not there.
 
-Two candidate explanations, and they live in different layers:
+Two candidate explanations were considered: a **torn mid-flush frame**
+(capture-layer) or a **lost glyph** in `dim`/`blit` (render-layer, a
+`src/` bug).
 
-1. **Capture-layer.** The capture lands between the full-area black fill
-   and the hourglass blit — a torn mid-flush frame. Quiescence's fault,
-   and this Arc's to fix.
-2. **Render-layer.** The `dim`/`blit` path loses the glyph. `camera::dim`
-   calls `scale_color`, and the non-`Rgb` color fallback is a known parked
-   problem (#122). That would be a `ttui` `src/` bug, and
-   `tools/visual-snapshot` would be innocent — faithfully capturing a
-   screen that really was blank.
+### Verdict: neither — and it confirms this design's thesis directly
 
-**Slice 1 exists to settle this before any fix is designed**, because the
-answer decides which layer gets changed. If it lands on (2), the finding
-is reported on #139 and filed as a new `src/` issue triaged per
-`code-forge.md`, and **this Arc continues regardless** — Slices 2-4 stand
-on their own for #131/#127/#138, whose root cause is not in doubt.
+Slice 1 settled it by instrumenting the moment quiescence resolves
+(`VS_DEBUG_QUIESCENCE=1`). **It is capture-layer, but by the
+color-blindness mechanism this Arc exists to fix, not by tearing.**
 
-This is the part of the design most likely to be wrong, and it is
-deliberately structured so that being wrong costs one spike rather than a
-whole implementation.
+The hourglass glyphs *are* present in the parser's screen at that
+instant, at rows 17-21, cols 57-61 — with foreground **`Rgb(0, 0, 0)`**,
+on a black fill. Black glyphs on black. `tools/visual-snapshot`
+faithfully captured a screen that genuinely was black.
+
+Why the glyphs are black is entirely intended by the app:
+
+- `camera::scale_color` multiplies each channel by **`(1.0 - factor)`**,
+  so `dim(buf, 1.0)` is *fully dimmed to black*, not full brightness.
+- `render_boot` uses `factor = (1.0 - progress / 0.4)`, so at
+  `progress == 0` the hourglass is drawn at exactly `Rgb(0, 0, 0)` and
+  **fades in** to full brightness across the first 40% of boot.
+
+That fade is a **color-only animation**: identical glyphs at identical
+positions every tick, with only `fg` changing. `Screen::contents()`
+cannot see it. The instrumentation's `polls=3` records the whole failure
+in three steps — poll 1 blank, poll 2 glyphs appear (a genuine text
+change), poll 3 text identical, therefore "settled" — resolving at
+`progress == 0`, the single blackest instant of the animation.
+
+So **#139 is #131**, observed on a different app. The signal declared a
+draw finished while it was still animating, because the only thing still
+changing was colour. A color-aware signal would have kept waiting through
+the fade and captured a visible frame.
+
+Two supporting observations:
+
+- **`tardis`'s frame 0 is not black** — 0.189% non-black, the POLICE BOX
+  in cyan, settling after 77 polls / 2216ms. The defect is not universal;
+  it appears exactly where an app opens on a color-only transition.
+- **No `src/` bug was found.** `dim`, `scale_color` and `render_boot` are
+  mutually consistent and behaving as written. No new `src/` issue is
+  filed, and #122 is not implicated.
+
+This section originally predicted the wrong two options. It is kept in
+place, rather than rewritten to look prescient, because the spike costing
+one throwaway instrumentation pass instead of a wrong implementation is
+the part of this process that worked.
 
 ## Approach
 
