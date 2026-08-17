@@ -172,26 +172,53 @@ the design, to be chosen against real measurements.
 
 ---
 
-## Slice 3 — The chord-timeout interaction (`coding`)
+## Slice 3 — The chord-timeout interaction (`coding`) — ✅ MEASURED
 
 #127 and #138 may already be resolved by Slice 2: a wait that ends when
 the app is actually done stops colliding with the app's chord window.
 This slice checks rather than assumes.
 
+**Outcome: they split.**
+
+- **#138 closed.** `falcon-glitch-burst` is **10/10** reliable (was ~1-in-3),
+  with per-key waits of **44-49ms** against its 1500ms `chord_timeout` — a
+  ~30x margin, where the bug required exceeding it. Verified by counting
+  the burst's `(255,49,49)` red (zero such pixels in the preceding frame)
+  and by reading frame 5 directly to confirm the intended **three-panel**
+  burst rather than ambient single-panel flicker.
+- **#127 stays open, scope narrowed.** It is fixed only for apps that
+  animate. `falcon` passes because ambient per-tick motion satisfies
+  `wait_for_first_output`'s change condition — **not** because the key did
+  anything. A genuinely silent key on a static app still rides the full
+  deadline: an unbound `z` sent to `control_panel` measured
+  `elapsed_ms=2009 break_path=deadline`.
+
+**#127 cannot be fixed by better detection.** A key that changes nothing
+is indistinguishable from one whose reaction has not arrived yet — the
+ambiguity `wait_for_first_output`'s doc comment already names. The fix
+belongs in the *budget*: a shorter, separate deadline for post-key
+captures. That is exactly the "separate budgets" half of the design's
+"Revised direction", so **#127 should land with that decision rather than
+ahead of it** — fixing it in isolation would mean choosing a post-key
+deadline twice.
+
+Task 9 Step 3 is therefore deliberately **not** done, and Task 10 (the
+docs correction) is.
+
 ### Task 9: Re-measure #127 and #138 against the new signal
 
 **Files:** none initially — measurement first.
 
-- [ ] **Step 1:** Reproduce #138 by running `falcon-glitch-burst` **at least 10 times** on the new signal, recording how many produce the intended three-panel burst versus ambient single-panel flicker. The documented pre-existing rate is roughly 1-in-3 failures.
-- [ ] **Step 2:** If the flakiness is gone, close #127 and #138 with the measured evidence and skip Step 3.
-- [ ] **Step 3:** If it persists, fix the remaining interaction — the settle wait must not outlast the app's own `InputBinder` chord timeout — TDD test-first, and re-run the 10-run measurement to confirm.
+- [x] **Step 1:** Reproduce #138 by running `falcon-glitch-burst` **at least 10 times** on the new signal, recording how many produce the intended three-panel burst versus ambient single-panel flicker. The documented pre-existing rate is roughly 1-in-3 failures.
+- [x] **Step 2:** Flakiness gone for #138 (10/10) — closed. #127 NOT closed; see the Slice 3 outcome. Original text: If the flakiness is gone, close #127 and #138 with the measured evidence and skip Step 3.
+- [ ] **Step 3:** DEFERRED — coupled to the paused design decision. If it persists, fix the remaining interaction — the settle wait must not outlast the app's own `InputBinder` chord timeout — TDD test-first, and re-run the 10-run measurement to confirm.
 
 ### Task 10: Correct the documented limitations
 
 **Files:** `.claude/rules/development-conventions.md`
 
-- [ ] **Step 1:** Update the "Two known limitations" paragraph, which currently tells readers `falcon-glitch-burst` is ~1-in-3 flaky because of ttui#138 and that a single-panel run is a capture miss rather than a regression. If Slice 3 resolved it, that guidance is now actively misleading and must go.
-- [ ] **Step 2:** Re-check the rest of the Visual review section for statements the new signal invalidates.
+- [x] **Step 1:** Update the "Two known limitations" paragraph, which currently tells readers `falcon-glitch-burst` is ~1-in-3 flaky because of ttui#138 and that a single-panel run is a capture miss rather than a regression. If Slice 3 resolved it, that guidance is now actively misleading and must go.
+- [x] **Step 2:** Re-check the rest of the Visual review section for statements the new signal invalidates.
 
 ---
 
