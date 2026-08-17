@@ -28,6 +28,15 @@ fn delayed_key_response_binary() -> PathBuf {
     path
 }
 
+fn color_only_redraw_binary() -> PathBuf {
+    let mut path = examples_dir();
+    path.push("color_only_redraw");
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+    path
+}
+
 fn echo_mouse_binary() -> PathBuf {
     let mut path = examples_dir();
     path.push("echo_mouse");
@@ -209,6 +218,49 @@ fn a_key_steps_frame_waits_for_the_childs_actual_reaction_not_just_two_stable_po
         any_non_background,
         "expected the Key step's captured frame to show the fixture's delayed \
          response, not a blank screen captured before it reacted"
+    );
+}
+
+/// Guards the defect this Arc exists to close (#139, #131): quiescence
+/// compared `vt100::Screen::contents()` — plain text — while
+/// `render_screen` rasterizes the full cell state, so a redraw that
+/// changed only colour was invisible to the signal that decides a draw
+/// is finished. `color_only_redraw` repaints identical glyphs at
+/// identical positions on a different background 150ms after a key, so
+/// under the old signal the post-key wait observes *no* change at all and
+/// rides the full `MAX_SETTLE_WAIT` (measured: 2001ms, `break_path=deadline`)
+/// before giving up — the app's reaction is never actually observed, it is
+/// merely outlasted. Under `observable_screen` the same repaint is a real
+/// change, so the wait sees it, sees the screen hold steady, and returns.
+///
+/// The timing bound is the discriminator, not the pixel comparison: an
+/// old-signal run still ends up rendering the new background (it waited
+/// 2s, long past the repaint), it just never *observed* it. The pixel
+/// comparison is here to prove the fixture's repaint is real and reaches
+/// the rasterizer, so a green timing assertion can't be green for the
+/// wrong reason.
+#[test]
+fn a_colour_only_redraw_is_observed_rather_than_waited_out() {
+    let mut session = Session::spawn(&color_only_redraw_binary(), 5, 40).unwrap();
+    // Settles once the fixture's startup layout is on screen — a genuine
+    // text change, visible to either signal. Everything after this point
+    // is colour-only.
+    let before = session.capture_frame().unwrap();
+    session.send(b"a").unwrap();
+
+    let start = std::time::Instant::now();
+    let after = session.capture_frame_after_key().unwrap();
+    let elapsed = start.elapsed();
+
+    assert_ne!(
+        before.as_raw(),
+        after.as_raw(),
+        "the fixture's colour-only repaint must reach the rasterizer at all"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(1),
+        "a colour-only redraw must be observed and settled, not outlasted at \
+         MAX_SETTLE_WAIT; took {elapsed:?}"
     );
 }
 

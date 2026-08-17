@@ -5,7 +5,7 @@
 //! key presses and waits (`run_script`).
 
 use crate::keys;
-use crate::render::{self, RenderError};
+use crate::render::{self, ObservableCell, RenderError};
 use crate::script::Step;
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::io::Read;
@@ -173,6 +173,24 @@ fn dsr_query_seen(carry: &mut Vec<u8>, chunk: &[u8]) -> bool {
     let drop = carry.len() - keep;
     carry.drain(..drop);
     found
+}
+
+/// One-line, machine-greppable companion to `Session::dump_quiescence_debug`,
+/// gated behind the same `VS_DEBUG_QUIESCENCE=1` env var and equally inert
+/// without it. Reports, per *capture* rather than per session, which wait
+/// strategy ran, how long that single call actually blocked, which break
+/// path it took and how many polls it needed — the measurement the verbose
+/// dump's `Session::spawn`-relative `elapsed_ms` cannot give, since that
+/// clock keeps running across every capture in a scripted run, and the
+/// number the Slice 2 before/after timing table is built from.
+fn dump_quiescence_timing(which: &str, elapsed: Duration, break_path: &str, polls: u32) {
+    if std::env::var("VS_DEBUG_QUIESCENCE").as_deref() != Ok("1") {
+        return;
+    }
+    let elapsed_ms = elapsed.as_millis();
+    eprintln!(
+        "VS_QUIESCENCE_TIMING wait={which} elapsed_ms={elapsed_ms} break_path={break_path} polls={polls}"
+    );
 }
 
 /// An active PTY-attached child process plus a background thread
@@ -396,16 +414,26 @@ impl Session {
     /// `wait_for_first_output`.
     ///
     /// Polls every `POLL_INTERVAL`, feeding any newly arrived bytes
-    /// into the parser and comparing the parser's rendered *screen
-    /// contents* (`vt100::Screen::contents`, plain text only — see the
-    /// color/attribute caveat below) between two consecutive polls
-    /// *taken during this call*. Once two consecutive polls agree, the
-    /// draw is treated as complete. If polls never agree within
+    /// into the parser and comparing the parser's *observable screen
+    /// state* (`render::observable_screen` — every cell's glyph,
+    /// foreground, background and attributes) between two consecutive
+    /// polls *taken during this call*. Once two consecutive polls agree,
+    /// the draw is treated as complete. If polls never agree within
     /// `MAX_SETTLE_WAIT` (a draw that's still actively changing right
     /// up to the deadline), it gives up and returns whatever's there as
     /// a bounded fallback.
     ///
-    /// Comparing rendered text instead of raw bytes matters: a real
+    /// **Invariant: quiescence must compare exactly what `render_screen`
+    /// reads.** Both go through `render::observable_screen`, so anything
+    /// that would change a pixel in the captured frame counts as "still
+    /// drawing", and anything the rasterizer ignores cannot. This
+    /// comparison used to be plain text only (`vt100::Screen::contents`),
+    /// which made a redraw changing only colour — a fade-in, a background
+    /// fill, a pulsing border — literally invisible to the wait that
+    /// decides the redraw is finished, capturing the app mid-animation
+    /// (#139, #131).
+    ///
+    /// Comparing rendered state instead of raw bytes matters: a real
     /// terminal app's startup emits several escape sequences
     /// (input-mode negotiation, focus-event enabling, window title,
     /// cursor-visibility toggles — all observed in practice from
@@ -417,39 +445,36 @@ impl Session {
     /// first draw, and quiesces on exactly the wrong moment — caught by
     /// `capture_frame_waits_past_the_old_fixed_settle_delay_for_a_slow_
     /// first_draw` failing under an earlier byte-counting version of
-    /// this fix (see the Task 12 flakiness fix report). Comparing
-    /// rendered contents means only changes that `render_screen` would
+    /// this fix (see the Task 12 flakiness fix report). Comparing the
+    /// observable screen means only changes that `render_screen` would
     /// actually show ever count as "still drawing", so non-visual setup
     /// noise can't fool quiescence no matter what escape sequences a
     /// given app's terminal library happens to emit.
-    ///
-    /// Caveat: this comparison is plain text only, so a redraw that
-    /// changes *only* color/attributes — e.g. a color transition or
-    /// cursor blink with no text change — won't register as "changed"
-    /// and would hit the full `MAX_SETTLE_WAIT` rather than being
-    /// detected as quiescent early. The final rasterized frame is still
-    /// correct either way, since `render_screen` reads the full
-    /// color/attribute state regardless of what quiescence-detection
-    /// compared — this only affects how quickly a *purely stylistic*
-    /// redraw is recognized as finished, not what gets rendered.
     fn wait_for_further_output(&mut self, deadline: Instant) {
-        let mut previous_poll_contents: Option<String> = None;
+        let started_at = Instant::now();
+        let mut polls: u32 = 0;
+        let break_path;
+        let mut previous_poll_screen: Option<Vec<ObservableCell>> = None;
         loop {
             thread::sleep(POLL_INTERVAL);
             self.drain_pending_into_parser();
-            let current_contents = self.parser.screen().contents();
-            if previous_poll_contents.as_ref() == Some(&current_contents) {
+            polls += 1;
+            let current_screen = render::observable_screen(self.parser.screen());
+            if previous_poll_screen.as_ref() == Some(&current_screen) {
                 // This poll matches the immediately preceding one
                 // (taken during this same call): the screen has held
                 // steady for a full poll interval, so the current draw
                 // is very likely finished.
+                break_path = "stable_poll_pair";
                 break;
             }
-            previous_poll_contents = Some(current_contents);
+            previous_poll_screen = Some(current_screen);
             if Instant::now() >= deadline {
+                break_path = "deadline";
                 break;
             }
         }
+        dump_quiescence_timing("further", started_at.elapsed(), break_path, polls);
     }
 
     /// Quiescence strategy for a session's very first capture, and for
@@ -461,7 +486,7 @@ impl Session {
     /// literally the session's first capture.
     ///
     /// Only ever declares the draw complete after actually observing
-    /// the rendered screen contents change at least once *during this
+    /// the observable screen state change at least once *during this
     /// call* (relative to whatever the screen looked like at call
     /// entry) and then hold steady for a full poll interval. If the
     /// screen never changes at all, it waits out the entire
@@ -470,8 +495,16 @@ impl Session {
     /// exactly the ambiguity this method exists to resolve safely, in
     /// exchange for potentially waiting the full bound when a child
     /// genuinely never draws without input.
+    ///
+    /// **Invariant: quiescence must compare exactly what `render_screen`
+    /// reads** — the comparison is `render::observable_screen`, the same
+    /// extraction the rasterizer consumes, so a colour-only reaction (the
+    /// `omnitrix` boot fade of #139, `color_only_redraw`'s repaint) is a
+    /// real observed change here rather than something this wait can only
+    /// outlast.
     fn wait_for_first_output(&mut self, deadline: Instant) {
-        let mut last_contents = self.parser.screen().contents();
+        let started_at = Instant::now();
+        let mut last_screen = render::observable_screen(self.parser.screen());
         let mut changed_at_least_once = false;
         let mut polls: u32 = 0;
         let break_path;
@@ -479,9 +512,9 @@ impl Session {
             thread::sleep(POLL_INTERVAL);
             self.drain_pending_into_parser();
             polls += 1;
-            let current_contents = self.parser.screen().contents();
-            if current_contents != last_contents {
-                last_contents = current_contents;
+            let current_screen = render::observable_screen(self.parser.screen());
+            if current_screen != last_screen {
+                last_screen = current_screen;
                 changed_at_least_once = true;
             } else if changed_at_least_once {
                 // The screen changed earlier in this call and hasn't
@@ -495,6 +528,7 @@ impl Session {
                 break;
             }
         }
+        dump_quiescence_timing("first", started_at.elapsed(), break_path, polls);
         self.dump_quiescence_debug(break_path, polls);
     }
 
