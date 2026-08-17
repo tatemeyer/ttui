@@ -1,0 +1,115 @@
+scenarios:
+  - name: omnitrix-dial-rotate
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example omnitrix --size 120x40
+      --script .plumb/scripts/omnitrix-dial-rotate.json
+      --out {out}.gif
+    intent: >
+      After boot clears, the Omnitrix settles on the Faceplate screen:
+      three alien-mode labels (Brainstorm, Fasttrack, Upgrade) sit at
+      fixed points around a dotted ring, with the currently selected
+      label shown in inverse video next to a centre pointer glyph. As
+      Tab is pressed, the highlighted label and pointer advance around
+      the ring in order: Brainstorm, then Fasttrack, then Upgrade. The
+      dashed green border and the "Tab/Shift+Tab cycle * Enter launch *
+      q quit" hint bar stay visible throughout and are not tied to the
+      selection.
+    expects: []
+    touches:
+      - src/widgets/**
+      - src/camera.rs
+      - src/easing.rs
+      - examples/omnitrix/**
+  - name: tardis-console-idle
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example tardis --size 120x40
+      --script .plumb/scripts/tardis-console-idle.json
+      --out {out}.gif
+    intent: >
+      The TARDIS finishes its materialization boot sequence and settles
+      into the idle console hub. The time rotor rotates continuously in
+      the centre of the display, the currently selected face's name is
+      shown at the top, and the rotate/select/quit hint stays legible at
+      the bottom throughout.
+    expects: []
+    touches:
+      - src/widgets/**
+      - src/canvas.rs
+      - examples/tardis/**
+  - name: falcon-glitch-burst
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example falcon --size 120x40
+      --script .plumb/scripts/falcon-glitch-burst.json
+      --out {out}.gif
+    intent: >
+      Falcon boots, then percussive maintenance triggers a corruption
+      burst across all three cockpit instrument panels. The panels are
+      heavily garbled at the peak of the burst, then clear and settle
+      back into a legible, running dashboard.
+    expects:
+      - visual-corruption
+    touches:
+      - src/glitch.rs
+      - src/effects.rs
+      - examples/falcon/**
+  - name: mission-control-telemetry
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example mission_control --size 120x40
+      --script .plumb/scripts/mission-control-telemetry.json
+      --out {out}.gif
+    intent: >
+      Mission Control shows a 2x2 grid of bordered panels: three
+      sparklines (Altitude, Velocity, Signal Strength, in blue, blue
+      and orange respectively) and one horizontal bar chart (Subsystem
+      Status) with five labelled bars (Engines, Life Support, Comms,
+      Nav, Power). All four panel titles stay legible throughout. The
+      sparkline traces are the clearest source of motion: each starts
+      as a near-empty stub in the earliest frame and builds left to
+      right into a full, continuously jittering trace spanning the
+      panel width by the final frames. The five subsystem bars stay
+      long throughout (each already near-full width in frame one,
+      reflecting healthy ~90% starting values) and drift only slightly
+      frame to frame.
+    expects: []
+    touches:
+      - src/widgets/sparkline.rs
+      - src/widgets/bar_chart.rs
+      - src/widgets/block.rs
+      - examples/mission_control.rs
+  - name: control-panel-launch-click
+    adapter: command
+    args: >
+      cargo run -p visual-snapshot --
+      --example control_panel --size 120x40
+      --script .plumb/scripts/control-panel-launch-click.json
+      --out {out}.gif
+    intent: >
+      Control Panel opens on a static idle screen: an empty LAUNCH
+      panel reading "Click to launch", three toggle panels (POWER,
+      SHIELDS, COMMS) each showing an unlit analog toggle, and a MODE
+      dial with STANDBY selected among a dotted ring of STEALTH,
+      PATROL and COMBAT. Clicking inside the LAUNCH panel spawns a
+      shower of accent-coloured asterisk sparks at the click point:
+      the frame immediately after the click shows a single spark,
+      and the following frame shows it has spread into a small
+      cluster of particles scattered around that point. By the final
+      frame the sparks have fully faded and the LAUNCH panel is empty
+      again. The toggles and MODE dial are never clicked in this
+      script and stay unchanged (all toggles unlit, STANDBY selected)
+      throughout.
+    expects: []
+    touches:
+      - src/widgets/analog_toggle.rs
+      - src/widgets/block.rs
+      - src/widgets/dial.rs
+      - src/widgets/text.rs
+      - src/particles.rs
+      - examples/control_panel.rs

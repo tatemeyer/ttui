@@ -158,6 +158,64 @@ environment) — verified manually, the same pattern already used for
 real-TTY tests above, and noted in the PR template's Verification
 section when used.
 
+**Plumb (`/plumb:review`) adds the judgment half on top of this.**
+`tools/visual-snapshot` is not replaced — it stays exactly as described
+above, and `/plumb:review` runs it verbatim through the `command`
+adapter to capture the scenarios a change touches, then layers a
+blinded, adversarial multi-lens review on top. Each lens agent sees
+only the captured image and the run manifest, never the source or the
+diff, so it can't fall back on "the code draws three panes, so there
+are three panes" instead of looking. Verdict vocabulary is **GO /
+NO-GO / HOLD**. Four lenses: `breakage` always applies, `intent`
+applies when the scenario declares one — both are blocker-capable and
+can hold a run. `design` (when `.plumb/taste.md` exists) and `motion`
+(multi-frame captures only) are advisory: capped at `major` severity
+and can never hold a run on their own.
+
+A **NO-GO** means the task may not be claimed complete and no PR may
+be opened until every blocker is fixed, overruled, or deferred with a
+note. Overruling writes a **ruling**, which suppresses that finding on
+later runs — scoped to the scenario by default, and invalidated the
+moment `.plumb/taste.md` changes, since a moved aesthetic is exactly
+when an old rejection stops being valid. A **HOLD is not a GO**: it
+names which lens couldn't report (a failed capture, or agent output
+that stayed unparseable after one retry) and blocks the same way a
+NO-GO does until resolved.
+
+The gate is convention-enforced inside the harness and human-
+overridable — **not a required status check** — and maps onto the
+existing Direct/Gated/Human autonomy tiers (`git-github-standards.md`)
+without inventing a fourth: a clean or advisory-only verdict leaves
+`coding`/`research`-tagged work gated on its usual four checks
+(`build`/`test`/`clippy`/`fmt`); an unresolved blocker holds the work
+regardless of those checks until you fix or overrule it. Record the
+reviewed run directory in the PR template's Verification section, the
+same pattern already used for real-TTY test results and
+visual-snapshot captures above.
+
+**Where TTUI's Plumb state lives:** `.plumb/config.yaml` (the scenario
+library), `.plumb/taste.md` (the declared aesthetic the `design` lens
+judges against), `.plumb/scripts/` (capture scripts), `.plumb/
+SCENARIOS.md` — read it before authoring a new scenario, it encodes
+mistakes this project already paid for — and `.plumb/runs/`
+(gitignored).
+
+**Scenario library, honestly partial:** five scenarios exist today —
+`omnitrix-dial-rotate`, `tardis-console-idle`, `falcon-glitch-burst`,
+`mission-control-telemetry`, `control-panel-launch-click`. A scenario
+that exists gets reviewed; one that doesn't simply isn't selected.
+This is coverage of five captured screens, not of every
+rendering-affecting path.
+
+**Two known limitations:** `falcon-glitch-burst` is roughly 1-in-3
+flaky — its scripted key chord can silently expire before it fires
+(ttui#138) — so a run showing only ambient single-panel flicker
+instead of the intended three-panel burst is a capture miss, not a
+`src/glitch.rs` regression. And `on_unmapped_glyph: substitute` is a
+Plumb-only field that requires `adapter: pty`; it does not exist in
+`tools/visual-snapshot` at all, and declaring it on an `adapter:
+command` scenario parses but silently does nothing.
+
 ## Commit conventions
 
 Conventional Commits: `type(scope): description`.

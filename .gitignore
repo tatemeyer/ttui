@@ -27,3 +27,6 @@ omnitrix_perf.log
 # Superpowers brainstorming companion mockups
 .superpowers/
 
+
+# Plumb capture runs (generated artifacts, not committed)
+.plumb/runs/
