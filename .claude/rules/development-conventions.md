@@ -207,14 +207,25 @@ that exists gets reviewed; one that doesn't simply isn't selected.
 This is coverage of five captured screens, not of every
 rendering-affecting path.
 
-**Two known limitations:** `falcon-glitch-burst` is roughly 1-in-3
-flaky — its scripted key chord can silently expire before it fires
-(ttui#138) — so a run showing only ambient single-panel flicker
-instead of the intended three-panel burst is a capture miss, not a
-`src/glitch.rs` regression. And `on_unmapped_glyph: substitute` is a
-Plumb-only field that requires `adapter: pty`; it does not exist in
-`tools/visual-snapshot` at all, and declaring it on an `adapter:
-command` scenario parses but silently does nothing.
+**Two known limitations:** a scripted key that produces **no visible
+change at all**, in an app that isn't otherwise animating, still costs
+the full `MAX_SETTLE_WAIT` (2000ms) — the capture has no way to tell
+"the app will react shortly" from "the app will never react" except by
+waiting it out. If that exceeds the app's own `InputBinder`
+`chord_timeout`, a scripted chord expires between keys and silently
+never fires (ttui#127). Measured: an unbound key sent to
+`control_panel` rides `break_path=deadline` at 2009ms. Apps that
+animate continuously are unaffected, because ambient motion satisfies
+the change detector — which is why `falcon-glitch-burst` is now
+reliable (10/10 runs, ~45ms per key against its 1500ms
+`chord_timeout`) despite being the scenario that originally exposed
+this. **Prefer a chord timeout comfortably above 2s, or a scenario
+whose keys visibly change something, until ttui#127 is closed.**
+
+And `on_unmapped_glyph: substitute` is a Plumb-only field that
+requires `adapter: pty`; it does not exist in `tools/visual-snapshot`
+at all, and declaring it on an `adapter: command` scenario parses but
+silently does nothing.
 
 ## Commit conventions
 
