@@ -94,6 +94,26 @@ appears exactly where an app opens on a colour-only transition.
 
 The substance of the Arc. Closes #131, and #139 if Slice 1 pointed here.
 
+**Status: Tasks 4-6 and 8 Step 1 ✅ landed. Task 7 ❌ failed its
+acceptance bar — the design premise was wrong, and the Arc is paused for
+a decision. Task 8 Steps 3-5 are blocked behind it.**
+
+The color-aware signal works and costs essentially nothing (re-measured
+baselines are within noise of pre-Arc). What failed is the *stability
+criterion*: a hold-still window cannot work for apps that never hold
+still, and TTUI's examples mostly never do — `MAX_SETTLE_WAIT` became the
+primary exit for 4 of 5 scenarios at every candidate value. See the
+design's "Measured: the stability-criterion premise is wrong" and
+"Revised direction: settle after the observed change" for the evidence
+and the proposed replacement.
+
+Rejected work preserved on `spike/stable-window-sweep` (`c32dc4d`), not
+merged into this Arc.
+
+**#139 and #131 remain open.** #131 is likely closable by Tasks 4-6
+alone; #139 is not, and provably cannot be closed by any hold-still
+criterion.
+
 ### Task 4: Give quiescence and the rasterizer one definition of observable state
 
 **Files:** `tools/visual-snapshot/src/render.rs`, `tools/visual-snapshot/src/pty.rs`

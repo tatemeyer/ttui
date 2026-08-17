@@ -225,6 +225,90 @@ instrumentation and TTUI's actual examples, not chosen up front. **A
 capture that always rides the deadline is a failed Slice 2**, and that is
 the acceptance bar.
 
+### Measured: the stability-criterion premise is wrong
+
+A time-based hold-still window (`STABLE_WINDOW`) was implemented and
+swept at 60/100/150/250ms across all five scenarios. **No candidate
+passed the acceptance bar.** The work is preserved on
+`spike/stable-window-sweep` (`c32dc4d`) and is not part of this Arc.
+
+The reason is structural, not a tuning failure:
+
+> **TTUI's examples never hold still.** `mission-control`'s sparklines
+> jitter on every tick forever, `falcon`'s dashboard runs continuously,
+> `omnitrix` breathes its border every 33ms indefinitely, `tardis` turns
+> its rotor. Under a colour-aware signal there is no window longer than
+> one frame period in which those screens are unchanged, so
+> `MAX_SETTLE_WAIT` stops being a safety valve and becomes the *primary
+> exit path* — 4 of 5 scenarios, at every candidate.
+
+The sweep incidentally measured each app's longest still period:
+`control-panel` ∞ (genuinely static), `omnitrix` 100-150ms, `tardis` and
+`falcon` 60-100ms, `mission-control` **under 60ms — never settles at any
+candidate**.
+
+This also explains the old rule's apparent success. The one-stable-poll
+criterion never rode the deadline *only* because `POLL_INTERVAL` (20ms)
+is shorter than a typical tick (33ms), so a consecutive poll pair lands
+inside one frame gap and reads as stable. It was aliasing against the
+frame rate, not detecting stillness. Closing that hole is correct, and
+the deadline rides are what closing it actually costs.
+
+Three further findings, all load-bearing:
+
+1. **#139 cannot be fixed by any hold-still window — provably.**
+   `render_boot` animates continuously until `progress == 0.4`, then
+   holds a *solid green full-screen flash* for 375ms. That flash is the
+   first genuinely still moment in the sequence, so every candidate lands
+   in it: measured frame-0 break times track `flash_start +
+   STABLE_WINDOW` linearly (1045ms → 1177ms → 1219ms → 1327ms). The
+   legible-hourglass phase the acceptance bar asks for is *precisely the
+   phase that never stops changing*. A solid green panel is as
+   uninformative to a Plumb critic as a solid black one.
+2. **Longer windows delete transient content** — a failure mode the
+   acceptance bar did not anticipate. At 100ms and above,
+   `control-panel`'s click sparks vanish entirely (frame-to-frame changed
+   pixels `[0,0,0]`, versus `[96,96,0]` at baseline): the wait outlasts
+   the particles' lifetime and captures the aftermath.
+3. **Colour-awareness itself costs essentially nothing.** Re-measured
+   baselines put Tasks 4-6 within noise of the pre-Arc numbers. Every
+   cost above comes from the stability criterion, not from the signal.
+
+### Revised direction: settle after the observed change, don't wait for stillness
+
+The correct model is not "wait until the drawing stops" — for these apps
+it never does. It is **"wait for evidence the app has drawn, then capture
+at a bounded, intentional moment."**
+
+Anchoring the settle to the *observed first change* rather than to the
+send time is what makes this different from the old `SETTLE_DELAY` that
+`MAX_SETTLE_WAIT` replaced. `SETTLE_DELAY` failed because it assumed a
+draw lands within a fixed time of being *asked for*, and real
+startup-to-first-draw latency was measured varying up to ~1.9s.
+Anchoring to the change removes that assumption entirely — and the
+colour-aware signal from Tasks 4-6 is what makes "observed first change"
+reliable enough to anchor to.
+
+**The two waits must therefore stay separate** (reversing this design's
+open question 2, which asked whether they collapse). They have genuinely
+different goals, and the sweep proved the goals conflict:
+
+- **Initial capture** — the app may need up to ~1.9s to draw at all, and
+  its opening state needs long enough to become legible. Wants a
+  *longer* settle after the first change.
+- **Post-key / post-click capture** — must catch the *reaction*, and
+  transient content dies fast (`control-panel`'s sparks are gone by
+  ~100ms). Wants a *short* settle.
+
+A single constant cannot serve both; that conflict is why one window
+could not satisfy every scenario at once.
+
+Whether the early-exit-on-stillness path is kept at all is the open
+question for this direction. For `omnitrix` it must not be: the screen
+reads as still within one poll, so an early exit reintroduces exactly the
+aliasing that produces the black frame. A fixed settle anchored to the
+observed change is deterministic and immune to it.
+
 ## Verification
 
 Every slice's changes are verified by the four required checks plus:
