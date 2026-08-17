@@ -24,6 +24,12 @@ Provide findings grouped by risk level (high/medium/low) with:
 - Overall merge recommendation
 
 ## Token Efficiency Rules
-- ALWAYS start with `get_minimal_context(task="<your task>")` before any other graph tool.
-- Use `detail_level="minimal"` on all calls. Only escalate to "standard" when minimal is insufficient.
+- ALWAYS start with `get_minimal_context_tool(task="<your task>")` before any other graph tool.
+- Use `detail_level="minimal"` on the tools that accept it — `query_graph_tool`,
+  `semantic_search_nodes_tool`, `list_communities_tool`, `get_architecture_overview_tool`,
+  `list_flows_tool`, `detect_changes_tool`, `get_impact_radius_tool`,
+  `get_review_context_tool`. Only escalate to "standard" when minimal is insufficient.
+  Passing `detail_level` to a tool that does not accept it (e.g. `list_graph_stats_tool`,
+  `find_large_functions_tool`, `get_flow_tool`, `get_minimal_context_tool`) is a hard
+  validation error, not a silently-ignored argument.
 - Target: complete any review/debug/refactor task in ≤5 tool calls and ≤800 total output tokens.
