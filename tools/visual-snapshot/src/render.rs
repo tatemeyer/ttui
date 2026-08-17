@@ -31,80 +31,200 @@ fn bg_to_rgb(c: vt100::Color) -> image::Rgb<u8> {
     }
 }
 
+/// The per-cell state that actually reaches the rasterizer: the resolved
+/// glyph, its already-`to_rgb`'d foreground and background, and the three
+/// attributes `render_screen` acts on.
+///
+/// **Invariant: quiescence must compare exactly what `render_screen`
+/// reads.** `pty::Session`'s quiescence polling compares these values and
+/// `render_screen` rasterizes them, from this one extraction path — so a
+/// redraw that would change a pixel cannot be invisible to the wait that
+/// decides the redraw is finished. Historically the two were maintained
+/// separately (quiescence on `vt100::Screen::contents()`, plain text only)
+/// and silently diverged, which is exactly how a colour-only fade-in got
+/// captured at its blackest instant (#139, #131). Anything added here must
+/// therefore be something `render_screen` genuinely renders, and anything
+/// `render_screen` starts rendering must be added here.
+///
+/// Deliberately *not* included: `vt100`'s cursor position and visibility,
+/// title, and dim/italic/strikethrough — `render_screen` renders none of
+/// them, so letting them count as "still changing" would make a blinking
+/// cursor look like an unfinished draw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ObservableCell {
+    ch: char,
+    fg: image::Rgb<u8>,
+    bg: image::Rgb<u8>,
+    bold: bool,
+    underline: bool,
+    inverse: bool,
+}
+
+/// Extracts one cell's observable state. `None` — a position the parser
+/// has no cell for at all — is the blank default `render_screen` has
+/// always drawn for it: a space in the default foreground on black.
+fn observable_cell(cell: Option<&vt100::Cell>) -> ObservableCell {
+    match cell {
+        Some(c) => ObservableCell {
+            // Known caveat: this takes only the cell's first char, so a
+            // combining mark stacked onto a base character (rare in
+            // TTUI's own glyph set, but not impossible in arbitrary
+            // terminal output) is silently dropped rather than composed,
+            // and a double-width glyph's trailing continuation cell
+            // (which `vt100` represents as an empty-string cell) renders
+            // as blank rather than widened. Not a known issue in practice
+            // for TTUI's current widgets, which draw single-width glyphs.
+            ch: c.contents().chars().next().unwrap_or(' '),
+            fg: color::to_rgb(c.fgcolor()),
+            bg: bg_to_rgb(c.bgcolor()),
+            bold: c.bold(),
+            underline: c.underline(),
+            inverse: c.inverse(),
+        },
+        None => ObservableCell {
+            ch: ' ',
+            fg: color::to_rgb(vt100::Color::Default),
+            bg: image::Rgb([0u8, 0, 0]),
+            bold: false,
+            underline: false,
+            inverse: false,
+        },
+    }
+}
+
+/// The whole screen's observable state, row-major (index
+/// `row * cols + col`), as both `render_screen` and `pty`'s quiescence
+/// polling see it.
+///
+/// **Invariant: quiescence must compare exactly what `render_screen`
+/// reads** — see `ObservableCell`. `render_screen` consumes this exact
+/// function's output rather than re-deriving cell state of its own, so
+/// the signal and the artifact cannot silently diverge.
+pub(crate) fn observable_screen(screen: &vt100::Screen) -> Vec<ObservableCell> {
+    let (rows, cols) = screen.size();
+    let mut cells = Vec::with_capacity(rows as usize * cols as usize);
+    for row in 0..rows {
+        for col in 0..cols {
+            cells.push(observable_cell(screen.cell(row, col)));
+        }
+    }
+    cells
+}
+
+/// Copies `screen`'s raw parser cells into `buf`, reusing whatever
+/// allocation `buf` already holds.
+///
+/// This is the snapshot `pty::Session`'s quiescence polling compares
+/// between polls, and it deliberately stores `vt100::Cell`s rather than
+/// `ObservableCell`s. `Cell` is a plain inline value (six `char`s, a
+/// length byte and its attributes) so cloning one is a memcpy, whereas
+/// projecting one costs a heap allocation: `vt100::Cell::contents()`
+/// returns a `String`, which at 120x40 is ~4800 allocations *per poll*
+/// for the whole life of a capture. That cost is not theoretical — it
+/// stretched the effective poll cadence by ~37% (21.5ms to 27.5ms
+/// against a nominal 20ms `POLL_INTERVAL`) when quiescence first started
+/// comparing observable state, which in turn shifted how the criterion
+/// aliased against real apps' frame rates. Comparison happens through
+/// `observably_differ`, which restores the observable semantics without
+/// paying that price.
+///
+/// A position the parser has no cell for at all is stored as
+/// `Cell::default()`, which projects to exactly the same `ObservableCell`
+/// as an absent cell does — pinned by
+/// `an_absent_cell_and_a_default_cell_project_identically`.
+pub(crate) fn snapshot_cells(screen: &vt100::Screen, buf: &mut Vec<vt100::Cell>) {
+    let (rows, cols) = screen.size();
+    buf.clear();
+    buf.reserve(rows as usize * cols as usize);
+    for row in 0..rows {
+        for col in 0..cols {
+            buf.push(screen.cell(row, col).cloned().unwrap_or_default());
+        }
+    }
+}
+
+/// Whether two `snapshot_cells` snapshots differ in any way
+/// `render_screen` would rasterize differently — the quiescence signal
+/// itself.
+///
+/// **Invariant: quiescence must compare exactly what `render_screen`
+/// reads.** The verdict for any pair of cells is `observable_cell`'s,
+/// the same projection `render_screen` consumes, so this is precisely a
+/// comparison of `observable_screen` outputs — just one that does not
+/// have to materialize them.
+///
+/// The `x != y` short-circuit is what makes that affordable, and it is
+/// sound in exactly one direction: `vt100::Cell`'s own `PartialEq`
+/// compares its codepoints and *every* attribute it parses, so it is
+/// strictly finer than the projection. Raw-equal cells therefore cannot
+/// project to different `ObservableCell`s and can be skipped outright;
+/// raw-*unequal* cells prove nothing on their own (`Cell` equality sees
+/// italic, and distinguishes colour encodings that `to_rgb` collapses to
+/// the same pixel), so those — and only those — are projected and
+/// compared properly. In a real redraw that is a handful of cells rather
+/// than all of them.
+pub(crate) fn observably_differ(a: &[vt100::Cell], b: &[vt100::Cell]) -> bool {
+    if a.len() != b.len() {
+        return true;
+    }
+    a.iter()
+        .zip(b.iter())
+        .any(|(x, y)| x != y && observable_cell(Some(x)) != observable_cell(Some(y)))
+}
+
 /// Rasterizes a parsed terminal screen to a 2x-upscaled RGBA image,
 /// one 16x16 block per cell.
+///
+/// Reads the screen only through `observable_screen`, which is also what
+/// quiescence compares — see `ObservableCell` for why that shared path is
+/// load-bearing rather than incidental.
 pub fn render_screen(screen: &vt100::Screen) -> Result<RgbaImage, RenderError> {
     let (rows, cols) = screen.size();
     let mut img = RgbaImage::new(cols as u32 * CELL_PX, rows as u32 * CELL_PX);
 
-    for row in 0..rows {
-        for col in 0..cols {
-            let cell = screen.cell(row, col);
-            let (ch, fg, bg, bold, underline, inverse) = match cell {
-                Some(c) => (
-                    // Known caveat: this takes only the cell's first char,
-                    // so a combining mark stacked onto a base character
-                    // (rare in TTUI's own glyph set, but not impossible in
-                    // arbitrary terminal output) is silently dropped rather
-                    // than composed, and a double-width glyph's trailing
-                    // continuation cell (which `vt100` represents as an
-                    // empty-string cell) renders as blank rather than
-                    // widened. Not a known issue in practice for TTUI's
-                    // current widgets, which draw single-width glyphs.
-                    c.contents().chars().next().unwrap_or(' '),
-                    color::to_rgb(c.fgcolor()),
-                    bg_to_rgb(c.bgcolor()),
-                    c.bold(),
-                    c.underline(),
-                    c.inverse(),
-                ),
-                None => (
-                    ' ',
-                    color::to_rgb(vt100::Color::Default),
-                    image::Rgb([0u8, 0, 0]),
-                    false,
-                    false,
-                    false,
-                ),
-            };
+    for (index, cell) in observable_screen(screen).into_iter().enumerate() {
+        // Row-major, as documented on `observable_screen`. `cols` cannot
+        // be zero here: a zero-column screen yields no cells at all, so
+        // this body never runs.
+        let row = (index / cols as usize) as u16;
+        let col = (index % cols as usize) as u16;
 
-            let mut fg = fg;
-            let mut bg = bg;
-            if bold {
-                fg = color::brighten(fg);
-            }
-            if inverse {
-                let (nf, nb) = color::swap(fg, bg);
-                fg = nf;
-                bg = nb;
-            }
+        let mut fg = cell.fg;
+        let mut bg = cell.bg;
+        if cell.bold {
+            fg = color::brighten(fg);
+        }
+        if cell.inverse {
+            let (nf, nb) = color::swap(fg, bg);
+            fg = nf;
+            bg = nb;
+        }
 
-            let bitmap = glyph::glyph_for(ch).map_err(|e| RenderError::Glyph(e, row, col))?;
+        let bitmap = glyph::glyph_for(cell.ch).map_err(|e| RenderError::Glyph(e, row, col))?;
 
-            let ox = col as u32 * CELL_PX;
-            let oy = row as u32 * CELL_PX;
-            for gy in 0..GLYPH_PX {
-                let row_bits = bitmap[gy as usize];
-                for gx in 0..GLYPH_PX {
-                    let set = (row_bits >> gx) & 1 == 1;
-                    let px = if set { fg } else { bg };
-                    for sy in 0..SCALE {
-                        for sx in 0..SCALE {
-                            img.put_pixel(
-                                ox + gx * SCALE + sx,
-                                oy + gy * SCALE + sy,
-                                Rgba([px.0[0], px.0[1], px.0[2], 255]),
-                            );
-                        }
+        let ox = col as u32 * CELL_PX;
+        let oy = row as u32 * CELL_PX;
+        for gy in 0..GLYPH_PX {
+            let row_bits = bitmap[gy as usize];
+            for gx in 0..GLYPH_PX {
+                let set = (row_bits >> gx) & 1 == 1;
+                let px = if set { fg } else { bg };
+                for sy in 0..SCALE {
+                    for sx in 0..SCALE {
+                        img.put_pixel(
+                            ox + gx * SCALE + sx,
+                            oy + gy * SCALE + sy,
+                            Rgba([px.0[0], px.0[1], px.0[2], 255]),
+                        );
                     }
                 }
             }
+        }
 
-            if underline {
-                let fg_px = Rgba([fg.0[0], fg.0[1], fg.0[2], 255]);
-                for x in 0..CELL_PX {
-                    img.put_pixel(ox + x, oy + CELL_PX - 1, fg_px);
-                }
+        if cell.underline {
+            let fg_px = Rgba([fg.0[0], fg.0[1], fg.0[2], 255]);
+            for x in 0..CELL_PX {
+                img.put_pixel(ox + x, oy + CELL_PX - 1, fg_px);
             }
         }
     }
@@ -170,6 +290,132 @@ mod tests {
         let img = render_screen(parser.screen()).unwrap();
         let bottom_row_pixel = img.get_pixel(0, CELL_PX - 1);
         assert_eq!(*bottom_row_pixel, image::Rgba([229, 229, 229, 255]));
+    }
+
+    /// The defect this whole Arc exists to close, stated at the level of
+    /// the extraction function: `Screen::contents()` — the old quiescence
+    /// signal — reports these two screens as identical, because the only
+    /// difference between them is background colour. `observable_screen`
+    /// is what quiescence compares instead precisely so that a redraw
+    /// `render_screen` would rasterize differently can never be mistaken
+    /// for "nothing changed". The `assert_eq!` on `contents()` is not
+    /// incidental: it pins the precondition, so this test still proves
+    /// something if `vt100` ever starts reporting attributes there.
+    #[test]
+    fn observable_screen_distinguishes_identical_text_over_different_backgrounds() {
+        let plain = parse(b"abcd");
+        let on_red = parse(b"\x1b[41mabcd\x1b[0m");
+
+        assert_eq!(
+            plain.screen().contents(),
+            on_red.screen().contents(),
+            "precondition: the old plain-text signal cannot tell these apart"
+        );
+        assert_ne!(
+            observable_screen(plain.screen()),
+            observable_screen(on_red.screen()),
+            "observable_screen must see the background change render_screen renders"
+        );
+    }
+
+    /// The Task 4 property, restated at the level of the comparison
+    /// quiescence actually runs. `observably_differ` short-circuits on
+    /// raw `vt100::Cell` equality to avoid allocating a projection per
+    /// cell, so it has its own way to get this wrong — a background-only
+    /// repaint must still register.
+    #[test]
+    fn observably_differ_sees_a_background_only_repaint() {
+        let plain = parse(b"abcd");
+        let on_red = parse(b"\x1b[41mabcd\x1b[0m");
+
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        snapshot_cells(plain.screen(), &mut a);
+        snapshot_cells(on_red.screen(), &mut b);
+
+        assert!(observably_differ(&a, &b));
+    }
+
+    #[test]
+    fn observably_differ_reports_an_unchanged_screen_as_unchanged() {
+        let one = parse(b"\x1b[41mabcd\x1b[0m");
+        let two = parse(b"\x1b[41mabcd\x1b[0m");
+
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        snapshot_cells(one.screen(), &mut a);
+        snapshot_cells(two.screen(), &mut b);
+
+        assert!(!observably_differ(&a, &b));
+    }
+
+    /// Pins the reason `observably_differ` cannot simply *be* raw
+    /// `vt100::Cell` equality. `Cell`'s own `PartialEq` compares every
+    /// attribute it parses, including italic — which `render_screen`
+    /// deliberately does not render (see `ObservableCell`). Comparing raw
+    /// cells outright would make an italic-only repaint read as "still
+    /// drawing" forever, so raw equality may only ever be used as a
+    /// short-circuit for cells that are *identical*, never as the verdict
+    /// for cells that differ.
+    #[test]
+    fn observably_differ_ignores_an_italic_only_change_the_rasterizer_ignores() {
+        let plain = parse(b"abcd");
+        let italic = parse(b"\x1b[3mabcd\x1b[0m");
+
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        snapshot_cells(plain.screen(), &mut a);
+        snapshot_cells(italic.screen(), &mut b);
+
+        assert_ne!(
+            a, b,
+            "precondition: raw cell equality must actually disagree here, \
+             otherwise this test proves nothing"
+        );
+        assert!(
+            !observably_differ(&a, &b),
+            "italic is not rasterized, so an italic-only change is not a redraw"
+        );
+    }
+
+    /// `snapshot_cells` stores `Cell::default()` wherever the parser has
+    /// no cell at all, rather than an `Option`. That is only sound
+    /// because the two project to the same `ObservableCell` — the blank
+    /// space on black `render_screen` has always drawn for an absent
+    /// cell. Pinned here so a future `vt100` change to `Cell::default`
+    /// cannot silently make an absent cell and a default cell rasterize
+    /// differently while quiescence keeps treating them as one.
+    #[test]
+    fn an_absent_cell_and_a_default_cell_project_identically() {
+        assert_eq!(
+            observable_cell(None),
+            observable_cell(Some(&vt100::Cell::default()))
+        );
+    }
+
+    /// The point of `snapshot_cells` taking `&mut Vec` rather than
+    /// returning one: the quiescence loop calls it every `POLL_INTERVAL`
+    /// for the whole life of a capture, so it must reuse the buffer it
+    /// was handed instead of allocating a fresh ~4800-element grid per
+    /// poll. A growing capacity on the second identical call would mean
+    /// it is still allocating.
+    #[test]
+    fn snapshot_cells_reuses_its_buffer_across_polls() {
+        let parser = parse(b"abcd");
+        let mut buf = Vec::new();
+
+        snapshot_cells(parser.screen(), &mut buf);
+        let len = buf.len();
+        let capacity = buf.capacity();
+
+        snapshot_cells(parser.screen(), &mut buf);
+
+        assert_eq!(buf.len(), len);
+        assert_eq!(
+            buf.capacity(),
+            capacity,
+            "a second poll over a same-sized screen must not reallocate"
+        );
     }
 
     #[test]
