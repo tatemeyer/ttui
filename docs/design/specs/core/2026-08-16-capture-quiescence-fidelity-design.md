@@ -274,6 +274,30 @@ Three further findings, all load-bearing:
    baselines put Tasks 4-6 within noise of the pre-Arc numbers. Every
    cost above comes from the stability criterion, not from the signal.
 
+### Resolved separately: #139 was never a capture-timing problem
+
+**#139 is fixed Plumb-side, not here** (Parallax PR #2). Read this before
+implementing the revised direction below on its account — it no longer
+needs to close #139.
+
+`omnitrix-dial-rotate`'s script opens with `wait_ms: 2700` to clear
+`BOOT_MS = 2500`, and the initial frame is captured *before* that wait.
+Frame 0 is inherently a boot frame, so **no capture-timing change can
+make it show the dial.** The `STABLE_WINDOW` sweep proved the stronger
+form: every candidate landed it in boot's solid green flash, which is no
+more informative to a critic than black.
+
+What was actually missing was that the reviewer had no way to *know* what
+the first pane is. The initial frame is implicit in the output contract
+rather than something a scenario asks for, and a blinded lens sees only
+the sheet and the manifest. Plumb now emits a `PreScriptFrame` caveat on
+every multi-frame capture, telling each lens the pane predates the script
+and to judge it only for gross corruption. Verified end to end against
+this repo's own `omnitrix-dial-rotate` scenario.
+
+The direction below therefore stands **only** for #127 — the post-key
+budget — which is a genuine tool-side change and remains unfixed.
+
 ### Revised direction: settle after the observed change, don't wait for stillness
 
 The correct model is not "wait until the drawing stops" — for these apps

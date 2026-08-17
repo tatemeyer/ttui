@@ -224,6 +224,24 @@ docs correction) is.
 
 ## Slice 4 — Prove it through Plumb and close out
 
+**Status: superseded for #139, still open for #127.**
+
+Task 11's acceptance was "the NO-GO clears **on the merits**". That
+blocker was the first pane's emptiness, and it is addressed in Plumb
+rather than here (Parallax PR #2): a `PreScriptFrame` caveat now tells
+every lens the pane was captured before any scripted step ran and to
+judge it only for gross corruption. Verified end to end against this
+repo's `omnitrix-dial-rotate` — 6 frames, contact sheet,
+`caveats: [{"kind": "pre-script-frame"}]`.
+
+No capture-timing change could have satisfied it: frame 0 is captured
+before the script's own `wait_ms: 2700` boot-clearing wait, so it is
+inherently a boot frame. See the design's "Resolved separately".
+
+**A confirming re-run through all four lenses has not been done** — worth
+doing once Parallax PR #2 merges, to see the verdict change for real
+rather than by construction.
+
 ### Task 11: Re-run the audited scenario
 
 **Files:** none — verification.
