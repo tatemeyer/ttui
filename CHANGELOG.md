@@ -7,6 +7,14 @@ this project follows the SemVer policy defined in
 
 ## [Unreleased]
 
+### Fixed
+
+- `app::run` now checks `should_quit()` after `on_tick`, so a
+  timer-driven app (a splash screen, an idle timeout, a finished
+  animation) can exit without waiting for a keypress it may never
+  receive (#30). No public API change; apps that never quit from
+  `on_tick` are unaffected.
+
 ## [1.0.0] - 2026-08-14
 
 ### Added
