@@ -268,6 +268,28 @@ impl AssemblyLineState {
             .map(|(i, _)| i);
 
         if let Some(i) = hit {
+            // Abandon any in-flight reach before retargeting (#132).
+            // `slide` restarts below, but `reach` would otherwise keep
+            // running on the *old* target's timeline — and the catch in
+            // `ReachPhase::Down` fires against whatever `targeted_crate`
+            // names *then*, which by that point is this new crate. The
+            // mascot would catch it without having slid to it.
+            //
+            // Only `Down` needs handling: `Up` never calls `take()`, so
+            // retargeting during a retract is already safe, and letting
+            // it finish retracting is the right behaviour anyway.
+            if self.reach_phase == ReachPhase::Down {
+                // Retract from where the claw actually is rather than
+                // snapping to full depth first: `Up` drives the offset
+                // as `OFFSET * (1 - progress)`, so entering it at
+                // `1 - down_progress` picks up at the same height.
+                let down_progress = self.reach.progress();
+                self.reach = Transition::start(REACH_DURATION);
+                self.reach.tick(Duration::from_secs_f32(
+                    (1.0 - down_progress) * REACH_DURATION.as_secs_f32(),
+                ));
+                self.reach_phase = ReachPhase::Up;
+            }
             if let Some(prev) = self.targeted_crate {
                 self.crates[prev].targeted = false;
             }
@@ -631,5 +653,77 @@ mod tests {
                                            // CRATE_WIDTH once movement resumed.
         assert_eq!(s.crates[1].x, follower_x_when_pause_begins);
         assert_eq!(s.spawn_elapsed, spawn_elapsed_when_pause_begins);
+    }
+
+    /// #132: `handle_click` restarted `slide` but left `reach_phase`,
+    /// `reach` and `mascot_y_offset` alone. Retargeting mid-reach-down
+    /// therefore let the *old* target's reach run to completion on its
+    /// own timeline, and `targeted_crate.take()` by then named the *new*
+    /// crate — catching it before the mascot had slid anywhere near it.
+    #[test]
+    fn retargeting_mid_reach_does_not_catch_the_new_crate_early() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+        assert!(s.crates.len() >= 2, "need two crates to retarget between");
+
+        s.handle_click(s.crates[0].x as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area()); // slide arrives, reach-down begins
+        s.on_tick(REACH_DURATION / 2, area()); // halfway down
+        assert_eq!(s.reach_phase, ReachPhase::Down, "precondition: mid-reach");
+
+        // A second, untargeted crate — legal to click, since the whole
+        // line is paused and it is sitting still.
+        let second = s.crates[1].x as u16;
+        s.handle_click(second, ly);
+
+        // Exactly the remainder of the *old* reach. Before the fix this
+        // completed that reach and caught crate 1 on the spot.
+        s.on_tick(REACH_DURATION / 2, area());
+
+        assert!(
+            !s.crates[1].caught,
+            "the newly targeted crate must not be caught by the previous \
+             target's in-flight reach"
+        );
+        assert!(
+            !s.crates[0].caught,
+            "the abandoned target must not be caught either"
+        );
+    }
+
+    /// The abandoned reach retracts from where the claw actually is.
+    /// Entering `Up` with a fresh `Transition` would drive the offset as
+    /// `OFFSET * (1 - 0)` — i.e. snap the claw to full depth first and
+    /// only then retract, a visible jump downward at the moment the
+    /// player clicks somewhere else.
+    #[test]
+    fn retargeting_mid_reach_retracts_from_the_claws_current_depth() {
+        let mut s = AssemblyLineState::new(area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        s.on_tick(SPAWN_INTERVAL, area());
+        render_to_cache_lane_y(&s);
+        let ly = lane_y(area());
+
+        s.handle_click(s.crates[0].x as u16, ly);
+        s.on_tick(MASCOT_SLIDE_DURATION, area());
+        s.on_tick(REACH_DURATION / 2, area()); // ~halfway down
+        let depth_before = s.mascot_y_offset;
+        assert!(
+            depth_before > 0.0 && depth_before < REACH_DOWN_OFFSET as f32,
+            "precondition: claw partway down, got {depth_before}"
+        );
+
+        s.handle_click(s.crates[1].x as u16, ly);
+        s.on_tick(Duration::ZERO, area()); // recompute offset, advance nothing
+
+        assert!(
+            s.mascot_y_offset <= depth_before + 0.01,
+            "retract must continue from {depth_before}, not snap deeper \
+             (got {})",
+            s.mascot_y_offset
+        );
     }
 }
