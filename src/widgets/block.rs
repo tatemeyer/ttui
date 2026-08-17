@@ -69,7 +69,9 @@ impl<'a> Block<'a> {
                 None => fg,
             }
         };
-        let plain = |x: u16, y: u16| Cell {
+        // The struct-update base every border/title cell is built from:
+        // callers override only `symbol` (and `style`, for the title).
+        let base_cell = |x: u16, y: u16| Cell {
             symbol: ' ',
             fg: ring_fg(x, y),
             bg,
@@ -84,7 +86,7 @@ impl<'a> Block<'a> {
                     ring_area.y,
                     Cell {
                         symbol: border.horizontal,
-                        ..plain(x, ring_area.y)
+                        ..base_cell(x, ring_area.y)
                     },
                 );
                 buf.set(
@@ -92,7 +94,7 @@ impl<'a> Block<'a> {
                     ring_area.y + ring_area.height - 1,
                     Cell {
                         symbol: border.horizontal,
-                        ..plain(x, ring_area.y + ring_area.height - 1)
+                        ..base_cell(x, ring_area.y + ring_area.height - 1)
                     },
                 );
             }
@@ -102,7 +104,7 @@ impl<'a> Block<'a> {
                     y,
                     Cell {
                         symbol: border.vertical,
-                        ..plain(ring_area.x, y)
+                        ..base_cell(ring_area.x, y)
                     },
                 );
                 buf.set(
@@ -110,7 +112,7 @@ impl<'a> Block<'a> {
                     y,
                     Cell {
                         symbol: border.vertical,
-                        ..plain(ring_area.x + ring_area.width - 1, y)
+                        ..base_cell(ring_area.x + ring_area.width - 1, y)
                     },
                 );
             }
@@ -119,7 +121,7 @@ impl<'a> Block<'a> {
                 ring_area.y,
                 Cell {
                     symbol: border.top_left,
-                    ..plain(ring_area.x, ring_area.y)
+                    ..base_cell(ring_area.x, ring_area.y)
                 },
             );
             buf.set(
@@ -127,7 +129,7 @@ impl<'a> Block<'a> {
                 ring_area.y,
                 Cell {
                     symbol: border.top_right,
-                    ..plain(ring_area.x + ring_area.width - 1, ring_area.y)
+                    ..base_cell(ring_area.x + ring_area.width - 1, ring_area.y)
                 },
             );
             buf.set(
@@ -135,7 +137,7 @@ impl<'a> Block<'a> {
                 ring_area.y + ring_area.height - 1,
                 Cell {
                     symbol: border.bottom_left,
-                    ..plain(ring_area.x, ring_area.y + ring_area.height - 1)
+                    ..base_cell(ring_area.x, ring_area.y + ring_area.height - 1)
                 },
             );
             buf.set(
@@ -143,7 +145,7 @@ impl<'a> Block<'a> {
                 ring_area.y + ring_area.height - 1,
                 Cell {
                     symbol: border.bottom_right,
-                    ..plain(
+                    ..base_cell(
                         ring_area.x + ring_area.width - 1,
                         ring_area.y + ring_area.height - 1,
                     )
@@ -183,8 +185,14 @@ impl<'a> Block<'a> {
                     area.y,
                     Cell {
                         symbol: ch,
+                        // Load-bearing: without this override the title
+                        // silently inherits the theme's `border_style`
+                        // (bold borders would bold the title too). Deleting
+                        // it still compiles — `title_cells_are_not_bold_
+                        // even_when_theme_border_style_is_bold` is what
+                        // catches it.
                         style: CellStyle::default(),
-                        ..plain(x, area.y)
+                        ..base_cell(x, area.y)
                     },
                 );
             }
@@ -508,6 +516,14 @@ mod tests {
 
         assert_eq!(buf.get(1, 0).style.intensity, Intensity::Normal); // 'H'
         assert_eq!(buf.get(2, 0).style.intensity, Intensity::Normal); // 'i'
+
+        // Both facts in one render: the same theme that leaves the title
+        // unbold above does bold the border here. Asserting only the
+        // title half leaves "the theme was actually applied" to be
+        // inferred from a separate test.
+        assert_eq!(buf.get(0, 0).style.intensity, Intensity::Bold); // corner
+        assert_eq!(buf.get(3, 0).style.intensity, Intensity::Bold); // edge past the title
+        assert_eq!(buf.get(0, 1).style.intensity, Intensity::Bold); // vertical edge
     }
 
     #[test]

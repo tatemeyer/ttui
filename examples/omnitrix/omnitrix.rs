@@ -67,6 +67,8 @@ const UPGRADE_LOAD_DECAY_PER_SEC: f32 = 3.0;
 const OVERLOAD_THRESHOLD: f32 = 90.0;
 const CIRCUIT_NODE_COUNT: u16 = 6;
 const BOOT_MS: u64 = 2500;
+/// Breathing-pulse brightness (0.0-1.0) above which the border goes bold.
+const BORDER_BOLD_BRIGHTNESS: f32 = 0.6;
 
 const HOURGLASS: [&str; 5] = ["┌───┐", " \\ / ", "  X  ", " / \\ ", "└───┘"];
 
@@ -147,7 +149,7 @@ impl Omnitrix {
                 bottom_right: '+',
             },
             border_style: CellStyle {
-                intensity: if brightness > 0.6 {
+                intensity: if brightness > BORDER_BOLD_BRIGHTNESS {
                     Intensity::Bold
                 } else {
                     Intensity::Normal

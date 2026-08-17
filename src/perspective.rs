@@ -89,72 +89,7 @@ impl Camera {
         let screen_y = center_y - ndc_y * self.focal_length;
         Some((screen_x, screen_y, scale))
     }
-}
 
-const OUTCODE_INSIDE: u8 = 0;
-const OUTCODE_LEFT: u8 = 1;
-const OUTCODE_RIGHT: u8 = 2;
-const OUTCODE_TOP: u8 = 4;
-const OUTCODE_BOTTOM: u8 = 8;
-
-fn outcode(x: f32, y: f32, xmax: f32, ymax: f32) -> u8 {
-    let mut code = OUTCODE_INSIDE;
-    if x < 0.0 {
-        code |= OUTCODE_LEFT;
-    } else if x > xmax {
-        code |= OUTCODE_RIGHT;
-    }
-    if y < 0.0 {
-        code |= OUTCODE_TOP;
-    } else if y > ymax {
-        code |= OUTCODE_BOTTOM;
-    }
-    code
-}
-
-/// Clips a line segment to the visible `[0, xmax] x [0, ymax]`
-/// rectangle via Cohen-Sutherland. Returns `None` if the segment lies
-/// entirely outside.
-fn clip_to_screen(
-    mut x0: f32,
-    mut y0: f32,
-    mut x1: f32,
-    mut y1: f32,
-    xmax: f32,
-    ymax: f32,
-) -> Option<(f32, f32, f32, f32)> {
-    let mut code0 = outcode(x0, y0, xmax, ymax);
-    let mut code1 = outcode(x1, y1, xmax, ymax);
-    loop {
-        if code0 | code1 == 0 {
-            return Some((x0, y0, x1, y1));
-        }
-        if code0 & code1 != 0 {
-            return None;
-        }
-        let out = if code0 != 0 { code0 } else { code1 };
-        let (x, y) = if out & OUTCODE_TOP != 0 {
-            (x0 + (x1 - x0) * (0.0 - y0) / (y1 - y0), 0.0)
-        } else if out & OUTCODE_BOTTOM != 0 {
-            (x0 + (x1 - x0) * (ymax - y0) / (y1 - y0), ymax)
-        } else if out & OUTCODE_RIGHT != 0 {
-            (xmax, y0 + (y1 - y0) * (xmax - x0) / (x1 - x0))
-        } else {
-            (0.0, y0 + (y1 - y0) * (0.0 - x0) / (x1 - x0))
-        };
-        if out == code0 {
-            x0 = x;
-            y0 = y;
-            code0 = outcode(x0, y0, xmax, ymax);
-        } else {
-            x1 = x;
-            y1 = y;
-            code1 = outcode(x1, y1, xmax, ymax);
-        }
-    }
-}
-
-impl Camera {
     /// Projects `line` to `Canvas` subpixel coordinates for a canvas
     /// whose subpixel grid is `subpixels_x`/`subpixels_y` per cell and
     /// `screen_w`/`screen_h` cells wide/tall. Returns `None` if either
@@ -228,6 +163,69 @@ impl Camera {
             return None;
         }
         Some(points)
+    }
+}
+
+const OUTCODE_INSIDE: u8 = 0;
+const OUTCODE_LEFT: u8 = 1;
+const OUTCODE_RIGHT: u8 = 2;
+const OUTCODE_TOP: u8 = 4;
+const OUTCODE_BOTTOM: u8 = 8;
+
+fn outcode(x: f32, y: f32, xmax: f32, ymax: f32) -> u8 {
+    let mut code = OUTCODE_INSIDE;
+    if x < 0.0 {
+        code |= OUTCODE_LEFT;
+    } else if x > xmax {
+        code |= OUTCODE_RIGHT;
+    }
+    if y < 0.0 {
+        code |= OUTCODE_TOP;
+    } else if y > ymax {
+        code |= OUTCODE_BOTTOM;
+    }
+    code
+}
+
+/// Clips a line segment to the visible `[0, xmax] x [0, ymax]`
+/// rectangle via Cohen-Sutherland. Returns `None` if the segment lies
+/// entirely outside.
+fn clip_to_screen(
+    mut x0: f32,
+    mut y0: f32,
+    mut x1: f32,
+    mut y1: f32,
+    xmax: f32,
+    ymax: f32,
+) -> Option<(f32, f32, f32, f32)> {
+    let mut code0 = outcode(x0, y0, xmax, ymax);
+    let mut code1 = outcode(x1, y1, xmax, ymax);
+    loop {
+        if code0 | code1 == 0 {
+            return Some((x0, y0, x1, y1));
+        }
+        if code0 & code1 != 0 {
+            return None;
+        }
+        let out = if code0 != 0 { code0 } else { code1 };
+        let (x, y) = if out & OUTCODE_TOP != 0 {
+            (x0 + (x1 - x0) * (0.0 - y0) / (y1 - y0), 0.0)
+        } else if out & OUTCODE_BOTTOM != 0 {
+            (x0 + (x1 - x0) * (ymax - y0) / (y1 - y0), ymax)
+        } else if out & OUTCODE_RIGHT != 0 {
+            (xmax, y0 + (y1 - y0) * (xmax - x0) / (x1 - x0))
+        } else {
+            (0.0, y0 + (y1 - y0) * (0.0 - x0) / (x1 - x0))
+        };
+        if out == code0 {
+            x0 = x;
+            y0 = y;
+            code0 = outcode(x0, y0, xmax, ymax);
+        } else {
+            x1 = x;
+            y1 = y;
+            code1 = outcode(x1, y1, xmax, ymax);
+        }
     }
 }
 
