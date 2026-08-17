@@ -105,9 +105,9 @@ cargo run -p visual-snapshot -- --example <name> --size <cols>x<rows> --script <
 - `--script` points to a JSON file: a flat array of steps, each either
   `{"wait_ms": N}` (sleep `N` real milliseconds — this is what actually
   drives an app's `tick_rate()`-based animation) or `{"key": "Right"}`
-  (send a named key — arrows, `Enter`, `Esc`, `Tab`, single characters,
-  `Ctrl+<letter>`; see `tools/visual-snapshot/src/keys.rs` for the full
-  list). Example:
+  (send a named key — arrows, `Enter`, `Esc`, `Tab`,
+  `BackTab`/`Shift+Tab`, single characters, `Ctrl+<letter>`; see
+  `tools/visual-snapshot/src/keys.rs` for the full list). Example:
   ```json
   [{"wait_ms": 300}, {"key": "Right"}, {"wait_ms": 150}, {"key": "Enter"}]
   ```

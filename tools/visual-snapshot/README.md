@@ -42,9 +42,10 @@ A script is a flat JSON array of steps, each one of three shapes:
   animation, since the tool never calls `on_tick()` directly — only real
   wall-clock time passing does.
 - `{"key": "Right"}` — send a named key to the spawned example. Known
-  names: `Up`, `Down`, `Left`, `Right`, `Enter`, `Esc`, `Tab`, any single
-  ASCII character (`"a"`, `"Q"`, `"5"`), and `Ctrl+<letter>` combos
-  (`"Ctrl+C"`). See `src/keys.rs` for the exact table.
+  names: `Up`, `Down`, `Left`, `Right`, `Enter`, `Esc`, `Tab`,
+  `BackTab` (also spelled `Shift+Tab`), any single ASCII character
+  (`"a"`, `"Q"`, `"5"`), and `Ctrl+<letter>` combos (`"Ctrl+C"`). See
+  `src/keys.rs` for the exact table.
 - `{"x": N, "y": N}` — send a left-button click at cell `(x, y)`
   (0-indexed) to the spawned example.
 
