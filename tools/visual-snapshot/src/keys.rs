@@ -22,6 +22,11 @@ pub fn encode_key(name: &str) -> Result<Vec<u8>, KeyEncodeError> {
         "Enter" => Ok(b"\r".to_vec()),
         "Esc" => Ok(b"\x1b".to_vec()),
         "Tab" => Ok(b"\t".to_vec()),
+        // CSI Z — what a real terminal sends for Shift+Tab, and what
+        // `crossterm` decodes back to `KeyCode::BackTab`. Both spellings
+        // are accepted because scripts are written by hand and either
+        // name is the obvious one to reach for (#118).
+        "BackTab" | "Shift+Tab" => Ok(b"\x1b[Z".to_vec()),
         _ => {
             if let Some(letter) = name.strip_prefix("Ctrl+") {
                 let mut chars = letter.chars();
@@ -71,6 +76,20 @@ mod tests {
     fn enter_esc_tab_encode_correctly() {
         assert_eq!(encode_key("Enter").unwrap(), b"\r".to_vec());
         assert_eq!(encode_key("Esc").unwrap(), b"\x1b".to_vec());
+        assert_eq!(encode_key("Tab").unwrap(), b"\t".to_vec());
+    }
+
+    /// #118: without this, a `BackTab`-bound action could never be
+    /// scripted at all — Falcon's `FocusPrev` was verified by code
+    /// reading only, the one behavior in PR #103 no capture had shown.
+    /// Both spellings encode to CSI Z, which is what a real terminal
+    /// sends for Shift+Tab and what `crossterm` decodes to
+    /// `KeyCode::BackTab`.
+    #[test]
+    fn backtab_encodes_as_csi_z_under_either_spelling() {
+        assert_eq!(encode_key("BackTab").unwrap(), b"\x1b[Z".to_vec());
+        assert_eq!(encode_key("Shift+Tab").unwrap(), b"\x1b[Z".to_vec());
+        // Plain Tab must stay a bare horizontal tab, not become CSI Z.
         assert_eq!(encode_key("Tab").unwrap(), b"\t".to_vec());
     }
 
