@@ -78,6 +78,13 @@ pub fn run<A: App>(app: &mut A) -> std::io::Result<()> {
                     let elapsed = now.duration_since(last_tick_at);
                     last_tick_at = now;
                     app.on_tick(elapsed);
+                    // Mirrors the input arm's check: a timer-driven app (a
+                    // splash screen, an idle timeout, a finished animation)
+                    // must be able to exit without waiting for a keypress
+                    // it may never receive (#30).
+                    if app.should_quit() {
+                        break;
+                    }
                     should_redraw = true;
                 }
             }

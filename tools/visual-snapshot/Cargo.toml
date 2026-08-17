@@ -33,3 +33,6 @@ name = "raw_mode_fixture"
 
 [[example]]
 name = "panic_hook_fixture"
+
+[[example]]
+name = "tick_exit_fixture"
