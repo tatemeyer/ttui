@@ -186,6 +186,12 @@ pub struct Session {
     // first call uses a deliberately different (more patient)
     // quiescence strategy than every call after it.
     first_capture_done: bool,
+    // When this session was spawned — read unconditionally (a single
+    // `Instant::now()` at construction plus an `elapsed()` subtraction
+    // later, no syscalls in the common path) but only ever reported by
+    // the `VS_DEBUG_QUIESCENCE` diagnostic dump in
+    // `wait_for_first_output`; see that method's doc comment.
+    spawned_at: Instant,
     // Never read directly — held purely so the pseudo-console (and the
     // reader/writer handles derived from it) stays open for as long as
     // `Session` does. Dropping it early would tear down the pty out
@@ -212,6 +218,7 @@ impl Session {
         cols: u16,
         args: &[&str],
     ) -> Result<Session, PtyError> {
+        let spawned_at = Instant::now();
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -301,6 +308,7 @@ impl Session {
             writer,
             output,
             first_capture_done: false,
+            spawned_at,
             master: pair.master,
             child,
         })
@@ -465,9 +473,12 @@ impl Session {
     fn wait_for_first_output(&mut self, deadline: Instant) {
         let mut last_contents = self.parser.screen().contents();
         let mut changed_at_least_once = false;
+        let mut polls: u32 = 0;
+        let break_path;
         loop {
             thread::sleep(POLL_INTERVAL);
             self.drain_pending_into_parser();
+            polls += 1;
             let current_contents = self.parser.screen().contents();
             if current_contents != last_contents {
                 last_contents = current_contents;
@@ -476,12 +487,77 @@ impl Session {
                 // The screen changed earlier in this call and hasn't
                 // changed for a full poll interval: the child's first
                 // draw is very likely finished.
+                break_path = "changed_at_least_once";
                 break;
             }
             if Instant::now() >= deadline {
+                break_path = "deadline";
                 break;
             }
         }
+        self.dump_quiescence_debug(break_path, polls);
+    }
+
+    /// Slice 1 (#139, `capture-quiescence-fidelity`) research
+    /// instrumentation — a throwaway diagnostic spike, not part of this
+    /// tool's normal capture behavior. Gated behind `VS_DEBUG_QUIESCENCE=1`
+    /// so it is a complete no-op (not even the env lookup's cost matters,
+    /// but there's also no other cost) for every ordinary run; unset or
+    /// any other value leaves this function immediately returning.
+    ///
+    /// Dumps, to stderr, the exact state `wait_for_first_output` observed
+    /// at the instant it declared quiescence: elapsed time since
+    /// `Session::spawn`, which break path was taken, how many polls ran,
+    /// `Screen::contents()` verbatim, and the sparse cell grid (every
+    /// cell whose symbol isn't a space or whose background isn't the
+    /// terminal default, capped at 200 cells so a black-filled full
+    /// screen can't flood the log). See
+    /// `docs/design/plans/core/slice1-brief.md` for why: this is the
+    /// data that distinguishes a torn-frame capture-layer bug from a
+    /// lost-glyph render-layer bug for the omnitrix boot-screen
+    /// all-black-first-frame issue (#139).
+    fn dump_quiescence_debug(&self, break_path: &str, polls: u32) {
+        if std::env::var("VS_DEBUG_QUIESCENCE").as_deref() != Ok("1") {
+            return;
+        }
+        let elapsed_ms = self.spawned_at.elapsed().as_millis();
+        let screen = self.parser.screen();
+        let contents = screen.contents();
+        eprintln!("=== VS_DEBUG_QUIESCENCE: wait_for_first_output broke ===");
+        eprintln!("elapsed_ms={elapsed_ms}");
+        eprintln!("break_path={break_path}");
+        eprintln!("polls={polls}");
+        eprintln!("--- Screen::contents() ---");
+        eprintln!("{contents}");
+        eprintln!("--- end Screen::contents() ---");
+        eprintln!("--- non-space/non-default-bg cells: (row, col, ch, fg, bg), capped at 200 ---");
+        let (rows, cols) = screen.size();
+        let mut printed: u32 = 0;
+        let mut capped = false;
+        'grid: for row in 0..rows {
+            for col in 0..cols {
+                let Some(cell) = screen.cell(row, col) else {
+                    continue;
+                };
+                let ch = cell.contents().chars().next().unwrap_or(' ');
+                let bg = cell.bgcolor();
+                if ch == ' ' && bg == vt100::Color::Default {
+                    continue;
+                }
+                let fg = cell.fgcolor();
+                eprintln!("({row}, {col}, {ch:?}, {fg:?}, {bg:?})");
+                printed += 1;
+                if printed >= 200 {
+                    capped = true;
+                    break 'grid;
+                }
+            }
+        }
+        if capped {
+            eprintln!("... capped at 200 cells ...");
+        }
+        eprintln!("printed_cells={printed}");
+        eprintln!("=== end VS_DEBUG_QUIESCENCE dump ===");
     }
 
     /// Drains whatever's arrived in the shared output buffer since the
