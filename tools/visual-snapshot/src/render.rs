@@ -31,80 +31,139 @@ fn bg_to_rgb(c: vt100::Color) -> image::Rgb<u8> {
     }
 }
 
+/// The per-cell state that actually reaches the rasterizer: the resolved
+/// glyph, its already-`to_rgb`'d foreground and background, and the three
+/// attributes `render_screen` acts on.
+///
+/// **Invariant: quiescence must compare exactly what `render_screen`
+/// reads.** `pty::Session`'s quiescence polling compares these values and
+/// `render_screen` rasterizes them, from this one extraction path — so a
+/// redraw that would change a pixel cannot be invisible to the wait that
+/// decides the redraw is finished. Historically the two were maintained
+/// separately (quiescence on `vt100::Screen::contents()`, plain text only)
+/// and silently diverged, which is exactly how a colour-only fade-in got
+/// captured at its blackest instant (#139, #131). Anything added here must
+/// therefore be something `render_screen` genuinely renders, and anything
+/// `render_screen` starts rendering must be added here.
+///
+/// Deliberately *not* included: `vt100`'s cursor position and visibility,
+/// title, and dim/italic/strikethrough — `render_screen` renders none of
+/// them, so letting them count as "still changing" would make a blinking
+/// cursor look like an unfinished draw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ObservableCell {
+    ch: char,
+    fg: image::Rgb<u8>,
+    bg: image::Rgb<u8>,
+    bold: bool,
+    underline: bool,
+    inverse: bool,
+}
+
+/// Extracts one cell's observable state. `None` — a position the parser
+/// has no cell for at all — is the blank default `render_screen` has
+/// always drawn for it: a space in the default foreground on black.
+fn observable_cell(cell: Option<&vt100::Cell>) -> ObservableCell {
+    match cell {
+        Some(c) => ObservableCell {
+            // Known caveat: this takes only the cell's first char, so a
+            // combining mark stacked onto a base character (rare in
+            // TTUI's own glyph set, but not impossible in arbitrary
+            // terminal output) is silently dropped rather than composed,
+            // and a double-width glyph's trailing continuation cell
+            // (which `vt100` represents as an empty-string cell) renders
+            // as blank rather than widened. Not a known issue in practice
+            // for TTUI's current widgets, which draw single-width glyphs.
+            ch: c.contents().chars().next().unwrap_or(' '),
+            fg: color::to_rgb(c.fgcolor()),
+            bg: bg_to_rgb(c.bgcolor()),
+            bold: c.bold(),
+            underline: c.underline(),
+            inverse: c.inverse(),
+        },
+        None => ObservableCell {
+            ch: ' ',
+            fg: color::to_rgb(vt100::Color::Default),
+            bg: image::Rgb([0u8, 0, 0]),
+            bold: false,
+            underline: false,
+            inverse: false,
+        },
+    }
+}
+
+/// The whole screen's observable state, row-major (index
+/// `row * cols + col`), as both `render_screen` and `pty`'s quiescence
+/// polling see it.
+///
+/// **Invariant: quiescence must compare exactly what `render_screen`
+/// reads** — see `ObservableCell`. `render_screen` consumes this exact
+/// function's output rather than re-deriving cell state of its own, so
+/// the signal and the artifact cannot silently diverge.
+pub(crate) fn observable_screen(screen: &vt100::Screen) -> Vec<ObservableCell> {
+    let (rows, cols) = screen.size();
+    let mut cells = Vec::with_capacity(rows as usize * cols as usize);
+    for row in 0..rows {
+        for col in 0..cols {
+            cells.push(observable_cell(screen.cell(row, col)));
+        }
+    }
+    cells
+}
+
 /// Rasterizes a parsed terminal screen to a 2x-upscaled RGBA image,
 /// one 16x16 block per cell.
+///
+/// Reads the screen only through `observable_screen`, which is also what
+/// quiescence compares — see `ObservableCell` for why that shared path is
+/// load-bearing rather than incidental.
 pub fn render_screen(screen: &vt100::Screen) -> Result<RgbaImage, RenderError> {
     let (rows, cols) = screen.size();
     let mut img = RgbaImage::new(cols as u32 * CELL_PX, rows as u32 * CELL_PX);
 
-    for row in 0..rows {
-        for col in 0..cols {
-            let cell = screen.cell(row, col);
-            let (ch, fg, bg, bold, underline, inverse) = match cell {
-                Some(c) => (
-                    // Known caveat: this takes only the cell's first char,
-                    // so a combining mark stacked onto a base character
-                    // (rare in TTUI's own glyph set, but not impossible in
-                    // arbitrary terminal output) is silently dropped rather
-                    // than composed, and a double-width glyph's trailing
-                    // continuation cell (which `vt100` represents as an
-                    // empty-string cell) renders as blank rather than
-                    // widened. Not a known issue in practice for TTUI's
-                    // current widgets, which draw single-width glyphs.
-                    c.contents().chars().next().unwrap_or(' '),
-                    color::to_rgb(c.fgcolor()),
-                    bg_to_rgb(c.bgcolor()),
-                    c.bold(),
-                    c.underline(),
-                    c.inverse(),
-                ),
-                None => (
-                    ' ',
-                    color::to_rgb(vt100::Color::Default),
-                    image::Rgb([0u8, 0, 0]),
-                    false,
-                    false,
-                    false,
-                ),
-            };
+    for (index, cell) in observable_screen(screen).into_iter().enumerate() {
+        // Row-major, as documented on `observable_screen`. `cols` cannot
+        // be zero here: a zero-column screen yields no cells at all, so
+        // this body never runs.
+        let row = (index / cols as usize) as u16;
+        let col = (index % cols as usize) as u16;
 
-            let mut fg = fg;
-            let mut bg = bg;
-            if bold {
-                fg = color::brighten(fg);
-            }
-            if inverse {
-                let (nf, nb) = color::swap(fg, bg);
-                fg = nf;
-                bg = nb;
-            }
+        let mut fg = cell.fg;
+        let mut bg = cell.bg;
+        if cell.bold {
+            fg = color::brighten(fg);
+        }
+        if cell.inverse {
+            let (nf, nb) = color::swap(fg, bg);
+            fg = nf;
+            bg = nb;
+        }
 
-            let bitmap = glyph::glyph_for(ch).map_err(|e| RenderError::Glyph(e, row, col))?;
+        let bitmap = glyph::glyph_for(cell.ch).map_err(|e| RenderError::Glyph(e, row, col))?;
 
-            let ox = col as u32 * CELL_PX;
-            let oy = row as u32 * CELL_PX;
-            for gy in 0..GLYPH_PX {
-                let row_bits = bitmap[gy as usize];
-                for gx in 0..GLYPH_PX {
-                    let set = (row_bits >> gx) & 1 == 1;
-                    let px = if set { fg } else { bg };
-                    for sy in 0..SCALE {
-                        for sx in 0..SCALE {
-                            img.put_pixel(
-                                ox + gx * SCALE + sx,
-                                oy + gy * SCALE + sy,
-                                Rgba([px.0[0], px.0[1], px.0[2], 255]),
-                            );
-                        }
+        let ox = col as u32 * CELL_PX;
+        let oy = row as u32 * CELL_PX;
+        for gy in 0..GLYPH_PX {
+            let row_bits = bitmap[gy as usize];
+            for gx in 0..GLYPH_PX {
+                let set = (row_bits >> gx) & 1 == 1;
+                let px = if set { fg } else { bg };
+                for sy in 0..SCALE {
+                    for sx in 0..SCALE {
+                        img.put_pixel(
+                            ox + gx * SCALE + sx,
+                            oy + gy * SCALE + sy,
+                            Rgba([px.0[0], px.0[1], px.0[2], 255]),
+                        );
                     }
                 }
             }
+        }
 
-            if underline {
-                let fg_px = Rgba([fg.0[0], fg.0[1], fg.0[2], 255]);
-                for x in 0..CELL_PX {
-                    img.put_pixel(ox + x, oy + CELL_PX - 1, fg_px);
-                }
+        if cell.underline {
+            let fg_px = Rgba([fg.0[0], fg.0[1], fg.0[2], 255]);
+            for x in 0..CELL_PX {
+                img.put_pixel(ox + x, oy + CELL_PX - 1, fg_px);
             }
         }
     }
@@ -170,6 +229,32 @@ mod tests {
         let img = render_screen(parser.screen()).unwrap();
         let bottom_row_pixel = img.get_pixel(0, CELL_PX - 1);
         assert_eq!(*bottom_row_pixel, image::Rgba([229, 229, 229, 255]));
+    }
+
+    /// The defect this whole Arc exists to close, stated at the level of
+    /// the extraction function: `Screen::contents()` — the old quiescence
+    /// signal — reports these two screens as identical, because the only
+    /// difference between them is background colour. `observable_screen`
+    /// is what quiescence compares instead precisely so that a redraw
+    /// `render_screen` would rasterize differently can never be mistaken
+    /// for "nothing changed". The `assert_eq!` on `contents()` is not
+    /// incidental: it pins the precondition, so this test still proves
+    /// something if `vt100` ever starts reporting attributes there.
+    #[test]
+    fn observable_screen_distinguishes_identical_text_over_different_backgrounds() {
+        let plain = parse(b"abcd");
+        let on_red = parse(b"\x1b[41mabcd\x1b[0m");
+
+        assert_eq!(
+            plain.screen().contents(),
+            on_red.screen().contents(),
+            "precondition: the old plain-text signal cannot tell these apart"
+        );
+        assert_ne!(
+            observable_screen(plain.screen()),
+            observable_screen(on_red.screen()),
+            "observable_screen must see the background change render_screen renders"
+        );
     }
 
     #[test]
