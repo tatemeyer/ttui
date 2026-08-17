@@ -111,6 +111,67 @@ pub(crate) fn observable_screen(screen: &vt100::Screen) -> Vec<ObservableCell> {
     cells
 }
 
+/// Copies `screen`'s raw parser cells into `buf`, reusing whatever
+/// allocation `buf` already holds.
+///
+/// This is the snapshot `pty::Session`'s quiescence polling compares
+/// between polls, and it deliberately stores `vt100::Cell`s rather than
+/// `ObservableCell`s. `Cell` is a plain inline value (six `char`s, a
+/// length byte and its attributes) so cloning one is a memcpy, whereas
+/// projecting one costs a heap allocation: `vt100::Cell::contents()`
+/// returns a `String`, which at 120x40 is ~4800 allocations *per poll*
+/// for the whole life of a capture. That cost is not theoretical — it
+/// stretched the effective poll cadence by ~37% (21.5ms to 27.5ms
+/// against a nominal 20ms `POLL_INTERVAL`) when quiescence first started
+/// comparing observable state, which in turn shifted how the criterion
+/// aliased against real apps' frame rates. Comparison happens through
+/// `observably_differ`, which restores the observable semantics without
+/// paying that price.
+///
+/// A position the parser has no cell for at all is stored as
+/// `Cell::default()`, which projects to exactly the same `ObservableCell`
+/// as an absent cell does — pinned by
+/// `an_absent_cell_and_a_default_cell_project_identically`.
+pub(crate) fn snapshot_cells(screen: &vt100::Screen, buf: &mut Vec<vt100::Cell>) {
+    let (rows, cols) = screen.size();
+    buf.clear();
+    buf.reserve(rows as usize * cols as usize);
+    for row in 0..rows {
+        for col in 0..cols {
+            buf.push(screen.cell(row, col).cloned().unwrap_or_default());
+        }
+    }
+}
+
+/// Whether two `snapshot_cells` snapshots differ in any way
+/// `render_screen` would rasterize differently — the quiescence signal
+/// itself.
+///
+/// **Invariant: quiescence must compare exactly what `render_screen`
+/// reads.** The verdict for any pair of cells is `observable_cell`'s,
+/// the same projection `render_screen` consumes, so this is precisely a
+/// comparison of `observable_screen` outputs — just one that does not
+/// have to materialize them.
+///
+/// The `x != y` short-circuit is what makes that affordable, and it is
+/// sound in exactly one direction: `vt100::Cell`'s own `PartialEq`
+/// compares its codepoints and *every* attribute it parses, so it is
+/// strictly finer than the projection. Raw-equal cells therefore cannot
+/// project to different `ObservableCell`s and can be skipped outright;
+/// raw-*unequal* cells prove nothing on their own (`Cell` equality sees
+/// italic, and distinguishes colour encodings that `to_rgb` collapses to
+/// the same pixel), so those — and only those — are projected and
+/// compared properly. In a real redraw that is a handful of cells rather
+/// than all of them.
+pub(crate) fn observably_differ(a: &[vt100::Cell], b: &[vt100::Cell]) -> bool {
+    if a.len() != b.len() {
+        return true;
+    }
+    a.iter()
+        .zip(b.iter())
+        .any(|(x, y)| x != y && observable_cell(Some(x)) != observable_cell(Some(y)))
+}
+
 /// Rasterizes a parsed terminal screen to a 2x-upscaled RGBA image,
 /// one 16x16 block per cell.
 ///
@@ -254,6 +315,106 @@ mod tests {
             observable_screen(plain.screen()),
             observable_screen(on_red.screen()),
             "observable_screen must see the background change render_screen renders"
+        );
+    }
+
+    /// The Task 4 property, restated at the level of the comparison
+    /// quiescence actually runs. `observably_differ` short-circuits on
+    /// raw `vt100::Cell` equality to avoid allocating a projection per
+    /// cell, so it has its own way to get this wrong — a background-only
+    /// repaint must still register.
+    #[test]
+    fn observably_differ_sees_a_background_only_repaint() {
+        let plain = parse(b"abcd");
+        let on_red = parse(b"\x1b[41mabcd\x1b[0m");
+
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        snapshot_cells(plain.screen(), &mut a);
+        snapshot_cells(on_red.screen(), &mut b);
+
+        assert!(observably_differ(&a, &b));
+    }
+
+    #[test]
+    fn observably_differ_reports_an_unchanged_screen_as_unchanged() {
+        let one = parse(b"\x1b[41mabcd\x1b[0m");
+        let two = parse(b"\x1b[41mabcd\x1b[0m");
+
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        snapshot_cells(one.screen(), &mut a);
+        snapshot_cells(two.screen(), &mut b);
+
+        assert!(!observably_differ(&a, &b));
+    }
+
+    /// Pins the reason `observably_differ` cannot simply *be* raw
+    /// `vt100::Cell` equality. `Cell`'s own `PartialEq` compares every
+    /// attribute it parses, including italic — which `render_screen`
+    /// deliberately does not render (see `ObservableCell`). Comparing raw
+    /// cells outright would make an italic-only repaint read as "still
+    /// drawing" forever, so raw equality may only ever be used as a
+    /// short-circuit for cells that are *identical*, never as the verdict
+    /// for cells that differ.
+    #[test]
+    fn observably_differ_ignores_an_italic_only_change_the_rasterizer_ignores() {
+        let plain = parse(b"abcd");
+        let italic = parse(b"\x1b[3mabcd\x1b[0m");
+
+        let mut a = Vec::new();
+        let mut b = Vec::new();
+        snapshot_cells(plain.screen(), &mut a);
+        snapshot_cells(italic.screen(), &mut b);
+
+        assert_ne!(
+            a, b,
+            "precondition: raw cell equality must actually disagree here, \
+             otherwise this test proves nothing"
+        );
+        assert!(
+            !observably_differ(&a, &b),
+            "italic is not rasterized, so an italic-only change is not a redraw"
+        );
+    }
+
+    /// `snapshot_cells` stores `Cell::default()` wherever the parser has
+    /// no cell at all, rather than an `Option`. That is only sound
+    /// because the two project to the same `ObservableCell` — the blank
+    /// space on black `render_screen` has always drawn for an absent
+    /// cell. Pinned here so a future `vt100` change to `Cell::default`
+    /// cannot silently make an absent cell and a default cell rasterize
+    /// differently while quiescence keeps treating them as one.
+    #[test]
+    fn an_absent_cell_and_a_default_cell_project_identically() {
+        assert_eq!(
+            observable_cell(None),
+            observable_cell(Some(&vt100::Cell::default()))
+        );
+    }
+
+    /// The point of `snapshot_cells` taking `&mut Vec` rather than
+    /// returning one: the quiescence loop calls it every `POLL_INTERVAL`
+    /// for the whole life of a capture, so it must reuse the buffer it
+    /// was handed instead of allocating a fresh ~4800-element grid per
+    /// poll. A growing capacity on the second identical call would mean
+    /// it is still allocating.
+    #[test]
+    fn snapshot_cells_reuses_its_buffer_across_polls() {
+        let parser = parse(b"abcd");
+        let mut buf = Vec::new();
+
+        snapshot_cells(parser.screen(), &mut buf);
+        let len = buf.len();
+        let capacity = buf.capacity();
+
+        snapshot_cells(parser.screen(), &mut buf);
+
+        assert_eq!(buf.len(), len);
+        assert_eq!(
+            buf.capacity(),
+            capacity,
+            "a second poll over a same-sized screen must not reallocate"
         );
     }
 

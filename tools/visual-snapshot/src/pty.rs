@@ -5,7 +5,7 @@
 //! key presses and waits (`run_script`).
 
 use crate::keys;
-use crate::render::{self, ObservableCell, RenderError};
+use crate::render::{self, RenderError};
 use crate::script::Step;
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::io::Read;
@@ -415,18 +415,19 @@ impl Session {
     ///
     /// Polls every `POLL_INTERVAL`, feeding any newly arrived bytes
     /// into the parser and comparing the parser's *observable screen
-    /// state* (`render::observable_screen` — every cell's glyph,
-    /// foreground, background and attributes) between two consecutive
-    /// polls *taken during this call*. Once two consecutive polls agree,
+    /// state* (`render::observably_differ` over `render::snapshot_cells`
+    /// — every cell's glyph, foreground, background and attributes, as
+    /// `ObservableCell` defines them) between two consecutive polls
+    /// *taken during this call*. Once two consecutive polls agree,
     /// the draw is treated as complete. If polls never agree within
     /// `MAX_SETTLE_WAIT` (a draw that's still actively changing right
     /// up to the deadline), it gives up and returns whatever's there as
     /// a bounded fallback.
     ///
     /// **Invariant: quiescence must compare exactly what `render_screen`
-    /// reads.** Both go through `render::observable_screen`, so anything
-    /// that would change a pixel in the captured frame counts as "still
-    /// drawing", and anything the rasterizer ignores cannot. This
+    /// reads.** Both resolve every cell through `render::observable_cell`,
+    /// so anything that would change a pixel in the captured frame counts
+    /// as "still drawing", and anything the rasterizer ignores cannot. This
     /// comparison used to be plain text only (`vt100::Screen::contents`),
     /// which made a redraw changing only colour — a fade-in, a background
     /// fill, a pulsing border — literally invisible to the wait that
@@ -454,13 +455,20 @@ impl Session {
         let started_at = Instant::now();
         let mut polls: u32 = 0;
         let break_path;
-        let mut previous_poll_screen: Option<Vec<ObservableCell>> = None;
+        // Two buffers swapped between polls rather than reallocated per
+        // poll — see `render::snapshot_cells` for why the poll loop's
+        // per-poll cost is load-bearing rather than incidental.
+        let mut previous_poll_screen: Vec<vt100::Cell> = Vec::new();
+        let mut current_screen: Vec<vt100::Cell> = Vec::new();
+        let mut have_previous_poll = false;
         loop {
             thread::sleep(POLL_INTERVAL);
             self.drain_pending_into_parser();
             polls += 1;
-            let current_screen = render::observable_screen(self.parser.screen());
-            if previous_poll_screen.as_ref() == Some(&current_screen) {
+            render::snapshot_cells(self.parser.screen(), &mut current_screen);
+            if have_previous_poll
+                && !render::observably_differ(&previous_poll_screen, &current_screen)
+            {
                 // This poll matches the immediately preceding one
                 // (taken during this same call): the screen has held
                 // steady for a full poll interval, so the current draw
@@ -468,7 +476,8 @@ impl Session {
                 break_path = "stable_poll_pair";
                 break;
             }
-            previous_poll_screen = Some(current_screen);
+            std::mem::swap(&mut previous_poll_screen, &mut current_screen);
+            have_previous_poll = true;
             if Instant::now() >= deadline {
                 break_path = "deadline";
                 break;
@@ -497,14 +506,19 @@ impl Session {
     /// genuinely never draws without input.
     ///
     /// **Invariant: quiescence must compare exactly what `render_screen`
-    /// reads** — the comparison is `render::observable_screen`, the same
-    /// extraction the rasterizer consumes, so a colour-only reaction (the
+    /// reads** — the comparison is `render::observably_differ`, which
+    /// resolves each cell through the same `render::observable_cell`
+    /// projection the rasterizer consumes, so a colour-only reaction (the
     /// `omnitrix` boot fade of #139, `color_only_redraw`'s repaint) is a
     /// real observed change here rather than something this wait can only
     /// outlast.
     fn wait_for_first_output(&mut self, deadline: Instant) {
         let started_at = Instant::now();
-        let mut last_screen = render::observable_screen(self.parser.screen());
+        // Two buffers swapped between polls rather than reallocated per
+        // poll — see `render::snapshot_cells`.
+        let mut last_screen: Vec<vt100::Cell> = Vec::new();
+        render::snapshot_cells(self.parser.screen(), &mut last_screen);
+        let mut current_screen: Vec<vt100::Cell> = Vec::new();
         let mut changed_at_least_once = false;
         let mut polls: u32 = 0;
         let break_path;
@@ -512,9 +526,9 @@ impl Session {
             thread::sleep(POLL_INTERVAL);
             self.drain_pending_into_parser();
             polls += 1;
-            let current_screen = render::observable_screen(self.parser.screen());
-            if current_screen != last_screen {
-                last_screen = current_screen;
+            render::snapshot_cells(self.parser.screen(), &mut current_screen);
+            if render::observably_differ(&last_screen, &current_screen) {
+                std::mem::swap(&mut last_screen, &mut current_screen);
                 changed_at_least_once = true;
             } else if changed_at_least_once {
                 // The screen changed earlier in this call and hasn't
