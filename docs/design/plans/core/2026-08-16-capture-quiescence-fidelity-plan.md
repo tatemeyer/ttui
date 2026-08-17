@@ -128,9 +128,9 @@ pub(crate) struct ObservableCell { ch: char, fg: Color, bg: Color, bold: bool, u
 pub(crate) fn observable_screen(screen: &vt100::Screen) -> Vec<ObservableCell>;
 ```
 
-- [ ] **Step 1:** Write a failing test asserting `observable_screen` distinguishes two screens with identical text but different `bg`.
-- [ ] **Step 2:** Extract the `(ch, fg, bg, bold, underline, inverse)` tuple `render_screen` already builds at `render.rs:43` into `ObservableCell`, and have `render_screen` consume it — so there is one extraction path, not two.
-- [ ] **Step 3:** Add a doc comment on both stating the invariant from the design: *quiescence must compare exactly what `render_screen` reads.*
+- [x] **Step 1:** Write a failing test asserting `observable_screen` distinguishes two screens with identical text but different `bg`.
+- [x] **Step 2:** Extract the `(ch, fg, bg, bold, underline, inverse)` tuple `render_screen` already builds at `render.rs:43` into `ObservableCell`, and have `render_screen` consume it — so there is one extraction path, not two.
+- [x] **Step 3:** Add a doc comment on both stating the invariant from the design: *quiescence must compare exactly what `render_screen` reads.*
 
 ### Task 5: A fixture whose redraw is color-only
 
@@ -138,17 +138,17 @@ pub(crate) fn observable_screen(screen: &vt100::Screen) -> Vec<ObservableCell>;
 
 **Interfaces:** none — a test fixture binary, exempt from TDD as an example.
 
-- [ ] **Step 1:** Write a fixture that draws a fixed text layout, then after a known delay changes **only** `bg` colors — no text change anywhere. This is the exact case the old signal could not see.
-- [ ] **Step 2:** Confirm by hand that the old plain-text comparison does not detect its redraw (run it before Task 6 lands), so the fixture is proven to discriminate rather than assumed to.
+- [x] **Step 1:** Write a fixture that draws a fixed text layout, then after a known delay changes **only** `bg` colors — no text change anywhere. This is the exact case the old signal could not see.
+- [x] **Step 2:** Confirm by hand that the old plain-text comparison does not detect its redraw (run it before Task 6 lands), so the fixture is proven to discriminate rather than assumed to.
 
 ### Task 6: Switch quiescence to the new signal
 
 **Files:** `tools/visual-snapshot/src/pty.rs`, `tools/visual-snapshot/tests/pty_roundtrip.rs`
 
-- [ ] **Step 1:** Write a failing integration test driving `color_only_redraw`: the capture must observe the color-only change rather than timing out at `MAX_SETTLE_WAIT`.
-- [ ] **Step 2:** Replace `Screen::contents()` with `observable_screen` in `wait_for_first_output` and `wait_for_further_output`. Make the test pass.
-- [ ] **Step 3:** Delete the now-obsolete "Caveat" paragraph in `wait_for_further_output`'s doc comment — the blind spot it documents no longer exists. Replace it with the new invariant.
-- [ ] **Step 4:** Confirm the existing `pty_roundtrip` and `raw_mode_roundtrip` suites still pass unchanged.
+- [x] **Step 1:** Write a failing integration test driving `color_only_redraw`: the capture must observe the color-only change rather than timing out at `MAX_SETTLE_WAIT`.
+- [x] **Step 2:** Replace `Screen::contents()` with `observable_screen` in `wait_for_first_output` and `wait_for_further_output`. Make the test pass.
+- [x] **Step 3:** Delete the now-obsolete "Caveat" paragraph in `wait_for_further_output`'s doc comment — the blind spot it documents no longer exists. Replace it with the new invariant.
+- [x] **Step 4:** Confirm the existing `pty_roundtrip` and `raw_mode_roundtrip` suites still pass unchanged.
 
 ### Task 7: Stop continuously-animating apps riding the deadline
 
