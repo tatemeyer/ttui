@@ -1,20 +1,29 @@
 //! Alpha-blending prototype for the rendering-fidelity spike
 //! (docs/design/specs/core/2026-08-08-rendering-fidelity-spike-design.md).
-//! Spike-only: not a committed replacement for `LayerStack::composite`'s
-//! hard-cutout compositing rule.
+//! Spike-only, and now historical: the spike's recommendation was
+//! adopted, so `LayerStack::composite` does real Porter-Duff "over"
+//! compositing on `Cell::alpha` rather than the hard-cutout rule this
+//! spike was measured against. These two functions are kept as the
+//! spike's record and are not on the render path.
 
 use crate::buffer::{Buffer, Cell};
 use crate::easing::lerp_color;
 use crossterm::style::Color;
 
 /// Blends `overlay`'s non-default cells over `base`, interpolating
-/// fg/bg color by `alpha` (0 = base only, 1 = overlay only) via
-/// `easing::lerp_color`. `overlay` cells equal to `Cell::default()`
-/// are treated as "painted nothing" and skipped entirely — the same
-/// transparency rule `LayerStack` already uses. The overlay's glyph
-/// replaces the base's once `alpha >= 0.5` (glyphs don't blend; this
-/// is a documented spike simplification). Iterates the smaller of the
-/// two buffers' dimensions if they differ in size.
+/// fg/bg color by one whole-buffer `alpha` (0 = base only, 1 = overlay
+/// only) via `easing::lerp_color`. The overlay's glyph replaces the
+/// base's once `alpha >= 0.5` (glyphs don't blend; this is a
+/// documented spike simplification). Iterates the smaller of the two
+/// buffers' dimensions if they differ in size.
+///
+/// Transparency here is the pre-alpha hard cutout: an `overlay` cell
+/// equal to `Cell::default()` counts as "painted nothing" and is
+/// skipped. `LayerStack` no longer works this way — it tests
+/// `Cell::alpha <= 0.0`, which skips any cell whose alpha is zero
+/// whatever its other fields hold, and blends the partial cells in
+/// between. The two rules agree only on `Cell::default()` itself,
+/// which carries `alpha: 0.0`.
 pub fn blend_over(base: &Buffer, overlay: &Buffer, alpha: f32) -> Buffer {
     let mut out = base.clone();
     for y in 0..base.height.min(overlay.height) {
@@ -43,11 +52,12 @@ pub fn blend_over(base: &Buffer, overlay: &Buffer, alpha: f32) -> Buffer {
 /// steps of `target` — lets a fully-faded trail cell become
 /// transparent again.
 ///
-/// **SPIKE FINDING:** this only works because `target` is `Rgb` —
-/// `easing::lerp_color` falls back to its `to` argument immediately
-/// for any non-`Rgb` color, so fading toward `Color::Reset` (true
-/// transparency) is NOT gradual today. See this spec's
-/// recommendations section (Task 9).
+/// **SPIKE FINDING (still open):** this only works because `target` is
+/// `Rgb` — `easing::lerp_color` falls back to its `to` argument
+/// immediately for any non-`Rgb` color, so fading toward
+/// `Color::Reset` (true transparency) is NOT gradual today. The same
+/// `lerp_color` fallback reaches the live render path through
+/// `composite_cell`, where it is tracked as ttui#122.
 pub fn fade_toward(buf: &Buffer, target: Color, factor: f32) -> Buffer {
     let mut out = buf.clone();
     let close_enough = |a: Color| -> bool {
