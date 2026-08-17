@@ -23,10 +23,29 @@ use input_bindings::{falcon_input, FalconAction, FULL_POWER_GLITCH_DURATION_MS};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS, matches every other app
 const BOOT_TOTAL_MS: u64 = 1400;
+/// Brightness the boot's final fade starts from, as a fraction of the
+/// live dashboard. Matches the panel-reveal phase that precedes it
+/// (measured: mean luma 13.2 against the dashboard's 15.05), so the
+/// 0.85 phase boundary no longer dips downward for a frame (#117).
+const BOOT_FADE_FLOOR: f32 = 0.88;
 const IDLE_FLICKER_PERIOD_TICKS: u64 = 90; // ~3s at 33ms/tick, per panel
 const IDLE_FLICKER_DURATION_MS: u64 = 600;
-const WHACK_SPARK_COUNT: usize = 6;
-const WHACK_SPARK_LIFETIME_MS: u64 = 300;
+// Measured at the old 6/300ms: the burst peaked at 1344 lit pixels,
+// 0.11% of a 120x40 frame, and was gone within three captured frames —
+// "renders, but only weakly visible" (#116). More sparks, living
+// longer, with alternating speeds so the ring reads as a scatter.
+/// Opacity of a panel's failure static. The effect Falcon wanted all
+/// along is "static laid over the readout, not fully opaque" — at 1.0
+/// the static replaced the panel outright and its label became
+/// unreadable, so the thing the glitch is supposed to be interfering
+/// *with* was invisible (#124).
+const PANEL_GLITCH_ALPHA: f32 = 0.7;
+const WHACK_SPARK_COUNT: usize = 14;
+const WHACK_SPARK_LIFETIME_MS: u64 = 500;
+/// Speed multiplier applied to every other spark. A single speed puts
+/// all `WHACK_SPARK_COUNT` sparks on one expanding ring, which reads as
+/// a rigid polygon; two interleaved speeds read as a burst.
+const WHACK_SPARK_INNER_SPEED: f32 = 0.6;
 const STAR_COUNT: usize = 60;
 const STAR_SPEED: f32 = 3.0; // z-units/second
 const STAR_RESPAWN_Z: f32 = 20.0;
@@ -197,9 +216,9 @@ impl Falcon {
                 height: 24,
             }),
             glitches: [
-                GlitchBuffer::new(),
-                GlitchBuffer::new(),
-                GlitchBuffer::new(),
+                GlitchBuffer::new().with_alpha(PANEL_GLITCH_ALPHA),
+                GlitchBuffer::new().with_alpha(PANEL_GLITCH_ALPHA),
+                GlitchBuffer::new().with_alpha(PANEL_GLITCH_ALPHA),
             ],
             particles: ParticleSystem::new(),
             tick_count: 0,
@@ -411,11 +430,19 @@ impl Falcon {
         let cy = panel_box.y as f32 + panel_box.height as f32 / 2.0;
         for i in 0..WHACK_SPARK_COUNT {
             let angle = i as f32 * std::f32::consts::TAU / WHACK_SPARK_COUNT as f32;
+            let speed = if i % 2 == 0 {
+                1.0
+            } else {
+                WHACK_SPARK_INNER_SPEED
+            };
+            // vy is half vx because a terminal cell is roughly twice as
+            // tall as it is wide — the same aspect compensation the
+            // Dial widget applies to its ring radius.
             self.particles.spawn(Particle {
                 x: cx,
                 y: cy,
-                vx: angle.cos() * 6.0,
-                vy: angle.sin() * 3.0,
+                vx: angle.cos() * 6.0 * speed,
+                vy: angle.sin() * 3.0 * speed,
                 symbol: '*',
                 color: self.theme.accent,
                 lifetime: Duration::from_millis(WHACK_SPARK_LIFETIME_MS),
