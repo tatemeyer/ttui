@@ -38,7 +38,7 @@ See `examples/README.md` for the full list and what each one demonstrates.
 - `docs/design/README.md` — the living index of Arcs (one line per
   subsystem or example-app bucket) and how specs, plans, and tasks
   relate.
-- `docs/design/specs/2026-08-04-ttui-core-framework-design.md` (Rev A)
+- `docs/design/specs/core/2026-08-04-ttui-core-framework-design.md` (Rev A)
   and `docs/design/specs/2026-08-05-ttui-rev-b-vision-alignment-design.md`
   (Rev B) — the original core-framework and tick/theme design docs.
   Everything since is organized per-Arc under `docs/design/specs/<arc>/`.

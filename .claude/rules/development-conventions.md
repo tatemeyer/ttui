@@ -14,7 +14,7 @@ language.
 
 ## Testing
 
-Core language is Rust (`docs/design/specs/2026-08-04-ttui-core-framework-design.md`).
+Core language is Rust (`docs/design/specs/core/2026-08-04-ttui-core-framework-design.md`).
 
 **TDD is mandatory for all `coding`-tagged work** (per the
 Arc/Slice/Task tag system in `docs/design/README.md`), via

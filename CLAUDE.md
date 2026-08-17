@@ -22,5 +22,5 @@ MCP tools — prefer them over ad hoc grepping/reading when working in an
 already-graphed codebase.
 
 Core framework language is Rust; rendering model and v1 scope are decided
-in `docs/design/specs/2026-08-04-ttui-core-framework-design.md` (Rev A) —
+in `docs/design/specs/core/2026-08-04-ttui-core-framework-design.md` (Rev A) —
 read it before proposing changes to the core architecture.

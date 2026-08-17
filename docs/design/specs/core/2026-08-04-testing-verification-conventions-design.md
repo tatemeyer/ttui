@@ -8,7 +8,7 @@
 `.claude/rules/development-conventions.md` is a stub that explicitly
 defers its testing-discipline questions until two prerequisites are
 settled: the core language (Rust, decided in
-`docs/design/specs/2026-08-04-ttui-core-framework-design.md`) and,
+`docs/design/specs/core/2026-08-04-ttui-core-framework-design.md`) and,
 implicitly, how CI actually runs tests (decided in
 `docs/design/specs/2026-08-04-gitops-github-workflow-design.md`, now
 live — `cargo test` is a required check on every PR). Both

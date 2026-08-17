@@ -69,7 +69,7 @@ separation wouldn't have.
 
 Also confirmed: `Cargo.toml` for the `ttui` crate lists exactly one
 dependency, `crossterm = "0.27"`. The core framework design spec
-(`docs/design/specs/2026-08-04-ttui-core-framework-design.md`) frames
+(`docs/design/specs/core/2026-08-04-ttui-core-framework-design.md`) frames
 that as a deliberate ownership/control stance for the **library**, not a
 blanket ban on tooling elsewhere in the repo — nothing in the spec or
 `Cargo.toml` addresses dev-only tooling, examples, or a separate crate.
@@ -257,7 +257,7 @@ effect of writing this doc.
 ## Sources consulted
 
 - `src/buffer.rs`, `src/app.rs`, `src/terminal.rs`, `Cargo.toml`,
-  `docs/design/specs/2026-08-04-ttui-core-framework-design.md`,
+  `docs/design/specs/core/2026-08-04-ttui-core-framework-design.md`,
   `docs/design/README.md` (read directly in this repo).
 - Web research (August 2026) on: ttyd (native Windows/ConPTY support
   since 1.7.0, open Windows crash issue #1292), wetty/node-pty (Windows
