@@ -75,7 +75,17 @@ impl Falcon {
             return;
         }
 
-        let fade = ((progress - 0.85) / 0.15).clamp(0.0, 1.0);
+        // Ramp from `BOOT_FADE_FLOOR`, not from zero. `lerp_color` at
+        // fade 0 returns the background outright, so a tick landing near
+        // the 0.85 boundary rendered the whole cockpit at under 16%
+        // brightness for one frame — a visible dip *downward* from the
+        // panel-reveal phase that immediately precedes it, which is
+        // already drawn at roughly 88% of the live dashboard's
+        // brightness (measured: mean luma 13.2 against 15.05). Starting
+        // at that same level makes the boundary continuous and leaves
+        // the last sliver of brightening as the intended flourish (#117).
+        let fade =
+            BOOT_FADE_FLOOR + (1.0 - BOOT_FADE_FLOOR) * ((progress - 0.85) / 0.15).clamp(0.0, 1.0);
         // Render into an isolated scratch LayerStack, not `buf` directly:
         // render_dashboard pushes its own glitch/particle layer, and if we
         // dimmed cells directly on `buf` afterward we'd only be rewriting
