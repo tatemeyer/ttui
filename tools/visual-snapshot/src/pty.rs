@@ -154,6 +154,29 @@ pub const POLL_INTERVAL: Duration = Duration::from_millis(20);
 /// retuned if it proves insufficient — or excessive — in practice.
 pub const MAX_SETTLE_WAIT: Duration = Duration::from_millis(2000);
 
+/// Upper bound for a capture *after* a key or click, as distinct from a
+/// session's initial capture. The two waits have different jobs, and
+/// sharing one bound made a silent key cost `MAX_SETTLE_WAIT` — long
+/// enough to outlast an app's own `InputBinder` chord timeout (falcon's
+/// is 1500ms), so a scripted chord expired between keys and the action
+/// silently never fired (ttui#127).
+///
+/// The initial capture must tolerate a genuine cold start, which is what
+/// `MAX_SETTLE_WAIT` was calibrated for. A post-key capture is on an
+/// already-warm process, where a reaction is bounded by the app's tick
+/// interval rather than by process-spawn latency. Measured across all
+/// five `.plumb` scenarios, every successful post-key capture completes
+/// in **47-53ms** (against initial captures of 66-1226ms, `tardis`
+/// being the slow one) — so this bound sits roughly 9x above the
+/// observed worst case, leaves room for two ticks of even a 250ms-tick
+/// app, and still stays 3x under falcon's chord timeout.
+///
+/// This only caps the wait; a post-key capture that observes its change
+/// settles early exactly as before. An app slower to react than this
+/// would capture its pre-reaction state, so retune if a real scenario
+/// ever needs longer.
+pub const MAX_KEY_SETTLE_WAIT: Duration = Duration::from_millis(500);
+
 /// Scans `chunk` (a single `read()` call's worth of bytes) for the
 /// 4-byte Device Status Report cursor-position query `ESC[6n`, correctly
 /// detecting it even when the OS delivers it split across two or more
@@ -403,7 +426,9 @@ impl Session {
     /// the "just sent a key or click, must observe the reaction" case.
     /// See the final-review fix report's finding #4.
     pub fn capture_frame_after_key(&mut self) -> Result<image::RgbaImage, PtyError> {
-        let deadline = Instant::now() + MAX_SETTLE_WAIT;
+        // Bounded by the post-key budget, not the initial capture's —
+        // see `MAX_KEY_SETTLE_WAIT` for why the two differ (ttui#127).
+        let deadline = Instant::now() + MAX_KEY_SETTLE_WAIT;
         self.wait_for_first_output(deadline);
         self.first_capture_done = true;
         Ok(render::render_screen(self.parser.screen())?)

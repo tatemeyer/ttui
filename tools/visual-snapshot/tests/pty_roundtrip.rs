@@ -299,3 +299,33 @@ fn a_click_step_actually_reaches_the_child_process() {
         "cell (2,3) (the swapped-coordinate location) should be untouched"
     );
 }
+
+/// ttui#127: a scripted key that produces no visible change at all has
+/// nothing for quiescence to observe, so `capture_frame_after_key` runs
+/// to its deadline. Sharing `MAX_SETTLE_WAIT` (2s) with the initial
+/// capture meant a silent key cost two seconds — long enough to outlast
+/// an app's own `InputBinder` chord timeout (falcon's is 1500ms), so a
+/// scripted chord expired between keys and silently never fired.
+///
+/// The two waits have different jobs. The initial capture must tolerate
+/// a real cold start (measured: `tardis` legitimately needs ~1.2s). A
+/// post-key capture is on an already-warm process, and across all five
+/// `.plumb` scenarios every successful one completes in 47-53ms — so it
+/// can be bounded far tighter without ever truncating a real reaction.
+#[test]
+fn a_silent_key_does_not_pay_the_initial_captures_full_budget() {
+    let mut session = Session::spawn(&echo_key_binary(), 5, 40).unwrap();
+    let _ = session.capture_frame().unwrap(); // initial frame
+
+    // Nothing is sent, so nothing will ever change: this is the silent
+    // key's shape exactly, and the wait can only end at its deadline.
+    let start = std::time::Instant::now();
+    let _ = session.capture_frame_after_key().unwrap();
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < std::time::Duration::from_millis(1000),
+        "a post-key capture with nothing to observe must be bounded by the \
+         post-key budget, not the initial capture's 2s; took {elapsed:?}"
+    );
+}
