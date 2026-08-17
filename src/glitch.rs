@@ -149,6 +149,14 @@ mod tests {
         assert!(gb.is_active());
         gb.clear();
         assert!(!gb.is_active());
+
+        // Mirrors the decay test above: `is_active()` going false is only
+        // half the claim — rendering has to actually stop touching the
+        // buffer. At this tick count a still-active buffer would glitch
+        // every cell.
+        let mut buf = Buffer::new(3, 3);
+        gb.render(area(), Color::Red, 0, &mut buf);
+        assert_eq!(*buf.get(1, 1), Cell::default());
     }
 
     #[test]
