@@ -137,6 +137,48 @@ pub fn build_bin(name: &str) -> Result<PathBuf, PtyError> {
 /// `capture_frame` waits for the child's current draw to quiesce.
 pub const POLL_INTERVAL: Duration = Duration::from_millis(20);
 
+/// How long the observable screen must hold completely still before a
+/// draw is treated as finished. Must exceed a typical app frame period —
+/// `POLL_INTERVAL` alone is shorter than most `tick_rate()`s, so a single
+/// stable poll pair can land inside one frame gap and read as stable
+/// while the app is still animating.
+///
+/// **PROVISIONAL — NOT SELECTED.** The Task 7 sweep measured 60, 100, 150
+/// and 250ms against all five `.plumb` scenarios and **no candidate met
+/// the acceptance bar**; see the Slice 2 part-2 report. The value below is
+/// the least-bad of the four, left in place so the criterion compiles and
+/// can be re-measured — it is not a choice, and this constant must not
+/// ship until the criterion itself is revisited. In summary, what the
+/// sweep found:
+///
+/// - TTUI's showcase examples never hold still. `mission_control`'s
+///   sparklines jitter on every tick forever, `falcon`'s dashboard runs
+///   continuously, `omnitrix` breathes its border every 33ms, `tardis`
+///   turns its rotor. Under a colour-aware signal there is no window
+///   longer than one frame period during which those screens are
+///   unchanged, so "held still for `STABLE_WINDOW`" is unsatisfiable and
+///   `MAX_SETTLE_WAIT` becomes the only exit. At 100ms and above, 4 of 5
+///   scenarios ride the deadline on nearly every capture, at 5-31x their
+///   pre-Arc quiescence cost.
+/// - The old "unchanged for one poll" rule avoided that only by aliasing:
+///   `POLL_INTERVAL` is shorter than a tick, so a poll pair regularly
+///   landed inside a frame gap. Closing that hole is correct and is what
+///   this constant does; the cost is that the honest answer for a
+///   perpetually animating app is "never settles".
+/// - A hold-still criterion also cannot land `omnitrix`'s frame 0 on
+///   content. Its boot animates continuously up to `progress == 0.4` and
+///   then holds a *solid green full-screen flash* for 375ms — the first
+///   genuinely still moment in the sequence. Measured break time tracks
+///   `flash_start + STABLE_WINDOW` almost exactly (1045-1151ms at 60,
+///   1146-1184 at 100, 1219-1244 at 150, 1327-1357 at 250), so every
+///   candidate resolves *into the flash*: 100.000% non-black, one distinct
+///   colour. The legible-hourglass phase it should have caught is
+///   precisely the phase that never stops changing.
+/// - Longer windows also delete transient content outright. At 100ms and
+///   above `control-panel`'s click sparks are gone — all four frames
+///   pixel-identical — because the wait outlasts the particles' lifetime.
+pub const STABLE_WINDOW: Duration = Duration::from_millis(60);
+
 /// Upper bound on how long `capture_frame` will wait for output before
 /// giving up and snapshotting whatever's there — a safety valve so a
 /// session where the child has genuinely stopped producing output
@@ -370,9 +412,9 @@ impl Session {
     ///   more likely to be genuinely done (an idle wait step, a key
     ///   with no visible effect, a static screen captured twice — see
     ///   the Task 12 flakiness fix report's Critical finding) than
-    ///   mid-cold-start, so this path returns fast once two consecutive
-    ///   polls agree, same as a screen that's still actively changing
-    ///   returns once it stops.
+    ///   mid-cold-start, so this path returns as soon as the screen has
+    ///   held still for a `STABLE_WINDOW`, same as a screen that's still
+    ///   actively changing returns once it stops.
     pub fn capture_frame(&mut self) -> Result<image::RgbaImage, PtyError> {
         let deadline = Instant::now() + MAX_SETTLE_WAIT;
         if self.first_capture_done {
@@ -418,11 +460,11 @@ impl Session {
     /// state* (`render::observably_differ` over `render::snapshot_cells`
     /// — every cell's glyph, foreground, background and attributes, as
     /// `ObservableCell` defines them) between two consecutive polls
-    /// *taken during this call*. Once two consecutive polls agree,
-    /// the draw is treated as complete. If polls never agree within
-    /// `MAX_SETTLE_WAIT` (a draw that's still actively changing right
-    /// up to the deadline), it gives up and returns whatever's there as
-    /// a bounded fallback.
+    /// *taken during this call*. Once the screen has held completely
+    /// still for a full `STABLE_WINDOW`, the draw is treated as complete.
+    /// If it never does within `MAX_SETTLE_WAIT` (a draw that's still
+    /// actively changing right up to the deadline), it gives up and
+    /// returns whatever's there as a bounded fallback.
     ///
     /// **Invariant: quiescence must compare exactly what `render_screen`
     /// reads.** Both resolve every cell through `render::observable_cell`,
@@ -461,23 +503,26 @@ impl Session {
         let mut previous_poll_screen: Vec<vt100::Cell> = Vec::new();
         let mut current_screen: Vec<vt100::Cell> = Vec::new();
         let mut have_previous_poll = false;
+        // The last instant at which this call saw the screen change. A
+        // call with no baseline from before it started treats its own
+        // first poll as a change, so the window is always measured over
+        // stillness this call actually observed.
+        let mut last_change_at = Instant::now();
         loop {
             thread::sleep(POLL_INTERVAL);
             self.drain_pending_into_parser();
             polls += 1;
             render::snapshot_cells(self.parser.screen(), &mut current_screen);
-            if have_previous_poll
-                && !render::observably_differ(&previous_poll_screen, &current_screen)
+            if !have_previous_poll
+                || render::observably_differ(&previous_poll_screen, &current_screen)
             {
-                // This poll matches the immediately preceding one
-                // (taken during this same call): the screen has held
-                // steady for a full poll interval, so the current draw
-                // is very likely finished.
-                break_path = "stable_poll_pair";
+                std::mem::swap(&mut previous_poll_screen, &mut current_screen);
+                have_previous_poll = true;
+                last_change_at = Instant::now();
+            } else if last_change_at.elapsed() >= STABLE_WINDOW {
+                break_path = "stable_window";
                 break;
             }
-            std::mem::swap(&mut previous_poll_screen, &mut current_screen);
-            have_previous_poll = true;
             if Instant::now() >= deadline {
                 break_path = "deadline";
                 break;
@@ -497,8 +542,8 @@ impl Session {
     /// Only ever declares the draw complete after actually observing
     /// the observable screen state change at least once *during this
     /// call* (relative to whatever the screen looked like at call
-    /// entry) and then hold steady for a full poll interval. If the
-    /// screen never changes at all, it waits out the entire
+    /// entry) and then hold completely still for a full `STABLE_WINDOW`.
+    /// If the screen never changes at all, it waits out the entire
     /// `MAX_SETTLE_WAIT` rather than risk mistaking "still starting up"
     /// for "done" — seeing zero difference between those two states is
     /// exactly the ambiguity this method exists to resolve safely, in
@@ -522,6 +567,10 @@ impl Session {
         let mut changed_at_least_once = false;
         let mut polls: u32 = 0;
         let break_path;
+        // See `wait_for_further_output`'s counterpart. Here the baseline
+        // is the screen as it stood at call entry, so the first poll only
+        // updates this if it actually differs from that.
+        let mut last_change_at = Instant::now();
         loop {
             thread::sleep(POLL_INTERVAL);
             self.drain_pending_into_parser();
@@ -530,11 +579,12 @@ impl Session {
             if render::observably_differ(&last_screen, &current_screen) {
                 std::mem::swap(&mut last_screen, &mut current_screen);
                 changed_at_least_once = true;
-            } else if changed_at_least_once {
-                // The screen changed earlier in this call and hasn't
-                // changed for a full poll interval: the child's first
-                // draw is very likely finished.
-                break_path = "changed_at_least_once";
+                last_change_at = Instant::now();
+            } else if changed_at_least_once && last_change_at.elapsed() >= STABLE_WINDOW {
+                // The screen changed earlier in this call and has now
+                // held completely still for a full `STABLE_WINDOW`: the
+                // child's first draw is very likely finished.
+                break_path = "stable_window";
                 break;
             }
             if Instant::now() >= deadline {

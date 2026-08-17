@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use visual_snapshot::pty::{examples_dir, Session};
+use visual_snapshot::pty::{examples_dir, Session, STABLE_WINDOW};
 
 fn echo_key_binary() -> PathBuf {
     let mut path = examples_dir();
@@ -31,6 +31,15 @@ fn delayed_key_response_binary() -> PathBuf {
 fn color_only_redraw_binary() -> PathBuf {
     let mut path = examples_dir();
     path.push("color_only_redraw");
+    if cfg!(windows) {
+        path.set_extension("exe");
+    }
+    path
+}
+
+fn steady_animation_binary() -> PathBuf {
+    let mut path = examples_dir();
+    path.push("steady_animation");
     if cfg!(windows) {
         path.set_extension("exe");
     }
@@ -180,10 +189,17 @@ fn capture_frame_is_fast_when_the_screen_is_already_stable() {
     let _ = session.capture_frame().unwrap(); // nothing new happened
     let elapsed = start.elapsed();
 
+    // Expressed against `STABLE_WINDOW` rather than a literal, because
+    // one window is exactly the price an already-quiescent capture is
+    // *supposed* to pay — plus a couple of polls of slack. A literal
+    // would have to be re-guessed every time that constant is retuned,
+    // and would quietly stop meaning anything in the process.
+    let bound = STABLE_WINDOW + std::time::Duration::from_millis(150);
     assert!(
-        elapsed < std::time::Duration::from_millis(200),
-        "expected an already-stable screen to be recognized as quiescent almost \
-         immediately, not pay the full MAX_SETTLE_WAIT; took {elapsed:?}"
+        elapsed < bound,
+        "expected an already-stable screen to be recognized as quiescent after \
+         about one STABLE_WINDOW, not pay the full MAX_SETTLE_WAIT; took \
+         {elapsed:?}, bound {bound:?}"
     );
 }
 
@@ -261,6 +277,56 @@ fn a_colour_only_redraw_is_observed_rather_than_waited_out() {
         elapsed < std::time::Duration::from_secs(1),
         "a colour-only redraw must be observed and settled, not outlasted at \
          MAX_SETTLE_WAIT; took {elapsed:?}"
+    );
+}
+
+/// Both directions of the `STABLE_WINDOW` criterion in one capture, on
+/// the shape of app that motivated it.
+///
+/// **Still changing must stay "still changing".** `steady_animation`
+/// repaints every 33ms — `omnitrix`'s tick rate — for 600ms. Under the
+/// old "unchanged for one poll" rule, `POLL_INTERVAL` (20ms) is shorter
+/// than one tick, so a consecutive poll pair regularly lands entirely
+/// inside a tick gap and reads as stable while the app is animating as
+/// hard as it ever will. That rule settles somewhere inside the animation
+/// with overwhelming probability across ~18 poll pairs; requiring the
+/// screen to hold still for a window *longer than a frame period* cannot,
+/// because two consecutive ticks can never both be missed.
+///
+/// **Settled must still settle.** The fixture goes permanently silent
+/// after 600ms, and the capture has to notice that and return — not ride
+/// `MAX_SETTLE_WAIT` (2000ms) simply because it saw motion earlier.
+///
+/// The brightness assertion is what stops this passing for the wrong
+/// reason. The fixture's repaint is colour-only, fading a grey ramp up
+/// from index 232 (value 8) to roughly index 250 (value 188) — exactly
+/// the `omnitrix` boot fade of #139 in miniature. A capture that resolved
+/// at the start of the fade would render near-black text and satisfy a
+/// mere "not blank" check; only one that outlasted the fade sees a bright
+/// frame.
+#[test]
+fn a_capture_outlasts_a_steady_animation_and_settles_once_it_stops() {
+    let mut session = Session::spawn(&steady_animation_binary(), 5, 40).unwrap();
+
+    let start = std::time::Instant::now();
+    let frame = session.capture_frame().unwrap();
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed >= std::time::Duration::from_millis(600),
+        "quiescence resolved inside the 600ms animation — a tick gap was \
+         mistaken for a finished draw; took {elapsed:?}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_millis(1500),
+        "the fixture went silent after 600ms and the capture still did not \
+         settle, riding MAX_SETTLE_WAIT instead; took {elapsed:?}"
+    );
+    let brightest = frame.pixels().map(|p| p.0[0]).max().unwrap_or(0);
+    assert!(
+        brightest >= 150,
+        "expected the captured frame to show the end of the colour fade, not \
+         its near-black opening; brightest channel was {brightest}"
     );
 }
 
