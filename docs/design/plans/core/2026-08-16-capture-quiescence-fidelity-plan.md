@@ -211,7 +211,7 @@ docs correction) is.
 
 - [x] **Step 1:** Reproduce #138 by running `falcon-glitch-burst` **at least 10 times** on the new signal, recording how many produce the intended three-panel burst versus ambient single-panel flicker. The documented pre-existing rate is roughly 1-in-3 failures.
 - [x] **Step 2:** Flakiness gone for #138 (10/10) — closed. #127 NOT closed; see the Slice 3 outcome. Original text: If the flakiness is gone, close #127 and #138 with the measured evidence and skip Step 3.
-- [ ] **Step 3:** DEFERRED — coupled to the paused design decision. If it persists, fix the remaining interaction — the settle wait must not outlast the app's own `InputBinder` chord timeout — TDD test-first, and re-run the 10-run measurement to confirm.
+- [x] **Step 3:** **Done.** Fixed by splitting the budget: `MAX_KEY_SETTLE_WAIT` (500ms) bounds a post-key capture, `MAX_SETTLE_WAIT` (2000ms) still bounds the initial one. Silent key on `control_panel`: 2009ms → 509ms. Original text: If it persists, fix the remaining interaction — the settle wait must not outlast the app's own `InputBinder` chord timeout — TDD test-first, and re-run the 10-run measurement to confirm.
 
 ### Task 10: Correct the documented limitations
 

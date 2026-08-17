@@ -208,19 +208,28 @@ This is coverage of five captured screens, not of every
 rendering-affecting path.
 
 **Two known limitations:** a scripted key that produces **no visible
-change at all**, in an app that isn't otherwise animating, still costs
-the full `MAX_SETTLE_WAIT` (2000ms) — the capture has no way to tell
-"the app will react shortly" from "the app will never react" except by
-waiting it out. If that exceeds the app's own `InputBinder`
-`chord_timeout`, a scripted chord expires between keys and silently
-never fires (ttui#127). Measured: an unbound key sent to
-`control_panel` rides `break_path=deadline` at 2009ms. Apps that
-animate continuously are unaffected, because ambient motion satisfies
-the change detector — which is why `falcon-glitch-burst` is now
-reliable (10/10 runs, ~45ms per key against its 1500ms
-`chord_timeout`) despite being the scenario that originally exposed
-this. **Prefer a chord timeout comfortably above 2s, or a scenario
-whose keys visibly change something, until ttui#127 is closed.**
+change at all** still costs a full wait, because the capture has no way
+to tell "the app will react shortly" from "the app will never react"
+except by waiting it out. That wait is now bounded by
+`MAX_KEY_SETTLE_WAIT` (500ms) rather than the initial capture's
+`MAX_SETTLE_WAIT` (2000ms), so it no longer outlasts a typical
+`InputBinder` `chord_timeout` and silently expires a scripted chord
+(ttui#127, fixed). Measured: an unbound key sent to `control_panel`
+went from `break_path=deadline` at 2009ms to 509ms. Every *successful*
+post-key capture across the five scenarios lands in 45-55ms, so the
+bound has roughly 9x headroom and truncates nothing real — **but an app
+that takes longer than 500ms to react to a key would be captured before
+it reacts.** Prefer a scenario whose keys visibly change something.
+
+The second limitation is that **you cannot capture a chosen moment
+inside a short animation** (ttui#131). Quiescence stops looking once the
+screen holds still for one `POLL_INTERVAL` (20ms), and with a typical
+33ms `tick_rate()` a poll pair lands inside one tick gap — so a capture
+resolves in ~50ms and the next scripted step lands after a 300ms
+animation has finished. Measured against `showcase`'s mascot slide: one
+run caught it one column into a ten-column slide, an identical re-run
+caught no displacement at all. Mid-animation frames are possible but
+not reliable.
 
 And `on_unmapped_glyph: substitute` is a Plumb-only field that
 requires `adapter: pty`; it does not exist in `tools/visual-snapshot`
