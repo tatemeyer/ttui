@@ -183,6 +183,41 @@ const CUBE_EDGES: [(usize, usize); 12] = [
     (0, 1), (2, 3), (4, 5), (6, 7), // edges along dz
 ];
 
+/// Just the near face's 4 edges — `cube_vertices` walks `dz` innermost,
+/// so an even index is a `dz = -CUBE_HALF` (nearer) corner. Drawn
+/// instead of all 12 once the cube is too far away for the full
+/// wireframe to read as one (see `face_separation_cells`).
+#[rustfmt::skip]
+const NEAR_FACE_EDGES: [(usize, usize); 4] = [
+    (0, 4), (2, 6), // along dx
+    (0, 2), (4, 6), // along dy
+];
+
+/// Projected gap, in cells, between the cube's near and far faces at
+/// `center_z`. Both project as rectangles about the same centre, so
+/// this is just the difference of their half-widths.
+///
+/// Below one cell the two faces land on top of each other and all 12
+/// edges smear into a filled band — the cube stops reading as a cube
+/// and becomes a featureless blob (#121). That happens past
+/// `center_z` ~ 11, matching the degradation the spike's own review
+/// reported "past z ~ 10".
+fn face_separation_cells(center_z: f32) -> f32 {
+    let near = center_z - CUBE_HALF;
+    let far = center_z + CUBE_HALF;
+    if near <= NEAR_PLANE {
+        return f32::INFINITY; // near face is at/behind the camera
+    }
+    CUBE_HALF * FOCAL_LENGTH * ASPECT_COMPENSATION * (1.0 / near - 1.0 / far)
+}
+
+/// Minimum face separation, in cells, for the full wireframe to still
+/// read as a cube. Below it `render_cube` falls back to the near face
+/// alone — an honest, legible outline rather than a smear. Deliberately
+/// not a size *clamp*: the projection stays exact, since demonstrating
+/// it is the whole point of this spike.
+const MIN_FACE_SEPARATION_CELLS: f32 = 1.0;
+
 const STAR_COUNT: usize = 80;
 const STAR_SPEED: f32 = 4.0; // z-units/second
 const STAR_RESPAWN_Z: f32 = 24.0;
@@ -304,7 +339,16 @@ impl DepthSpike {
             },
         );
 
-        for &(a, b) in &CUBE_EDGES {
+        // LOD: too far for the full wireframe to be distinguishable ->
+        // draw only the near face (#121).
+        let edges: &[(usize, usize)] =
+            if face_separation_cells(center_z) < MIN_FACE_SEPARATION_CELLS {
+                &NEAR_FACE_EDGES
+            } else {
+                &CUBE_EDGES
+            };
+
+        for &(a, b) in edges {
             let line = Line3 {
                 start: verts[a],
                 end: verts[b],
