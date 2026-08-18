@@ -628,10 +628,13 @@ mod tests {
     }
 
     #[test]
-    fn non_rgb_primary_with_primary_end_renders_flat_end_color_not_a_gradient() {
-        // Pins easing::lerp_color's existing fallback: any non-Rgb color pair
-        // returns `to` outright, so a named primary + primary_end degrades
-        // to a flat primary_end across the whole ring, not a partial ramp.
+    fn non_rgb_primary_with_primary_end_steps_between_the_two_endpoint_colors() {
+        // Pins easing::lerp_color's fallback for a pair it cannot
+        // interpolate: rather than inventing an RGB value for a named
+        // color the terminal may render differently, it steps from
+        // `primary` to `primary_end` at the gradient's midpoint. The
+        // endpoints are therefore honest even though the ramp is not
+        // smooth (#122).
         let theme = Theme {
             background: Color::Black,
             primary: Color::Green,
@@ -660,13 +663,34 @@ mod tests {
 
         Block::new().theme(&theme).render(area, &mut buf);
 
-        for x in 0..4 {
-            assert_eq!(buf.get(x, 0).fg, Color::Red);
-            assert_eq!(buf.get(x, 2).fg, Color::Red);
-        }
-        for y in 0..3 {
-            assert_eq!(buf.get(0, y).fg, Color::Red);
-            assert_eq!(buf.get(3, y).fg, Color::Red);
+        // The near corner is the gradient's t=0 end, so it must show
+        // `primary`. Before #122 this was `primary_end` too — the whole
+        // ring rendered flat at the end color and the start color never
+        // appeared at all.
+        assert_eq!(
+            buf.get(0, 0).fg,
+            Color::Green,
+            "the gradient's start corner must show `primary`"
+        );
+        // The far corner is t=1 and must show `primary_end`.
+        assert_eq!(
+            buf.get(3, 2).fg,
+            Color::Red,
+            "the gradient's end corner must show `primary_end`"
+        );
+        // Every *border* cell is one of the two endpoint colors — a
+        // non-interpolable pair steps between them rather than ramping,
+        // so no third, invented shade is ever emitted. (Interior cells
+        // are untouched `Cell::default()`s and not part of the ring.)
+        for (x, y) in (0..4)
+            .flat_map(|x| (0..3).map(move |y| (x, y)))
+            .filter(|&(x, y)| x == 0 || x == 3 || y == 0 || y == 2)
+        {
+            let fg = buf.get(x, y).fg;
+            assert!(
+                fg == Color::Green || fg == Color::Red,
+                "border cell ({x},{y}) rendered {fg:?}, which is neither endpoint"
+            );
         }
     }
 
