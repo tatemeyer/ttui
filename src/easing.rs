@@ -27,8 +27,20 @@ pub fn progress(elapsed: Duration, duration: Duration) -> f32 {
     (elapsed.as_secs_f32() / duration.as_secs_f32()).clamp(0.0, 1.0)
 }
 
-/// Rgb-only color lerp from `from` to `to`, `t` clamped to `0..1`;
-/// falls back to `to` for any non-Rgb color.
+/// Color lerp from `from` to `to`, `t` clamped to `0..1`.
+///
+/// An `Rgb` pair interpolates componentwise. Any other pair cannot —
+/// `Color::Reset` means "whatever the terminal's default is" and named
+/// colors are whatever the terminal's theme maps them to, so there is
+/// no honest RGB value to interpolate through, and inventing one would
+/// emit a shade the terminal did not choose. Such a pair therefore
+/// switches at the midpoint: `from` below `0.5`, `to` at or above.
+///
+/// That switch is a visible step rather than a ramp, but it keeps the
+/// endpoints honest, which is what actually matters — the previous
+/// fallback returned `to` for every `t`, so a gradient rendered flat at
+/// its end color and a fade jumped to its target on the first frame
+/// (#122).
 pub fn lerp_color(from: Color, to: Color, t: f32) -> Color {
     match (from, to) {
         (
@@ -47,7 +59,13 @@ pub fn lerp_color(from: Color, to: Color, t: f32) -> Color {
             g: lerp(g1 as f32, g2 as f32, t) as u8,
             b: lerp(b1 as f32, b2 as f32, t) as u8,
         },
-        _ => to,
+        _ => {
+            if t < 0.5 {
+                from
+            } else {
+                to
+            }
+        }
     }
 }
 
@@ -162,5 +180,41 @@ mod tests {
             b: 30,
         };
         assert_eq!(lerp_color(from, to, 0.5), to);
+    }
+
+    /// #122: the fallback used to return `to` for every `t`, so a lerp
+    /// involving a non-Rgb color never showed its *source* — a gradient
+    /// rendered flat at its end color, and a fade snapped to its target
+    /// on the first frame. `t` is now respected at the endpoints even
+    /// when the colors cannot be interpolated componentwise.
+    #[test]
+    fn test_lerp_color_non_rgb_endpoints_are_the_endpoints() {
+        let from = Color::Green;
+        let to = Color::Red;
+
+        assert_eq!(lerp_color(from, to, 0.0), from, "t=0 must be `from`");
+        assert_eq!(lerp_color(from, to, 1.0), to, "t=1 must be `to`");
+        // Below the midpoint still reads as `from`, at or above as `to`.
+        assert_eq!(lerp_color(from, to, 0.25), from);
+        assert_eq!(lerp_color(from, to, 0.75), to);
+    }
+
+    /// A pair that *can* be interpolated is unaffected by the above.
+    #[test]
+    fn test_lerp_color_rgb_pair_still_interpolates_componentwise() {
+        let from = Color::Rgb { r: 0, g: 0, b: 0 };
+        let to = Color::Rgb {
+            r: 100,
+            g: 200,
+            b: 40,
+        };
+        assert_eq!(
+            lerp_color(from, to, 0.5),
+            Color::Rgb {
+                r: 50,
+                g: 100,
+                b: 20
+            }
+        );
     }
 }

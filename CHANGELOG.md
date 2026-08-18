@@ -14,6 +14,15 @@ this project follows the SemVer policy defined in
   animation) can exit without waiting for a keypress it may never
   receive (#30). No public API change; apps that never quit from
   `on_tick` are unaffected.
+- `easing::lerp_color` now respects `t` for color pairs it cannot
+  interpolate. It previously returned `to` for every `t` whenever either
+  color was not `Rgb`, so a gradient rendered flat at its end color and
+  a fade snapped to its target on the first frame; such a pair now
+  switches at the midpoint, making `t = 0` the source and `t = 1` the
+  target (#122). No public API change, and no shade the terminal did not
+  choose is ever emitted — `Color::Reset` and named colors still cannot
+  be interpolated componentwise. `Rgb` pairs are unaffected, so no
+  bundled example's output changes.
 
 ## [1.0.0] - 2026-08-14
 
