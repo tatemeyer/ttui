@@ -8,7 +8,7 @@ use ttui::camera;
 use ttui::easing;
 use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
-use ttui::transition::Transition;
+use ttui::transition::{Phases, Transition};
 use ttui::widgets::{
     block::Block, dial::Dial, dna_console::DNAConsole, energy_core::EnergyCore, text::Text,
 };
@@ -67,6 +67,10 @@ const UPGRADE_LOAD_DECAY_PER_SEC: f32 = 3.0;
 const OVERLOAD_THRESHOLD: f32 = 90.0;
 const CIRCUIT_NODE_COUNT: u16 = 6;
 const BOOT_MS: u64 = 2500;
+/// Boot's three phases as fractions of `BOOT_MS`: the hourglass fading
+/// out, the full-screen green flash, then the Omnitrix panel tracing
+/// itself open.
+const BOOT: Phases<3> = Phases::new([0.4, 0.55, 1.0]);
 /// Breathing-pulse brightness (0.0-1.0) above which the border goes bold.
 const BORDER_BOLD_BRIGHTNESS: f32 = 0.6;
 
