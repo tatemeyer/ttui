@@ -36,7 +36,8 @@ pub mod perspective;
 pub mod terminal;
 /// App color palette and border glyph set.
 pub mod theme;
-/// Time-driven progress tracking for animations.
+/// Time-driven progress tracking for animations, and the `Phases`
+/// subdivision of a progress range.
 pub mod transition;
 /// Ready-to-render widgets — see `widgets` module docs.
 pub mod widgets;
