@@ -54,6 +54,35 @@ impl<const N: usize> Phases<N> {
         Phases { ends }
     }
 
+    /// Builds phases from one duration per phase, normalised to
+    /// cumulative ends by their total.
+    pub const fn from_durations(durations: [Duration; N]) -> Self {
+        let mut total: u128 = 0;
+        let mut i = 0;
+        while i < N {
+            total += durations[i].as_nanos();
+            i += 1;
+        }
+        // Every phase ends at 1.0 when nothing takes any time: a
+        // zero-length sequence is already over, and `at` then reports
+        // the final phase for the 1.0 a zero-duration `Transition`
+        // yields. Dividing by the zero total would give NaN ends.
+        if total == 0 {
+            return Phases { ends: [1.0; N] };
+        }
+        let mut ends = [0.0f32; N];
+        let mut acc: u128 = 0;
+        let mut j = 0;
+        while j < N {
+            acc += durations[j].as_nanos();
+            // The last end is exactly 1.0 without pinning: `acc` has
+            // reached `total`, so both casts round identically.
+            ends[j] = acc as f32 / total as f32;
+            j += 1;
+        }
+        Phases { ends }
+    }
+
     /// The phase `progress` falls in, and how far through that phase it
     /// is — always clamped to `0..1`.
     pub fn at(&self, progress: f32) -> (usize, f32) {
@@ -187,5 +216,61 @@ mod tests {
         assert_eq!(index, 2);
         assert!(t.is_finite());
         assert_close(t, 0.0);
+    }
+
+    #[test]
+    fn from_durations_normalises_by_the_total() {
+        let phases = Phases::from_durations([
+            Duration::from_millis(200),
+            Duration::from_millis(800),
+            Duration::from_millis(600),
+            Duration::from_millis(500),
+        ]);
+        let expected = [0.095_238_1, 0.476_190_5, 0.761_904_8, 1.0];
+        for (actual, expected) in phases.ends.iter().zip(expected) {
+            assert_close(*actual, expected);
+        }
+        let (index, t) = phases.at(0.5);
+        assert_eq!(index, 2);
+        assert_close(t, (0.5 - 1000.0 / 2100.0) / (600.0 / 2100.0));
+    }
+
+    #[test]
+    fn equal_durations_agree_with_explicit_ends() {
+        let phases = Phases::from_durations([Duration::from_millis(250); 4]);
+        assert_eq!(phases, Phases::new([0.25, 0.5, 0.75, 1.0]));
+    }
+
+    #[test]
+    fn the_last_end_is_exactly_one() {
+        let phases = Phases::from_durations([
+            Duration::from_millis(1),
+            Duration::from_millis(1),
+            Duration::from_millis(1),
+        ]);
+        assert_eq!(phases.ends[2], 1.0);
+        assert_eq!(phases.at(1.0), (2, 1.0));
+    }
+
+    #[test]
+    fn zero_total_duration_reports_the_final_phase() {
+        let phases = Phases::from_durations([Duration::ZERO; 3]);
+        assert!(phases.ends.iter().all(|end| *end == 1.0));
+        // A zero-length sequence is already over, and a zero-duration
+        // `Transition` reports `progress() == 1.0`.
+        assert_eq!(phases.at(1.0), (2, 1.0));
+    }
+
+    #[test]
+    fn phases_are_constructible_in_const_position() {
+        const BOOT: Phases<4> = Phases::from_durations([
+            Duration::from_millis(200),
+            Duration::from_millis(800),
+            Duration::from_millis(600),
+            Duration::from_millis(500),
+        ]);
+        const MANUAL: Phases<4> = Phases::new([0.1, 0.4, 0.85, 1.0]);
+        assert_eq!(BOOT.at(1.0), (3, 1.0));
+        assert_eq!(MANUAL.at(0.1), (1, 0.0));
     }
 }
