@@ -28,6 +28,8 @@ pub mod glitch;
 pub mod input;
 /// `Rect`/`Constraint`-based area splitting.
 pub mod layout;
+/// Deterministic seed-driven jitter for scattering and placement.
+pub mod noise;
 /// A simple particle system for bursts and impacts.
 pub mod particles;
 /// Fixed-forward pinhole-camera projection: points, lines, polygons.
