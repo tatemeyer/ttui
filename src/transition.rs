@@ -1,6 +1,9 @@
 //! Time-driven progress tracking for animations — apps own a
 //! `Transition` per animated value, `tick` it each frame, and read
-//! `progress()`/`is_complete()` to drive rendering.
+//! `progress()`/`is_complete()` to drive rendering. `Phases` lives
+//! beside it because the two are read together — `PHASES.at(t.progress())`
+//! turns one overall progress into a phase index and progress within
+//! that phase — not because this module owns animation staging.
 
 use std::time::Duration;
 
