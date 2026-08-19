@@ -72,6 +72,8 @@ const BOOT: Phases<4> = Phases::from_durations([
     Duration::from_millis(BOOT_TITLE_MS),
     Duration::from_millis(BOOT_FLARE_MS),
 ]);
+/// Screen change: a held title card, then the radial wipe.
+const TRANSITION: Phases<2> = Phases::new([0.4, 1.0]);
 /// The claw phase's index in `BOOT` — the snap sound is cued from where
 /// it falls within that phase.
 const BOOT_CLAW_PHASE: usize = 1;
@@ -324,7 +326,8 @@ impl SmashCrabs {
     }
 
     fn render_transition(&self, destination: Screen, area: Rect, progress: f32, buf: &mut Buffer) {
-        if progress < 0.4 {
+        let (phase, wipe) = TRANSITION.at(progress);
+        if phase == 0 {
             for y in 0..area.height {
                 for x in 0..area.width {
                     buf.set(
@@ -362,7 +365,6 @@ impl SmashCrabs {
             return;
         }
 
-        let wipe = (progress - 0.4) / 0.6;
         let content = self.render_destination_preview(destination, area);
         let cx = area.width as f32 / 2.0;
         let cy = area.height as f32 / 2.0;
