@@ -41,6 +41,48 @@ impl Transition {
     }
 }
 
+/// Subdivides a `0..1` progress range into `N` phases.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Phases<const N: usize> {
+    ends: [f32; N],
+}
+
+impl<const N: usize> Phases<N> {
+    /// Builds phases from cumulative phase *ends* in ascending order,
+    /// the last being `1.0`.
+    pub const fn new(ends: [f32; N]) -> Self {
+        Phases { ends }
+    }
+
+    /// The phase `progress` falls in, and how far through that phase it
+    /// is — always clamped to `0..1`.
+    pub fn at(&self, progress: f32) -> (usize, f32) {
+        let progress = progress.clamp(0.0, 1.0);
+        let mut start = 0.0;
+        let mut index = 0;
+        while index < N {
+            let end = self.ends[index];
+            // A boundary belongs to the later phase (`progress < end`),
+            // mirroring the `if progress < 0.1` branching this replaces;
+            // the last phase also owns everything at or past its end.
+            if progress < end || index + 1 == N {
+                let span = end - start;
+                // A zero-width phase is already over rather than 0/0.
+                let t = if span > 0.0 {
+                    (progress - start) / span
+                } else {
+                    1.0
+                };
+                return (index, t.clamp(0.0, 1.0));
+            }
+            start = end;
+            index += 1;
+        }
+        // `N == 0` only: no phase to be in, and no phase to report.
+        (0, 1.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,5 +129,63 @@ mod tests {
         let transition = Transition::start(Duration::ZERO);
         assert_eq!(transition.progress(), 1.0);
         assert!(transition.is_complete());
+    }
+
+    /// Tolerance for comparing a computed phase-local `t` against a
+    /// hand-worked expectation.
+    const EPS: f32 = 1e-6;
+
+    fn assert_close(actual: f32, expected: f32) {
+        assert!(
+            (actual - expected).abs() < EPS,
+            "expected {expected}, got {actual}"
+        );
+    }
+
+    #[test]
+    fn phases_report_index_and_progress_within_the_phase() {
+        let phases = Phases::new([0.1, 0.4, 0.85, 1.0]);
+        assert_eq!(phases.at(0.0), (0, 0.0));
+        let (index, t) = phases.at(0.05);
+        assert_eq!(index, 0);
+        assert_close(t, 0.5);
+        let (index, t) = phases.at(0.25);
+        assert_eq!(index, 1);
+        assert_close(t, 0.5);
+        assert_eq!(phases.at(1.0), (3, 1.0));
+    }
+
+    #[test]
+    fn phase_boundary_belongs_to_the_later_phase() {
+        let phases = Phases::new([0.1, 0.4, 0.85, 1.0]);
+        assert_eq!(phases.at(0.1), (1, 0.0));
+        assert_eq!(phases.at(0.4), (2, 0.0));
+        assert_eq!(phases.at(0.85), (3, 0.0));
+    }
+
+    #[test]
+    fn phases_saturate_outside_zero_to_one() {
+        let phases = Phases::new([0.1, 0.4, 0.85, 1.0]);
+        assert_eq!(phases.at(-1.0), (0, 0.0));
+        assert_eq!(phases.at(2.0), (3, 1.0));
+    }
+
+    #[test]
+    fn a_single_phase_spans_the_whole_range() {
+        let phases = Phases::new([1.0]);
+        let (index, t) = phases.at(0.5);
+        assert_eq!(index, 0);
+        assert_close(t, 0.5);
+        assert_eq!(phases.at(0.0), (0, 0.0));
+        assert_eq!(phases.at(1.0), (0, 1.0));
+    }
+
+    #[test]
+    fn a_zero_width_phase_does_not_divide_by_zero() {
+        let phases = Phases::new([0.5, 0.5, 1.0]);
+        let (index, t) = phases.at(0.5);
+        assert_eq!(index, 2);
+        assert!(t.is_finite());
+        assert_close(t, 0.0);
     }
 }
