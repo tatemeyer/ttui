@@ -7,7 +7,8 @@ use ttui::layout::Rect;
 use ttui::theme::{BorderSet, Theme};
 use ttui::widgets::block::Block;
 
-use crate::{dim_color, text_center, VOID};
+use crate::{text_center, VOID};
+use ttui::easing::scale_color;
 
 /// Draws the portal for one app into `scene` within `slot`.
 pub(crate) fn draw(
@@ -23,7 +24,7 @@ pub(crate) fn draw(
     let border = if focused {
         accent
     } else {
-        dim_color(accent, 0.4)
+        scale_color(accent, 0.4)
     };
     let theme = Theme {
         background: VOID,
@@ -32,7 +33,7 @@ pub(crate) fn draw(
         tertiary: accent,
         accent,
         primary_end: if focused {
-            Some(dim_color(accent, 0.3 + 0.7 * pulse))
+            Some(scale_color(accent, 0.3 + 0.7 * pulse))
         } else {
             None
         },
@@ -62,9 +63,9 @@ pub(crate) fn draw(
     let mid = inner.y + inner.height / 2;
     let glyph = if focused { '◉' } else { '○' };
     let glyph_color = if focused {
-        dim_color(accent, 0.6 + 0.4 * pulse)
+        scale_color(accent, 0.6 + 0.4 * pulse)
     } else {
-        dim_color(accent, 0.6)
+        scale_color(accent, 0.6)
     };
     text_center(
         scene,
@@ -80,7 +81,7 @@ pub(crate) fn draw(
         inner,
         mid + 1,
         tagline,
-        dim_color(accent, 0.6),
+        scale_color(accent, 0.6),
         false,
     );
 

@@ -136,17 +136,6 @@ fn make_app(index: usize) -> Box<dyn App> {
 
 /// Scales an `Rgb` color's brightness by `f` (other color kinds pass
 /// through unchanged).
-pub(crate) fn dim_color(c: Color, f: f32) -> Color {
-    match c {
-        Color::Rgb { r, g, b } => Color::Rgb {
-            r: (r as f32 * f) as u8,
-            g: (g as f32 * f) as u8,
-            b: (b as f32 * f) as u8,
-        },
-        other => other,
-    }
-}
-
 /// Draws `s` horizontally centered on row `y` within `area`, on the
 /// void background. Clips at the area's right edge.
 pub(crate) fn text_center(scene: &mut Buffer, area: Rect, y: u16, s: &str, fg: Color, bold: bool) {
