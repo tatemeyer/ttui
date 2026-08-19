@@ -21,6 +21,16 @@ truncated tables can be captured at all.
 
 - **TDD test-first** for every `coding`-tagged task. Write the failing
   test, run it, watch it fail, then implement.
+  - **Documented exception — characterisation tests.** A test that pins
+    behaviour which must *not* change is written first and **passes**
+    against the unmodified code; that is what makes it a
+    characterisation test, and it is worthless written afterwards. Five
+    are specified here and each is labelled in place: Task 1's
+    non-exhaustive test (which cannot fail from inside the defining
+    crate), the three `unthemed_*_keeps_the_pre_2_0_colours` tests in
+    Tasks 5-7, and `without_widths_columns_split_equally` in Task 11.
+    Every other test in this plan is red-first, no exceptions.
+    *(Ruling by the human partner during the pre-flight scan.)*
 - **Autonomy tier Gated** — a PR per slice with all four checks green:
   `cargo build --workspace`, `cargo test --workspace`,
   `cargo clippy --workspace --all-targets -- -D warnings`,
@@ -56,6 +66,8 @@ truncated tables can be captured at all.
 | `src/lib.rs` | drop `pub mod blend` | 2 |
 | `examples/render_spike.rs` | port off `blend` | 2 |
 | `benches/set.rs` | **new** — `Buffer::set` microbenchmark | 3 |
+| `src/widgets/selection.rs` | **new** — shared `selection_colors` + test fixture | 4 |
+| `src/widgets/mod.rs` | register `selection` | 4 |
 | `src/widgets/list.rs` | `.theme()` | 4 |
 | `src/widgets/dial.rs` | `.theme()` | 4 |
 | `src/widgets/table.rs` | `.theme()`, then the column model | 4, 6 |
@@ -572,16 +584,138 @@ describe release behaviour.
 Three widgets share one hardcoded highlight. One pattern, applied three
 times. **Do this before Slice 6** so `table.rs` is opened once.
 
-### Task 5: `List::theme`
+### Task 5: The shared selection helper, and `List::theme`
+
+**Ruling by the human partner during the pre-flight scan:** an earlier
+draft of this plan told each widget to repeat the colour-resolution
+`match` and the `test_theme()` fixture verbatim. That was overruled in
+favour of one shared helper — consistent with the Shared Utilities Arc,
+which spent four PRs removing exactly this shape of duplication. Tasks
+6 and 7 consume the helper; they do not re-derive it.
 
 **Files:**
-- Modify: `src/widgets/list.rs`
-- Test: `src/widgets/list.rs` inline `mod tests`
+- Create: `src/widgets/selection.rs`
+- Modify: `src/widgets/mod.rs` (register the module),
+  `src/widgets/list.rs`
+- Test: `src/widgets/selection.rs` and `src/widgets/list.rs` inline
+  `mod tests`
 
 **Interfaces:**
-- Produces: `List::theme(self, theme: &Theme) -> Self` — a consuming
-  builder, matching `Block`'s existing `.theme()` shape. Slices 4 and 6
-  both rely on this exact signature.
+- Produces:
+  - `pub(crate) fn selection_colors(theme: Option<&Theme>, selected: bool) -> (Color, Color)`
+  - `#[cfg(test)] pub(crate) fn test_theme() -> Theme` — the shared test
+    fixture for Tasks 5, 6 and 7
+  - `List::theme(self, theme: &'a Theme) -> Self` — a consuming builder,
+    matching `Block`'s existing `.theme()` shape. Tasks 6, 7 and Slice 6
+    all rely on this exact shape.
+
+- [ ] **Step A1: Write the helper's failing test**
+
+Create `src/widgets/selection.rs`:
+
+```rust
+//! Shared selection-highlight colour resolution for the selectable
+//! widgets (`List`, `Dial`, `Table`), which each previously hardcoded
+//! the same black-on-white pair and took no colours at all.
+
+use crate::theme::Theme;
+use crossterm::style::Color;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn without_a_theme_the_pre_2_0_colours_are_used() {
+        assert_eq!(selection_colors(None, true), (Color::Black, Color::White));
+        assert_eq!(selection_colors(None, false), (Color::Reset, Color::Reset));
+    }
+
+    #[test]
+    fn with_a_theme_selection_is_accent_on_background() {
+        let t = test_theme();
+        assert_eq!(selection_colors(Some(&t), true), (t.accent, t.background));
+    }
+
+    #[test]
+    fn with_a_theme_an_unselected_row_is_primary_on_reset() {
+        let t = test_theme();
+        assert_eq!(selection_colors(Some(&t), false), (t.primary, Color::Reset));
+    }
+}
+```
+
+- [ ] **Step A2: Run it to verify it fails**
+
+Run: `cargo test --lib widgets::selection`
+Expected: FAIL to compile — `selection_colors` and `test_theme` are not
+defined, and `mod selection` is not registered.
+
+- [ ] **Step A3: Implement the helper**
+
+Add to `src/widgets/selection.rs`, above the test module:
+
+```rust
+/// Resolves the `(fg, bg)` pair for one row of a selectable widget.
+/// Without a `Theme`, returns the fixed pre-2.0 black-on-white
+/// highlight, so an untouched call site renders exactly as 1.x did.
+pub(crate) fn selection_colors(theme: Option<&Theme>, selected: bool) -> (Color, Color) {
+    match (theme, selected) {
+        (Some(t), true) => (t.accent, t.background),
+        (Some(t), false) => (t.primary, Color::Reset),
+        (None, true) => (Color::Black, Color::White),
+        (None, false) => (Color::Reset, Color::Reset),
+    }
+}
+```
+
+And the shared fixture, inside the `mod tests` block so it does not ship:
+
+```rust
+    /// Shared across `selection`, `list`, `dial` and `table` tests.
+    /// `Theme` has no `Default`, so every field must be set.
+    pub(crate) fn test_theme() -> Theme {
+        use crate::theme::BorderSet;
+        use crate::buffer::CellStyle;
+        Theme {
+            background: Color::Rgb { r: 0, g: 0, b: 32 },
+            primary: Color::Rgb { r: 0, g: 255, b: 0 },
+            secondary: Color::Rgb { r: 0, g: 128, b: 255 },
+            tertiary: Color::Rgb { r: 255, g: 255, b: 0 },
+            accent: Color::Rgb { r: 255, g: 0, b: 0 },
+            primary_end: None,
+            border: BorderSet::single_line(),
+            border_style: CellStyle::default(),
+            border_thick: false,
+        }
+    }
+```
+
+Check `src/theme.rs` for the current field list before writing this — if
+`Theme` has gained a field, the struct literal will not compile and the
+compiler will name it.
+
+Register it in `src/widgets/mod.rs`, in the existing alphabetical run
+(after `scuttle_cursor`, before `smash_border`):
+
+```rust
+/// Shared selection-highlight colour resolution.
+pub(crate) mod selection;
+```
+
+Note `pub(crate)`, not `pub` — this is an internal helper, and making it
+public would add API surface this Arc has not designed.
+
+- [ ] **Step A4: Run the helper's tests**
+
+Run: `cargo test --lib widgets::selection`
+Expected: PASS, all three.
+
+Tasks 6 and 7 reach the fixture as
+`use crate::widgets::selection::tests::test_theme;`. If that path does
+not resolve from another module's test config, move `test_theme` to a
+`#[cfg(test)] pub(crate) mod test_support;` under `src/widgets/` and
+have all four call sites use that — do not fall back to copying it.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -626,30 +760,11 @@ fn unthemed_list_keeps_the_pre_2_0_colours() {
 }
 ```
 
-`Theme` has no `Default`, so every field must be set. Add this helper to
-the same `mod tests` — it is repeated verbatim in Tasks 6 and 7 rather
-than shared, because each widget's tests are read on their own:
+Use the shared fixture from Step A3 rather than defining another:
 
 ```rust
-    fn test_theme() -> Theme {
-        use crate::theme::BorderSet;
-        Theme {
-            background: Color::Rgb { r: 0, g: 0, b: 32 },
-            primary: Color::Rgb { r: 0, g: 255, b: 0 },
-            secondary: Color::Rgb { r: 0, g: 128, b: 255 },
-            tertiary: Color::Rgb { r: 255, g: 255, b: 0 },
-            accent: Color::Rgb { r: 255, g: 0, b: 0 },
-            primary_end: None,
-            border: BorderSet::single_line(),
-            border_style: CellStyle::default(),
-            border_thick: false,
-        }
-    }
+    use crate::widgets::selection::tests::test_theme;
 ```
-
-Check `src/theme.rs` for the current field list before writing this — if
-`Theme` has gained a field since this plan was written, the struct
-literal will not compile and the compiler will name the missing field.
 
 - [ ] **Step 2: Run to verify the first test fails**
 
@@ -677,15 +792,12 @@ pub struct List<'a> {
     }
 ```
 
-In `render`, replace the hardcoded pair:
+In `render`, replace the hardcoded pair with the Step A3 helper:
 
 ```rust
-let (fg, bg) = match self.theme {
-    Some(t) if i == self.selected => (t.accent, t.background),
-    Some(t) => (t.primary, Color::Reset),
-    None if i == self.selected => (Color::Black, Color::White),
-    None => (Color::Reset, Color::Reset),
-};
+use crate::widgets::selection::selection_colors;
+
+let (fg, bg) = selection_colors(self.theme, i == self.selected);
 ```
 
 - [ ] **Step 4: Run the tests**
@@ -714,8 +826,11 @@ git commit -m "feat(widgets): let List take a Theme for its selection highlight"
 `Dial::new(&items, selected)` has the same constructor shape as `List`.
 Its existing tests assert at `buf.get(5, 1)` for the selected item —
 reuse that coordinate so the new tests exercise a cell the current suite
-already trusts. Copy `test_theme()` from Task 5 into `dial.rs`'s
-`mod tests` verbatim.
+already trusts. Import the shared fixture rather than redefining it:
+
+```rust
+    use crate::widgets::selection::tests::test_theme;
+```
 
 ```rust
 #[test]
@@ -755,11 +870,11 @@ do not guess a new one.
 Run: `cargo test --lib widgets::dial`
 Expected: FAIL to compile — no method named `theme`.
 
-- [ ] **Step 3: Implement** — the same `Option<&'a Theme>` field,
-      builder, and `match` as Task 5. Repeat the code rather than
-      factoring it out: three call sites is not yet a duplication worth
-      an abstraction, and the `match` arms differ per widget in which
-      cells they apply to.
+- [ ] **Step 3: Implement** — add the same `Option<&'a Theme>` field and
+      `.theme()` builder as Task 5, and resolve colours through
+      `selection_colors(self.theme, i == self.selected)`. Do **not**
+      re-derive the `match`; the helper from Task 5 Step A3 is the one
+      definition.
 
 - [ ] **Step 4: Run the tests** — `cargo test --lib widgets::dial`, PASS.
 
@@ -791,7 +906,8 @@ fn themed_table_colours_header_selected_and_unselected_rows() {
     let rows = vec![vec!["svc-a".to_string()], vec!["svc-b".to_string()]];
     let mut buf = Buffer::new(10, 3);
     let area = Rect { x: 0, y: 0, width: 10, height: 3 };
-    let theme = test_theme(); // copy the helper from Task 5 verbatim
+    // use crate::widgets::selection::tests::test_theme;
+    let theme = test_theme();
 
     Table::new(&headers, &rows, 0, 5).theme(&theme).render(area, &mut buf);
 
@@ -817,7 +933,18 @@ identically to its unselected rows is not a header.
 
 - [ ] **Step 3: Implement.** `render_row` already takes `fg`/`bg`
       parameters, so only `render`'s two call sites choose colours; add
-      the `Option<&'a Theme>` field and resolve there.
+      the `Option<&'a Theme>` field and resolve there via
+      `selection_colors(self.theme, row_idx == self.selected)`.
+
+      The header row is the one case the helper does not cover — it is
+      neither selected nor unselected. Resolve it inline:
+
+      ```rust
+      let header_fg = self.theme.map_or(Color::Reset, |t| t.secondary);
+      ```
+
+      A header that renders identically to its unselected rows is not a
+      header, which is why it takes `secondary` rather than `primary`.
 
 - [ ] **Step 4: Run the tests** — `cargo test --lib widgets::table`, PASS.
 
