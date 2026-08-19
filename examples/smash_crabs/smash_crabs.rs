@@ -12,7 +12,7 @@ use ttui::effects;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::{BorderSet, Theme};
-use ttui::transition::Transition;
+use ttui::transition::{Phases, Transition};
 use ttui::widgets::{
     damage_meter::DamageMeter, scuttle_cursor::ScuttleCursor, smash_border::SmashBorder, text::Text,
 };
@@ -63,6 +63,18 @@ const BOOT_CLAW_MS: u64 = 800;
 const BOOT_TITLE_MS: u64 = 600;
 const BOOT_FLARE_MS: u64 = 500;
 const BOOT_TOTAL_MS: u64 = BOOT_FLASH_MS + BOOT_CLAW_MS + BOOT_TITLE_MS + BOOT_FLARE_MS;
+/// Boot's four phases, stated as the durations they already are rather
+/// than as fractions recomputed against `BOOT_TOTAL_MS` at every read.
+/// Retiming a phase now means editing one constant above.
+const BOOT: Phases<4> = Phases::from_durations([
+    Duration::from_millis(BOOT_FLASH_MS),
+    Duration::from_millis(BOOT_CLAW_MS),
+    Duration::from_millis(BOOT_TITLE_MS),
+    Duration::from_millis(BOOT_FLARE_MS),
+]);
+/// The claw phase's index in `BOOT` — the snap sound is cued from where
+/// it falls within that phase.
+const BOOT_CLAW_PHASE: usize = 1;
 const BOOT_TITLE: &str = "S U P E R S M A S H C L A W S";
 const CLAW_OPEN: [&str; 5] = [
     " \\           / ",
@@ -559,15 +571,16 @@ impl App for SmashCrabs {
     fn on_tick(&mut self, elapsed: Duration) {
         if let Some(t) = &mut self.booting {
             t.tick(elapsed);
-            let progress = t.progress();
-            let t1 = BOOT_FLASH_MS as f32 / BOOT_TOTAL_MS as f32;
-            let t2 = (BOOT_FLASH_MS + BOOT_CLAW_MS) as f32 / BOOT_TOTAL_MS as f32;
-            if !self.boot_snap_played && progress >= t1 {
-                let claw_sub = ((progress - t1) / (t2 - t1)).clamp(0.0, 1.0);
-                if claw_sub >= 0.5 {
-                    self.boot_snap_played = true;
-                    self.audio.play("snap");
-                }
+            let (phase, claw_sub) = BOOT.at(t.progress());
+            // The claw shuts halfway through its own phase, which is when
+            // the snap belongs. A phase past the claw's counts too, so a
+            // slow tick that steps clean over that midpoint still fires it
+            // rather than swallowing the sound.
+            let claw_shut =
+                phase > BOOT_CLAW_PHASE || (phase == BOOT_CLAW_PHASE && claw_sub >= 0.5);
+            if !self.boot_snap_played && claw_shut {
+                self.boot_snap_played = true;
+                self.audio.play("snap");
             }
             if t.is_complete() {
                 self.booting = None;

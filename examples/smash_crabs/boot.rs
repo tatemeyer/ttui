@@ -76,9 +76,6 @@ fn render_boot_title(buf: &mut Buffer, area: Rect, sub: f32, fg: Color) {
 
 impl SmashCrabs {
     pub(crate) fn render_boot(&self, area: Rect, progress: f32, buf: &mut LayerStack) {
-        let t1 = BOOT_FLASH_MS as f32 / BOOT_TOTAL_MS as f32;
-        let t2 = (BOOT_FLASH_MS + BOOT_CLAW_MS) as f32 / BOOT_TOTAL_MS as f32;
-        let t3 = (BOOT_FLASH_MS + BOOT_CLAW_MS + BOOT_TITLE_MS) as f32 / BOOT_TOTAL_MS as f32;
         let local = Rect {
             x: 0,
             y: 0,
@@ -86,71 +83,68 @@ impl SmashCrabs {
             height: area.height,
         };
 
-        if progress < t1 {
-            let sub = progress / t1;
-            let mut white = Buffer::new(area.width, area.height);
-            let cell = Cell {
-                symbol: ' ',
-                fg: Color::Reset,
-                bg: Color::White,
-                alpha: 1.0,
-                ..Default::default()
-            };
-            for y in 0..area.height {
-                for x in 0..area.width {
-                    white.set(x, y, cell.clone());
-                }
-            }
-            let dimmed = camera::dim(&white, sub);
-            blit(&dimmed, area, buf);
-            return;
-        }
-
-        if progress < t2 {
-            let sub = (progress - t1) / (t2 - t1);
-            let art: &[&str] = if sub < 0.5 { &CLAW_OPEN } else { &CLAW_CLOSED };
-            render_centered_art(buf, area, art, self.theme.tertiary);
-            return;
-        }
-
-        if progress < t3 {
-            let sub = (progress - t2) / (t3 - t2);
-            render_centered_art(buf, area, &CLAW_CLOSED, self.theme.tertiary);
-            render_boot_title(buf, area, sub, self.theme.accent);
-            return;
-        }
-
-        let sub = ((progress - t3) / (1.0 - t3)).clamp(0.0, 1.0);
-        let hub_content = self.render_destination_preview(Screen::Hub, area);
-        let mut logo = Buffer::new(area.width, area.height);
-        render_centered_art(&mut logo, local, &CLAW_CLOSED, self.theme.tertiary);
-        render_boot_title(&mut logo, local, 1.0, self.theme.accent);
-
-        let flare_x = -3.0 + sub * (area.width as f32 + 6.0);
-        for y in 0..area.height {
-            for x in 0..area.width {
-                let fx = x as f32;
-                let cell = if (fx - flare_x).abs() <= 1.5 {
-                    let h = (x as u64).wrapping_mul(374_761_393)
-                        ^ self.tick_count.wrapping_mul(2_246_822_519);
-                    let fg = if h.is_multiple_of(2) {
-                        self.theme.accent
-                    } else {
-                        self.theme.tertiary
-                    };
-                    Cell {
-                        symbol: '|',
-                        fg,
-                        bg: Color::Reset,
-                        alpha: 1.0,
-                        ..Default::default()
-                    }
-                } else if fx < flare_x {
-                    hub_content.get(x, y).clone()
-                } else {
-                    logo.get(x, y).clone()
+        match BOOT.at(progress) {
+            (0, sub) => {
+                let mut white = Buffer::new(area.width, area.height);
+                let cell = Cell {
+                    symbol: ' ',
+                    fg: Color::Reset,
+                    bg: Color::White,
+                    alpha: 1.0,
+                    ..Default::default()
                 };
-                buf.set(area.x + x, area.y + y, cell);
+                for y in 0..area.height {
+                    for x in 0..area.width {
+                        white.set(x, y, cell.clone());
+                    }
+                }
+                let dimmed = camera::dim(&white, sub);
+                blit(&dimmed, area, buf);
+            }
+
+            (BOOT_CLAW_PHASE, sub) => {
+                let art: &[&str] = if sub < 0.5 { &CLAW_OPEN } else { &CLAW_CLOSED };
+                render_centered_art(buf, area, art, self.theme.tertiary);
+            }
+
+            (2, sub) => {
+                render_centered_art(buf, area, &CLAW_CLOSED, self.theme.tertiary);
+                render_boot_title(buf, area, sub, self.theme.accent);
+            }
+
+            (_, sub) => {
+                let hub_content = self.render_destination_preview(Screen::Hub, area);
+                let mut logo = Buffer::new(area.width, area.height);
+                render_centered_art(&mut logo, local, &CLAW_CLOSED, self.theme.tertiary);
+                render_boot_title(&mut logo, local, 1.0, self.theme.accent);
+
+                let flare_x = -3.0 + sub * (area.width as f32 + 6.0);
+                for y in 0..area.height {
+                    for x in 0..area.width {
+                        let fx = x as f32;
+                        let cell = if (fx - flare_x).abs() <= 1.5 {
+                            let h = (x as u64).wrapping_mul(374_761_393)
+                                ^ self.tick_count.wrapping_mul(2_246_822_519);
+                            let fg = if h.is_multiple_of(2) {
+                                self.theme.accent
+                            } else {
+                                self.theme.tertiary
+                            };
+                            Cell {
+                                symbol: '|',
+                                fg,
+                                bg: Color::Reset,
+                                alpha: 1.0,
+                                ..Default::default()
+                            }
+                        } else if fx < flare_x {
+                            hub_content.get(x, y).clone()
+                        } else {
+                            logo.get(x, y).clone()
+                        };
+                        buf.set(area.x + x, area.y + y, cell);
+                    }
+                }
             }
         }
     }
