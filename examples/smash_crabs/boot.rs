@@ -99,7 +99,7 @@ impl SmashCrabs {
                     }
                 }
                 let dimmed = camera::dim(&white, sub);
-                blit(&dimmed, area, buf);
+                dimmed.blit(buf, area.x, area.y);
             }
 
             (BOOT_CLAW_PHASE, sub) => {

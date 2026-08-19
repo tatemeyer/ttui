@@ -62,7 +62,7 @@ impl SmashCrabs {
             } else {
                 scratch
             };
-            blit(&final_buf, area, buf.layer_mut(index));
+            final_buf.blit(buf.layer_mut(index), area.x, area.y);
         }
     }
 }
