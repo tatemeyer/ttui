@@ -62,6 +62,33 @@ same `fg`/`bg`. It splits into a border-cell constructor (adds
 `Cell` the way it does today (default, non-bold style) — the two cases no
 longer need to be identical past `fg`/`bg`.
 
+**Correction (2026-08-19, #113):** the split described above is not what
+shipped. `plain()` — since renamed `base_cell()` (#109) — remained a
+single closure backing both cases, and the title loop overrides just the
+one field it needs:
+
+```rust
+Cell { symbol: ch, style: CellStyle::default(), ..base_cell(x, area.y) }
+```
+
+The outcome the spec asked for is unchanged — border cells carry the
+theme's style, title cells do not — and both halves are pinned by
+`title_cells_are_not_bold_even_when_theme_border_style_is_bold`, which
+asserts them in a single render (#111). What differs is the structure:
+one constructor plus an explicit override rather than two constructors.
+
+Kept as-is deliberately. Two constructors would duplicate the `fg`/`bg`
+derivation (including `primary_end`'s per-cell gradient) for the sake of
+a field the title sets to default anyway, and the override is the
+narrower, more legible statement of "the title is like a border cell
+except for its style". The risk it carries — that deleting the override
+line still compiles and silently bolds titles — is why that line is
+commented as load-bearing and named in its test (#110).
+
+Also note `border_bold: bool` became `border_style: CellStyle` in
+v1.0.0 (#108), so the `style: CellStyle { bold }` sketch above reads
+`style: border_style` in the shipped code.
+
 ### `examples/omnitrix.rs`
 
 `theme()` already computes `brightness: f32` (0.0-1.0, from the sine wave)
