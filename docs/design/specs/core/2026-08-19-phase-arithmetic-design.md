@@ -1,6 +1,6 @@
 # Phase Arithmetic — Design
 
-**Status:** draft, pending review before we move to planning.
+**Status:** approved 2026-08-19; duration support added on review.
 **Date:** 2026-08-19
 **Relationship to prior work:** first Arc of the v1.1 initiative, and the
 first Arc chosen by the "future of TTUI" brainstorm rather than by a
@@ -61,6 +61,25 @@ That third point is the real defect. Which phase you are in and how far
 into it you are are two answers to one question, and today they are
 derived independently.
 
+### A fourth spelling: durations
+
+`smash_crabs` does not write fractions at all. It declares its phases as
+durations and divides at runtime:
+
+```rust
+const BOOT_FLASH_MS: u64 = 200;
+const BOOT_CLAW_MS:  u64 = 800;
+const BOOT_TOTAL_MS: u64 = BOOT_FLASH_MS + BOOT_CLAW_MS + BOOT_TITLE_MS + BOOT_FLARE_MS;
+
+let t1 = BOOT_FLASH_MS as f32 / BOOT_TOTAL_MS as f32;
+let t2 = (BOOT_FLASH_MS + BOOT_CLAW_MS) as f32 / BOOT_TOTAL_MS as f32;
+```
+
+That is arguably the *most* natural way to author a boot sequence —
+"flash for 200ms, then claw for 800ms" — and it carries its own running-
+total arithmetic that nothing checks. Supporting it is part of this
+design rather than a follow-up.
+
 ## Scope
 
 **Tag: `coding`.** TDD test-first, no exceptions.
@@ -75,7 +94,8 @@ Arc is v1.1 rather than a patch.
 ### In scope
 
 - One new public type in `src/transition.rs` turning overall progress
-  into `(phase index, progress within that phase)`.
+  into `(phase index, progress within that phase)`, constructible from
+  either fractions or durations.
 - Migrating the ten existing call sites onto it.
 
 ### Out of scope
@@ -95,15 +115,19 @@ Arc is v1.1 rather than a patch.
 ## Approach
 
 ```rust
-/// Subdivides a `0..1` progress range at fixed boundaries, so "which
-/// phase" and "how far into it" come from one declaration instead of
-/// being derived separately at each site.
-pub struct Phases<const N: usize> { /* bounds: [f32; N] */ }
+/// Subdivides a `0..1` progress range into `N` phases, so "which phase"
+/// and "how far into it" come from one declaration instead of being
+/// derived separately at each site.
+pub struct Phases<const N: usize> { /* ends: [f32; N] */ }
 
 impl<const N: usize> Phases<N> {
-    /// Boundaries in ascending order, each in `0..1`. `N` boundaries
-    /// describe `N + 1` phases.
-    pub const fn new(bounds: [f32; N]) -> Self;
+    /// Cumulative phase *ends* in ascending order, the last being 1.0.
+    pub const fn new(ends: [f32; N]) -> Self;
+
+    /// Phase durations, normalised to cumulative ends by their total —
+    /// so a sequence can be authored as "200ms, then 800ms, then 600ms"
+    /// without the app computing a total or a running sum.
+    pub const fn from_durations(durations: [Duration; N]) -> Self;
 
     /// The phase `progress` falls in, and how far through that phase it
     /// is — always clamped to `0..1`.
@@ -114,7 +138,7 @@ impl<const N: usize> Phases<N> {
 Declared once per sequence, as a `const`:
 
 ```rust
-const BOOT: Phases<3> = Phases::new([0.1, 0.4, 0.85]);
+const BOOT: Phases<4> = Phases::new([0.1, 0.4, 0.85, 1.0]);
 
 let (phase, t) = BOOT.at(progress);
 match phase {
@@ -125,23 +149,44 @@ match phase {
 }
 ```
 
+or, where durations read better:
+
+```rust
+const BOOT: Phases<4> = Phases::from_durations([
+    Duration::from_millis(200), // flash
+    Duration::from_millis(800), // claw
+    Duration::from_millis(600), // title
+    Duration::from_millis(500), // flare
+]);
+```
+
 Each boundary now appears exactly once, and the local `t` cannot disagree
 with the phase, because both come from the same call.
 
-`const fn new` matters: boundaries want to be `const` items alongside the
-other tuning constants each app already keeps at the top of its file, not
-values rebuilt every frame.
-
 ### Decisions inside the design
 
+- **`N` is the number of phases, not the number of boundaries.** The
+  first draft had `N` boundaries describing `N + 1` phases, which reads
+  well but cannot support `from_durations`: that would need
+  `[Duration; N + 1]`, and generic const arithmetic is unstable
+  (`generic_const_exprs`) while this crate is stable-only — confirmed
+  against rustc 1.91.1. Making `N` the phase count lets both
+  constructors take `[T; N]`, and has the side benefit that the type
+  states the phase count directly.
+- **`new` takes cumulative ends, with the last being 1.0.** Slightly
+  more verbose than bare interior boundaries, but it makes the phase
+  count self-evident and matches `from_durations`' shape.
+- **Both constructors are `const fn`.** Verified by compiling the
+  intended body on stable: `Duration::as_nanos` is `const`, `u128`
+  accumulation and `as f32` division are permitted in `const fn`, and
+  both forms construct in a `const` item. Boundaries want to sit
+  alongside the other tuning constants at the top of each app's file,
+  not be rebuilt every frame.
 - **Clamped, always.** `at` returns `t` in `0..1`, ending the
   per-call-site inconsistency. A caller who genuinely wants unclamped
   overshoot can compute it; nobody currently does.
-- **`N + 1` phases from `N` boundaries**, the final phase running to 1.0.
-  This matches every existing sequence, all of which end in a phase with
-  no upper boundary.
 - **Out-of-range progress saturates** rather than panicking: below 0
-  gives `(0, 0.0)`, at or above 1 gives `(N, 1.0)`.
+  gives `(0, 0.0)`, at or above 1 gives `(N - 1, 1.0)`.
 - **Lives in `src/transition.rs`**, next to `Transition`, because the two
   are used together — `PHASES.at(t.progress())`. That file is 91 lines,
   far below the 500-line ceiling.
@@ -157,11 +202,13 @@ not make the values chosen for each phase correct.
 
 ## Verification
 
-- **TDD test-first**, covering: `N + 1` phases from `N` boundaries;
-  clamping at both ends; out-of-range saturation; a boundary value itself
-  landing in the *later* phase (`at(0.4)` with bounds `[0.1, 0.4, 0.85]`
-  is phase 2 at `t = 0.0`, matching today's `if progress < 0.4` tests);
-  and a zero-boundary `Phases<0>` behaving as one phase.
+- **TDD test-first**, covering: `N` phases from `N` ends; clamping at
+  both ends; out-of-range saturation; a boundary value itself landing in
+  the *later* phase (`at(0.4)` on `[0.1, 0.4, 0.85, 1.0]` is phase 2 at
+  `t = 0.0`, matching today's `if progress < 0.4` tests); a single-phase
+  `Phases<1>`; and `from_durations` normalising to the same ends as the
+  equivalent `new` — including that unequal durations produce unequal
+  phase widths.
 - **Migration is a refactor and must be provably invisible.** Every
   migrated app is captured before and after with `tools/visual-snapshot`
   and the frames compared. Boot sequences are short relative to capture
@@ -179,36 +226,20 @@ not make the values chosen for each phase correct.
 - **A `BootSequence` owning phases and timing.** Reaches into each app's
   state and tick handling; over-extraction. Rejected.
 - **A hub / sub-screen framework.** See "Out of scope".
+- **`N` boundaries describing `N + 1` phases.** The first draft's shape;
+  incompatible with `from_durations` on stable Rust. See "Decisions".
 - **A slice-backed `Phases<'a>`** rather than const-generic. Avoids the
   `N` parameter but cannot be a `const` item as naturally, which is how
   every app will want to declare it.
 
 ## Open questions for planning
 
-1. **Migration order and batching** — ten call sites across five apps.
+1. **Migration order and batching** — ten call sites across four apps.
    One PR, or one per app with its own visual review?
 2. **Whether the non-boot call sites migrate too.** `omnitrix.rs:262`,
    `smash_crabs.rs:353` and `tardis.rs:284/316` use the same shape for
    screen transitions and effects. They should, but they are lower value
    than the boot sequences and could be deferred.
-3. **Whether `Phases` should expose its boundaries** for a caller wanting
-   a phase's absolute range. No current call site needs it, and adding it
+3. **Whether `Phases` should expose its ends** for a caller wanting a
+   phase's absolute range. No current call site needs it, and adding it
    later is additive.
-4. **Whether to accept durations as well as fractions.** `smash_crabs`
-   does not write its boundaries as fractions at all — it declares them
-   as durations and divides at runtime:
-
-   ```rust
-   let t1 = BOOT_FLASH_MS as f32 / BOOT_TOTAL_MS as f32;
-   let t2 = (BOOT_FLASH_MS + BOOT_CLAW_MS) as f32 / BOOT_TOTAL_MS as f32;
-   ```
-
-   That is arguably the more natural way to author a boot sequence —
-   "flash for 200ms, then claw for 800ms" — and it is a *third* spelling
-   of the same idea, alongside inline fractions and inline widths. A
-   `Phases::from_durations([...])` constructor would cover it and remove
-   the running-total arithmetic above. Deferred to planning because it
-   widens the API beyond the single type this design proposes, and
-   because `Phases::new` already accepts these values as a `const`
-   expression; the question is whether the app should still be doing the
-   division itself.
