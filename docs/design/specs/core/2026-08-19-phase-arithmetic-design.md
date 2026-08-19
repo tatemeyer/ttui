@@ -232,7 +232,25 @@ not make the values chosen for each phase correct.
   `N` parameter but cannot be a `const` item as naturally, which is how
   every app will want to declare it.
 
-## Open questions for planning
+## Open questions — all resolved
+
+**Resolved 2026-08-19, on completing the Arc.** Kept below as written,
+with the answers, rather than deleted.
+
+1. **Batching:** one PR per slice. Slice 2's four app migrations shared
+   one PR and one visual-review pass.
+2. **Non-boot call sites:** migrated where genuinely phased —
+   `omnitrix` and `smash_crabs`. **Declined for `tardis`**, whose phase 1
+   spans `[0.3, 0.85)` while its void ramp divides by `0.4`, completing
+   early and holding. That is not phase-local progress, and `Phases`
+   would have changed the animation. The escape hatch was used exactly
+   once, on the one site that needed it.
+3. **Exposing ends:** still not needed by any call site. Additive later.
+4. **Durations:** implemented in Slice 1 as `from_durations`, which
+   reshaped the API — `N` became the phase count, since the alternative
+   needed `[Duration; N + 1]` and unstable const arithmetic.
+
+### As originally written
 
 1. **Migration order and batching** — ten call sites across four apps.
    One PR, or one per app with its own visual review?
