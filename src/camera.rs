@@ -3,7 +3,6 @@
 
 use crate::buffer::{Buffer, Cell};
 use crate::easing::scale_color;
-use crossterm::style::Color;
 
 /// A 2D viewport position and zoom level over a source `Buffer`.
 pub struct Camera {
@@ -89,6 +88,7 @@ pub fn dim(buf: &Buffer, factor: f32) -> Buffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::style::Color;
 
     fn labeled(symbol: char) -> Cell {
         Cell {
