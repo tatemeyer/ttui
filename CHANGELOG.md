@@ -14,6 +14,12 @@ this project follows the SemVer policy defined in
   (`_ => …`) arm. This buys the ability to add variants — for example a
   content-sizing `Constraint::Auto` — in a *minor* release rather than
   another major.
+- Removed the `blend` module. Its own documentation described it as
+  "spike-only, and now historical": the rendering-fidelity spike's
+  recommendation was adopted, and `LayerStack::composite` has done real
+  Porter-Duff "over" compositing on `Cell::alpha` ever since. Callers
+  should use `LayerStack::composite` (for `blend_over`) and
+  `easing::scale_color` (for `fade_toward`).
 
 ### Added
 
