@@ -2,7 +2,7 @@
 //! panning/zooming a rendered buffer and for boot-sequence fades.
 
 use crate::buffer::{Buffer, Cell};
-use crossterm::style::Color;
+use crate::easing::scale_color;
 
 /// A 2D viewport position and zoom level over a source `Buffer`.
 pub struct Camera {
@@ -44,7 +44,28 @@ pub fn viewport(source: &Buffer, camera: &Camera, width: u16, height: u16) -> Bu
 
 /// Scales every Rgb cell's color toward black by `factor` (0 = no
 /// change, 1 = fully black). Non-Rgb colors are left unchanged.
+///
+/// # Note the inverted convention
+///
+/// `factor` is *how much to dim*, which is the **opposite** of
+/// [`crate::easing::scale_color`]'s `factor` (where 1.0 means unchanged
+/// and 0.0 means black). `dim` delegates to it as
+/// `scale_color(c, 1.0 - factor)`.
+///
+/// This inversion has already misled a reader once: during the
+/// investigation for #139, `dim(&scratch, 1.0)` was read as "full
+/// brightness" when it means "fully black", and produced an analysis
+/// that had to be corrected mid-flight. The signature is kept as-is
+/// because flipping it would be a breaking change to a shipped API, so
+/// the trap is documented rather than removed.
+///
+/// `factor` is clamped to `0.0..=1.0`. That clamp is load-bearing:
+/// `easing::scale_color` is deliberately unclamped and will brighten a
+/// color given a factor above 1.0, so without the clamp a negative
+/// `factor` here would make the buffer brighter instead of darker.
 pub fn dim(buf: &Buffer, factor: f32) -> Buffer {
+    // Load-bearing: `easing::scale_color` is deliberately unclamped, so
+    // without this a negative `factor` would *brighten* the buffer.
     let factor = factor.clamp(0.0, 1.0);
     let mut out = Buffer::new(buf.width, buf.height);
     for y in 0..buf.height {
@@ -54,8 +75,8 @@ pub fn dim(buf: &Buffer, factor: f32) -> Buffer {
                 x,
                 y,
                 Cell {
-                    fg: scale_color(cell.fg, factor),
-                    bg: scale_color(cell.bg, factor),
+                    fg: scale_color(cell.fg, 1.0 - factor),
+                    bg: scale_color(cell.bg, 1.0 - factor),
                     ..cell.clone()
                 },
             );
@@ -64,20 +85,10 @@ pub fn dim(buf: &Buffer, factor: f32) -> Buffer {
     out
 }
 
-fn scale_color(c: Color, factor: f32) -> Color {
-    match c {
-        Color::Rgb { r, g, b } => Color::Rgb {
-            r: (r as f32 * (1.0 - factor)) as u8,
-            g: (g as f32 * (1.0 - factor)) as u8,
-            b: (b as f32 * (1.0 - factor)) as u8,
-        },
-        other => other,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::style::Color;
 
     fn labeled(symbol: char) -> Cell {
         Cell {
@@ -241,5 +252,40 @@ mod tests {
 
         assert_eq!(out.get(0, 0).fg, Color::Red);
         assert_eq!(out.get(0, 0).bg, Color::Reset);
+    }
+
+    #[test]
+    fn dim_clamps_factors_outside_zero_to_one_rather_than_brightening() {
+        let mut buf = Buffer::new(1, 1);
+        buf.set(
+            0,
+            0,
+            Cell {
+                fg: Color::Rgb {
+                    r: 100,
+                    g: 150,
+                    b: 200,
+                },
+                bg: Color::Reset,
+                alpha: 1.0,
+                ..Default::default()
+            },
+        );
+
+        // Above 1.0 saturates at fully black rather than going past it.
+        assert_eq!(dim(&buf, 2.0).get(0, 0).fg, Color::Rgb { r: 0, g: 0, b: 0 });
+
+        // Below 0.0 leaves the color alone. This is the load-bearing half:
+        // `easing::scale_color` is deliberately unclamped and will happily
+        // brighten, so `dim` clamping first is the only thing stopping a
+        // negative factor from producing a *brighter* buffer.
+        assert_eq!(
+            dim(&buf, -1.0).get(0, 0).fg,
+            Color::Rgb {
+                r: 100,
+                g: 150,
+                b: 200
+            }
+        );
     }
 }

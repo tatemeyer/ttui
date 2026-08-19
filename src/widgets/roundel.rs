@@ -4,6 +4,7 @@
 
 use crate::buffer::{Buffer, Cell};
 use crate::canvas::{Canvas, CanvasMode};
+use crate::easing::scale_color;
 use crate::layout::Rect;
 use crossterm::style::Color;
 
@@ -74,17 +75,6 @@ impl Roundel {
             }
         }
         canvas.blit(buf, area.x, area.y);
-    }
-}
-
-fn scale_color(c: Color, intensity: f32) -> Color {
-    match c {
-        Color::Rgb { r, g, b } => Color::Rgb {
-            r: (r as f32 * intensity) as u8,
-            g: (g as f32 * intensity) as u8,
-            b: (b as f32 * intensity) as u8,
-        },
-        other => other,
     }
 }
 
