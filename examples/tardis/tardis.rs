@@ -271,7 +271,7 @@ impl Tardis {
             Screen::Hub => self.render_hub(local, &mut stack),
         }
         let mut out = Buffer::new(area.width, area.height);
-        blit(&stack, local, &mut out);
+        stack.blit(&mut out, local.x, local.y);
         out
     }
 
@@ -297,7 +297,7 @@ impl Tardis {
                 -magnitude
             };
             let shaken = effects::shake(&stack, dx, dy);
-            blit(&shaken, area, buf);
+            shaken.blit(buf, area.x, area.y);
             return;
         }
 
@@ -349,7 +349,7 @@ impl Tardis {
         }
 
         let content = self.render_destination_preview(destination, area);
-        blit(&content, area, buf);
+        content.blit(buf, area.x, area.y);
     }
 }
 
@@ -392,14 +392,6 @@ fn render_ink_row(buf: &mut LayerStack, area: Rect, y: u16, text: &str, fg: Colo
                 ..Default::default()
             },
         );
-    }
-}
-
-fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
-    for y in 0..scratch.height {
-        for x in 0..scratch.width {
-            buf.set(area.x + x, area.y + y, scratch.get(x, y).clone());
-        }
     }
 }
 

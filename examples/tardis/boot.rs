@@ -113,7 +113,7 @@ impl Tardis {
                     zoom,
                 );
                 let zoomed = camera::viewport(&hub_stack, &cam, area.width, area.height);
-                blit(&zoomed, area, buf);
+                zoomed.blit(buf, area.x, area.y);
             }
         }
     }

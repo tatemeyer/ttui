@@ -7,6 +7,7 @@ use ttui::canvas::{Canvas, CanvasMode};
 use ttui::glitch::GlitchBuffer;
 use ttui::input::{InputBinder, KeyPress};
 use ttui::layout::{Constraint, Direction, Layout, Rect};
+use ttui::noise::scatter;
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::perspective::{Camera, Line3, Point3, ProjectLineParams};
 use ttui::theme::{BorderSet, Theme};
@@ -159,13 +160,6 @@ struct Star {
     x: f32,
     y: f32,
     z: f32,
-}
-
-/// Deterministic pseudo-random scatter for star placement — no RNG
-/// dependency, matching every prior Arc's posture.
-fn scatter(seed: u32, spread: f32) -> f32 {
-    let h = (seed.wrapping_mul(2_654_435_761)) ^ (seed.wrapping_mul(40_503).rotate_left(13));
-    ((h % 10_000) as f32 / 10_000.0 - 0.5) * spread
 }
 
 pub(crate) struct Falcon {

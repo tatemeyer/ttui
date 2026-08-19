@@ -301,25 +301,25 @@ impl SmashCrabs {
         match screen {
             Screen::Versus => {
                 let background = self.paint_background(local);
-                blit(&background, local, &mut buf);
+                background.blit(&mut buf, local.x, local.y);
                 let ui = self.paint_ui(local);
-                blit(&ui, local, &mut buf);
+                ui.blit(&mut buf, local.x, local.y);
             }
             Screen::TargetSmash => {
                 let background = self.paint_background(local);
-                blit(&background, local, &mut buf);
+                background.blit(&mut buf, local.x, local.y);
                 let ui = self.paint_ts_ui(local);
-                blit(&ui, local, &mut buf);
+                ui.blit(&mut buf, local.x, local.y);
             }
             Screen::StageHazards => {
                 let mut stack = LayerStack::new(area.width, area.height);
                 self.render_stage_hazards(local, &mut stack);
-                blit(&stack, local, &mut buf);
+                stack.blit(&mut buf, local.x, local.y);
             }
             Screen::Hub => {
                 let mut stack = LayerStack::new(area.width, area.height);
                 self.render_hub(local, &mut stack);
-                blit(&stack, local, &mut buf);
+                stack.blit(&mut buf, local.x, local.y);
             }
         }
         buf
@@ -388,14 +388,6 @@ impl SmashCrabs {
                 };
                 buf.set(area.x + x, area.y + y, cell);
             }
-        }
-    }
-}
-
-fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
-    for y in 0..scratch.height {
-        for x in 0..scratch.width {
-            buf.set(area.x + x, area.y + y, scratch.get(x, y).clone());
         }
     }
 }

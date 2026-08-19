@@ -44,12 +44,12 @@ impl Tardis {
                 let face_camera = Camera::new(face_area.x as f32, face_area.y as f32, 1.0);
                 let cropped = camera::viewport(&virtual_buf, &face_camera, vw, vh);
                 let dimmed = camera::dim(&cropped, factor);
-                blit(&dimmed, face_area, &mut virtual_buf);
+                dimmed.blit(&mut virtual_buf, face_area.x, face_area.y);
             }
         }
         let cam = Camera::new(self.displayed_face_index() * vw as f32, 0.0, 1.0);
         let view = camera::viewport(&virtual_buf, &cam, vw, vh);
-        blit(&view, area, buf);
+        view.blit(buf, area.x, area.y);
 
         let rotor_width = (area.width / 4).max(3);
         let rotor_area = Rect {

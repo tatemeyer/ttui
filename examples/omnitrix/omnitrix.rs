@@ -316,14 +316,6 @@ fn render_row(buf: &mut Buffer, area: Rect, y: u16, text: &str, fg: Color, bg: C
     }
 }
 
-fn blit(scratch: &Buffer, area: Rect, buf: &mut Buffer) {
-    for y in 0..scratch.height {
-        for x in 0..scratch.width {
-            buf.set(area.x + x, area.y + y, scratch.get(x, y).clone());
-        }
-    }
-}
-
 impl App for Omnitrix {
     fn update(&mut self, event: &Event) {
         let Event::Key(k) = event else { return };
@@ -431,7 +423,7 @@ impl App for Omnitrix {
         match &self.transitioning_from {
             None => {
                 let content = self.render_mode_content(self.mode, inner);
-                blit(&content, inner, buf);
+                content.blit(buf, inner.x, inner.y);
             }
             Some((old_mode, transition)) => {
                 self.render_transition(*old_mode, inner, transition.progress(), buf);

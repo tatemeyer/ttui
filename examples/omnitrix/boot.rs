@@ -44,16 +44,7 @@ impl Omnitrix {
                 let dimmed = camera::dim(&scratch, factor);
                 let x0 = area.x + (area.width.saturating_sub(5)) / 2;
                 let y0 = area.y + (area.height.saturating_sub(5)) / 2;
-                blit(
-                    &dimmed,
-                    Rect {
-                        x: x0,
-                        y: y0,
-                        width: 5,
-                        height: 5,
-                    },
-                    buf,
-                );
+                dimmed.blit(buf, x0, y0);
             }
 
             (1, _) => {
