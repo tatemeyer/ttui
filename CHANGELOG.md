@@ -7,6 +7,14 @@ this project follows the SemVer policy defined in
 
 ## [Unreleased]
 
+### Breaking
+
+- `Intensity`, `CanvasMode`, `Direction` and `Constraint` are now
+  `#[non_exhaustive]`. Downstream `match`es on them need a wildcard
+  (`_ => …`) arm. This buys the ability to add variants — for example a
+  content-sizing `Constraint::Auto` — in a *minor* release rather than
+  another major.
+
 ### Added
 
 - Standard open-source project files: `CONTRIBUTING.md` (build, test, the

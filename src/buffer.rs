@@ -6,6 +6,10 @@ use crossterm::style::Color;
 
 /// Text intensity — a single SGR axis; a cell is bold, dim, or
 /// neither, never more than one at once.
+///
+/// `#[non_exhaustive]`: new variants may be added in a minor release,
+/// so downstream `match`es need a wildcard arm.
+#[non_exhaustive]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum Intensity {
     /// No intensity styling.

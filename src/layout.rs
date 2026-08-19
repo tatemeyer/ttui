@@ -24,6 +24,10 @@ impl Rect {
 }
 
 /// Axis a `Layout` splits its area along.
+///
+/// `#[non_exhaustive]`: new variants may be added in a minor release,
+/// so downstream `match`es need a wildcard arm.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Direction {
     /// Split left-to-right.
@@ -33,6 +37,11 @@ pub enum Direction {
 }
 
 /// How much space one child of a `Layout` split should take.
+///
+/// `#[non_exhaustive]`: new variants (e.g. a content-sizing `Auto`)
+/// may be added in a minor release, so downstream `match`es need a
+/// wildcard arm.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Constraint {
     /// Exactly this many cells.
