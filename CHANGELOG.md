@@ -7,6 +7,33 @@ this project follows the SemVer policy defined in
 
 ## [Unreleased]
 
+### Added
+
+- Standard open-source project files: `CONTRIBUTING.md` (build, test, the
+  four required checks, and the commit/test/doc/versioning conventions),
+  `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), and `SECURITY.md`
+  (private vulnerability reporting, and an honest statement of what the
+  realistic attack surface of a terminal UI library actually is).
+- A rustdoc landing page: `src/lib.rs` now carries a quick-start example,
+  a pipeline diagram, and a guided tour of the modules, replacing a
+  two-line crate summary. Both code samples are doctests, so the
+  quick-start cannot silently rot.
+- `README.md` gained crates.io/docs.rs/CI/MSRV/license badges, install
+  instructions, the same quick-start, and the standard
+  documentation/contributing/security/license sections.
+
+### Changed
+
+- **Declared MSRV: Rust 1.87.0**, via `rust-version` in `Cargo.toml`.
+  Verified rather than assumed — 1.87 is the first release with
+  `unsigned_is_multiple_of` stable, and 1.86 fails to compile the library.
+  This documents the minimum that was already in force; it does not raise
+  it. Future MSRV increases are treated as minor bumps.
+- The published package no longer ships development-only material —
+  `docs/`, `.claude/`, `.plumb/`, `.github/`, `CLAUDE.md` and
+  `parallax.yaml` are now excluded, taking it from 229 files to 92. No
+  code, example, test or bench is affected.
+
 ## [1.1.0] - 2026-08-19
 
 ### Added

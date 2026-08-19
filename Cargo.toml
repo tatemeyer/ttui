@@ -5,9 +5,24 @@ edition = "2021"
 description = "A terminal UI framework built from first principles: direct control over text rendering, color, pane layout, and multiplexing."
 license = "MIT"
 repository = "https://github.com/tatemeyer/ttui"
+documentation = "https://docs.rs/ttui"
 readme = "README.md"
 keywords = ["tui", "terminal", "cli", "ui", "console"]
 categories = ["command-line-interface"]
+# Verified, not guessed: 1.87 is the first release with
+# `unsigned_is_multiple_of` stable; 1.86 fails to compile the lib.
+rust-version = "1.87"
+# Development material a consumer of the crate never needs. Keeps the
+# published package to the code, its examples, and the license/readme.
+exclude = [
+    ".claude/",
+    ".code-review-graph/",
+    ".github/",
+    ".plumb/",
+    "CLAUDE.md",
+    "docs/",
+    "parallax.yaml",
+]
 
 [workspace]
 members = [".", "tools/visual-snapshot"]
