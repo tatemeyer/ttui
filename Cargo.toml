@@ -1,6 +1,6 @@
 [package]
 name = "ttui"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "A terminal UI framework built from first principles: direct control over text rendering, color, pane layout, and multiplexing."
 license = "MIT"
