@@ -10,7 +10,7 @@ use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::perspective::{Camera, Line3, Point3, ProjectLineParams};
 use ttui::theme::{BorderSet, Theme};
-use ttui::transition::Transition;
+use ttui::transition::{Phases, Transition};
 use ttui::widgets::{cockpit_panel::CockpitPanel, text::Text};
 
 #[path = "boot.rs"]
@@ -23,6 +23,10 @@ use input_bindings::{falcon_input, FalconAction, FULL_POWER_GLITCH_DURATION_MS};
 
 const TICK_INTERVAL: Duration = Duration::from_millis(33); // ~30 FPS, matches every other app
 const BOOT_TOTAL_MS: u64 = 1400;
+/// Boot's four phases as fractions of `BOOT_TOTAL_MS`: the pilot light
+/// alone, the windshield powering on, the console panels revealing
+/// beneath it, then the whole cockpit fading up to full brightness.
+const BOOT: Phases<4> = Phases::new([0.1, 0.4, 0.85, 1.0]);
 /// Brightness the boot's final fade starts from, as a fraction of the
 /// live dashboard. Matches the panel-reveal phase that precedes it
 /// (measured: mean luma 13.2 against the dashboard's 15.05), so the
