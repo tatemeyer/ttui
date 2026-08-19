@@ -98,6 +98,36 @@ impl Buffer {
         self.cells[idx] = cell;
     }
 
+    /// Draws this buffer into `dest` with its top-left corner at
+    /// `(x, y)`, copying every cell — a plain overwrite, not an
+    /// alpha composite (that is `LayerStack::composite`).
+    ///
+    /// The argument order mirrors `Canvas::blit(&self, buf, x, y)` —
+    /// "draw me into that" — so the two read the same way round rather
+    /// than as opposites.
+    ///
+    /// Anything falling outside `dest` is clipped and nothing panics,
+    /// including an `x` or `y` past the far edge. The clipping is
+    /// explicit rather than left to `set`: `set` checks only the flat
+    /// index, so an out-of-range `x` silently lands on a later row
+    /// instead of panicking (#161), and a blit that inherited that
+    /// would smear its overhang across the rows below.
+    pub fn blit(&self, dest: &mut Buffer, x: u16, y: u16) {
+        for row in 0..self.height {
+            let Some(dy) = y.checked_add(row) else { break };
+            if dy >= dest.height {
+                break;
+            }
+            for col in 0..self.width {
+                let Some(dx) = x.checked_add(col) else { break };
+                if dx >= dest.width {
+                    break;
+                }
+                dest.set(dx, dy, self.get(col, row).clone());
+            }
+        }
+    }
+
     fn index(&self, x: u16, y: u16) -> usize {
         y as usize * self.width as usize + x as usize
     }
@@ -934,5 +964,134 @@ mod tests {
         stack.push_layer().set(0, 0, cell.clone());
 
         assert_eq!(*stack.layer(1).get(0, 0), cell);
+    }
+
+    fn marked(symbol: char) -> Cell {
+        Cell {
+            symbol,
+            fg: Color::Reset,
+            bg: Color::Reset,
+            alpha: 1.0,
+            ..Default::default()
+        }
+    }
+
+    fn filled(width: u16, height: u16, symbol: char) -> Buffer {
+        let mut buf = Buffer::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                buf.set(x, y, marked(symbol));
+            }
+        }
+        buf
+    }
+
+    #[test]
+    fn blit_at_the_origin_copies_every_cell() {
+        let src = filled(2, 2, 'x');
+        let mut dest = Buffer::new(2, 2);
+
+        src.blit(&mut dest, 0, 0);
+
+        for y in 0..2 {
+            for x in 0..2 {
+                assert_eq!(*dest.get(x, y), marked('x'), "({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn blit_places_the_sources_top_left_at_the_offset() {
+        let src = filled(2, 1, 'x');
+        let mut dest = Buffer::new(4, 3);
+
+        src.blit(&mut dest, 1, 2);
+
+        assert_eq!(*dest.get(1, 2), marked('x'));
+        assert_eq!(*dest.get(2, 2), marked('x'));
+        // Everything else, including the cell left of the offset and the
+        // row above it, stays default.
+        assert_eq!(*dest.get(0, 2), Cell::default());
+        assert_eq!(*dest.get(3, 2), Cell::default());
+        assert_eq!(*dest.get(1, 1), Cell::default());
+    }
+
+    #[test]
+    fn blit_writes_only_what_fits_when_the_source_overhangs() {
+        let src = filled(4, 4, 'x');
+        let mut dest = Buffer::new(3, 2);
+
+        src.blit(&mut dest, 1, 1); // must not panic
+
+        assert_eq!(*dest.get(1, 1), marked('x'));
+        assert_eq!(*dest.get(2, 1), marked('x'));
+        // The row the source overhangs into does not exist; the row it
+        // did not reach stays default.
+        assert_eq!(*dest.get(0, 0), Cell::default());
+        assert_eq!(*dest.get(0, 1), Cell::default());
+    }
+
+    /// #161's shape: `Buffer::set` documents "panics if out of bounds"
+    /// but only checks the flat index, so on a 4x3 buffer `set(5, 0, ..)`
+    /// indexes `0 * 4 + 5` and silently writes to `(1, 1)` instead of
+    /// panicking. `blit` clips on `x` explicitly rather than inheriting
+    /// that, so an `x` past the right edge writes nothing and leaves the
+    /// next row alone.
+    #[test]
+    fn blit_past_the_right_edge_does_not_wrap_onto_the_next_row() {
+        let src = filled(2, 1, 'x');
+        let mut dest = Buffer::new(4, 3);
+
+        src.blit(&mut dest, 4, 0); // wholly past the right edge
+
+        for y in 0..3 {
+            for x in 0..4 {
+                assert_eq!(
+                    *dest.get(x, y),
+                    Cell::default(),
+                    "({x}, {y}) was written by an out-of-bounds blit"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn blit_partly_past_the_right_edge_clips_the_overhanging_columns() {
+        let src = filled(3, 1, 'x');
+        let mut dest = Buffer::new(4, 3);
+
+        src.blit(&mut dest, 3, 0);
+
+        assert_eq!(*dest.get(3, 0), marked('x'));
+        // The two overhanging columns must not appear anywhere in row 1.
+        for x in 0..4 {
+            assert_eq!(*dest.get(x, 1), Cell::default(), "(({x}, 1))");
+        }
+    }
+
+    #[test]
+    fn blit_past_the_bottom_edge_writes_nothing() {
+        let src = filled(2, 2, 'x');
+        let mut dest = Buffer::new(4, 2);
+
+        src.blit(&mut dest, 0, 2); // must not panic
+
+        for y in 0..2 {
+            for x in 0..4 {
+                assert_eq!(*dest.get(x, y), Cell::default(), "({x}, {y})");
+            }
+        }
+    }
+
+    /// An offset near `u16::MAX` must clip, not overflow the `x + column`
+    /// addition (a debug-build panic).
+    #[test]
+    fn blit_near_u16_max_does_not_overflow_the_offset_arithmetic() {
+        let src = filled(4, 4, 'x');
+        let mut dest = Buffer::new(4, 4);
+
+        src.blit(&mut dest, u16::MAX - 1, u16::MAX - 1); // must not panic
+
+        assert_eq!(*dest.get(0, 0), Cell::default());
     }
 }
