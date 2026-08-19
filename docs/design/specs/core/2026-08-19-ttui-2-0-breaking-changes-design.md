@@ -112,13 +112,26 @@ documentation correction. A major release is the only time the first is
 affordable, because it changes `set`'s observable panic behaviour.
 
 The objection to Option 1 is cost: `set` is on the renderer's hottest
-path. That objection is currently an assumption, and `benches/render.rs`
-already exists — so it will be settled with a number instead:
+path. That objection is currently an assumption, and will be settled
+with a number instead.
 
-1. Benchmark `render` on `main`.
-2. Add the bounds check; benchmark again.
-3. If the difference is in the noise, ship Option 1.
-4. If it is measurable, fall back to Option 2 (`debug_assert!`) and
+**`benches/render.rs` cannot settle it.** Checked rather than assumed:
+its three profiles build their `Vec<CellDiff>` *before* `b.iter()`, and
+the timed closure runs only `render_diff`/`render_diff_naive` — the ANSI
+writer. `Buffer::set` appears solely in that untimed setup, so the
+existing benchmark would report "no change" no matter what `index` does.
+Treating a flat result from it as evidence would be worse than not
+measuring at all.
+
+The procedure is therefore:
+
+1. **Add a `set`-focused benchmark** — a timed loop that fills a
+   `Buffer` cell by cell, which is what a paint pass actually does.
+   This is a prerequisite task, not a side errand.
+2. Record a baseline on `main`.
+3. Add the bounds check; re-run.
+4. If the difference is in the noise, ship Option 1.
+5. If it is measurable, fall back to Option 2 (`debug_assert!`) and
    record the measurement in the PR as the reason.
 
 **Accepted risk:** if the benchmark rejects Option 1, the work is spent
