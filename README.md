@@ -3,7 +3,7 @@
 A terminal UI framework built from first principles: direct control over
 text rendering, color, pane layout, and multiplexing.
 
-**Status:** v1.0.0. The core render pipeline (`App` state → view
+**Status:** v1.1.0. The core render pipeline (`App` state → view
 builder → `Layout` → paint → diff → terminal writer), a
 constraint-based layout engine, alpha-compositing buffer layering, and
 a full set of widgets and primitives — `Text`/`List`/`Table`/`Block`
@@ -19,6 +19,12 @@ reel pulling five of those systems together into one polished entry
 point. See `CHANGELOG.md` for the release history, `docs/design/README.md`
 for the full Arc history, and `examples/README.md` for what each
 example demonstrates.
+
+v1.1 is additive: `transition::Phases<N>` for phase arithmetic over a
+`Transition`'s progress, plus three shared primitives —
+`easing::scale_color`, `noise::scatter` and `Buffer::blit` — that
+replace ten duplicate definitions the example apps and the library
+itself had each grown by hand.
 
 ## Try it
 
