@@ -119,6 +119,31 @@ outgrows this shape — not preemptively.
   unless explicitly wrapped). Each widget is a stateless
   `(data, area) -> paint calls into the Buffer` function; no widget owns
   state between frames.
+
+  **Correction (2026-08-19, #113):** "wrapper around any other widget"
+  describes `Block`'s *role* — chrome around someone else's content —
+  not its type. It is not a combinator that takes a child. What shipped,
+  and what v1.0.0 froze, is:
+
+  ```rust
+  pub fn render(&self, area: Rect, buf: &mut Buffer) -> Rect
+  ```
+
+  It draws the border and title into `area` and returns the inner
+  rectangle, which the caller renders into:
+
+  ```rust
+  let inner = Block::new().title("Items").render(cols[0], buf);
+  List::new(&items).render(inner, buf);
+  ```
+
+  This is the form that satisfies the rule stated two lines above: every
+  widget is a stateless `(data, area) -> paint calls` function. A literal
+  wrapper would have to be generic over its child and would break that
+  uniformity for exactly one widget, to no benefit — the caller already
+  knows what it wants inside the border. The bullet is left as written
+  rather than rewritten, since it is the original approved text; this
+  note is the correction.
 - **`app`** — the event loop; an `App` trait (or equivalent) exposing
   `update(state, event) -> state` and `view(state) -> UI tree`; owns
   terminal setup/teardown and panic safety (see Error handling).

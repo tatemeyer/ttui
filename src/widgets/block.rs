@@ -1,5 +1,11 @@
 //! Bordered container, with an optional outward second border ring
 //! for a "glow" look when `Theme.border_thick` is set.
+//!
+//! `Block` draws chrome and hands back the space inside it; it is not a
+//! combinator that takes a child widget. `render` returns the inner
+//! `Rect` and the caller renders into that, which keeps `Block` the same
+//! stateless `(data, area) -> paint calls` shape as every other widget
+//! rather than making one of them generic over its content (#113).
 
 use crate::buffer::{Buffer, Cell, CellStyle};
 use crate::layout::Rect;
@@ -34,8 +40,10 @@ impl<'a> Block<'a> {
         self
     }
 
-    /// Draws the border (and title, if set) and returns the inner
-    /// content area.
+    /// Draws the border (and title, if set) into `area` and returns the
+    /// inner content area for the caller to render into. The returned
+    /// `Rect` is `area` inset by one cell on every side; `border_thick`
+    /// draws its second ring *outward*, so it does not shrink this.
     pub fn render(&self, area: Rect, buf: &mut Buffer) -> Rect {
         if area.width < 2 || area.height < 2 {
             return area;
