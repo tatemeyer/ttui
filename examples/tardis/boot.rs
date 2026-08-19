@@ -55,68 +55,66 @@ impl Tardis {
             }
         }
 
-        if progress < 0.15 {
-            self.render_police_box(area, &POLICE_BOX_CLOSED, 0, 0, buf);
-            return;
-        }
-        if progress < 0.35 {
-            let magnitude: i16 = 2;
-            let dx = if self.tick_count.is_multiple_of(2) {
-                magnitude
-            } else {
-                -magnitude
-            };
-            let dy = if (self.tick_count / 2).is_multiple_of(2) {
-                magnitude
-            } else {
-                -magnitude
-            };
-            self.render_police_box(area, &POLICE_BOX_CLOSED, dx, dy, buf);
-            return;
-        }
-        if progress < 0.5 {
-            self.render_police_box(area, &POLICE_BOX_OPEN, 0, 0, buf);
-            return;
-        }
-        if progress < 0.65 {
-            for y in 0..area.height {
-                for x in 0..area.width {
-                    buf.set(
-                        area.x + x,
-                        area.y + y,
-                        Cell {
-                            symbol: ' ',
-                            fg: Color::Reset,
-                            bg: Color::Rgb {
-                                r: 255,
-                                g: 255,
-                                b: 255,
+        match BOOT.at(progress) {
+            (0, _) => self.render_police_box(area, &POLICE_BOX_CLOSED, 0, 0, buf),
+
+            (1, _) => {
+                let magnitude: i16 = 2;
+                let dx = if self.tick_count.is_multiple_of(2) {
+                    magnitude
+                } else {
+                    -magnitude
+                };
+                let dy = if (self.tick_count / 2).is_multiple_of(2) {
+                    magnitude
+                } else {
+                    -magnitude
+                };
+                self.render_police_box(area, &POLICE_BOX_CLOSED, dx, dy, buf);
+            }
+
+            (2, _) => self.render_police_box(area, &POLICE_BOX_OPEN, 0, 0, buf),
+
+            (3, _) => {
+                for y in 0..area.height {
+                    for x in 0..area.width {
+                        buf.set(
+                            area.x + x,
+                            area.y + y,
+                            Cell {
+                                symbol: ' ',
+                                fg: Color::Reset,
+                                bg: Color::Rgb {
+                                    r: 255,
+                                    g: 255,
+                                    b: 255,
+                                },
+                                alpha: 1.0,
+                                ..Default::default()
                             },
-                            alpha: 1.0,
-                            ..Default::default()
-                        },
-                    );
+                        );
+                    }
                 }
             }
-            return;
-        }
 
-        let push_progress = ((progress - 0.65) / 0.35).clamp(0.0, 1.0);
-        let zoom = easing::ease_out(1.0, 2.2, push_progress);
-        let local = Rect {
-            x: 0,
-            y: 0,
-            width: area.width,
-            height: area.height,
-        };
-        let mut hub_stack = LayerStack::new(area.width, area.height);
-        self.render_hub(local, &mut hub_stack);
-        let cam = Camera::new(
-            area.width as f32 / 2.0 * (1.0 - 1.0 / zoom),
-            area.height as f32 / 2.0 * (1.0 - 1.0 / zoom),
-            zoom,
-        );
-        let zoomed = camera::viewport(&hub_stack, &cam, area.width, area.height);
-        blit(&zoomed, area, buf);
+            (_, push_progress) => {
+                let zoom = easing::ease_out(1.0, 2.2, push_progress);
+                let local = Rect {
+                    x: 0,
+                    y: 0,
+                    width: area.width,
+                    height: area.height,
+                };
+                let mut hub_stack = LayerStack::new(area.width, area.height);
+                self.render_hub(local, &mut hub_stack);
+                let cam = Camera::new(
+                    area.width as f32 / 2.0 * (1.0 - 1.0 / zoom),
+                    area.height as f32 / 2.0 * (1.0 - 1.0 / zoom),
+                    zoom,
+                );
+                let zoomed = camera::viewport(&hub_stack, &cam, area.width, area.height);
+                blit(&zoomed, area, buf);
+            }
+        }
     }
 }
