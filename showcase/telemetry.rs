@@ -5,6 +5,7 @@
 use std::time::Duration;
 use ttui::buffer::LayerStack;
 use ttui::layout::{Constraint, Direction, Layout, Rect};
+use ttui::noise::scatter;
 use ttui::theme::Theme;
 use ttui::transition::Transition;
 use ttui::widgets::{bar_chart::BarChart, block::Block, sparkline::Sparkline, text::Text};
@@ -13,11 +14,6 @@ const TELEMETRY_DURATION: Duration = Duration::from_millis(5500);
 const GRIP_STEP: f32 = 6.0;
 const SERVO_STEP: f32 = 5.0;
 const STAT_STEP: f32 = 3.0;
-
-fn scatter(seed: u32, spread: f32) -> f32 {
-    let h = (seed.wrapping_mul(2_654_435_761)) ^ (seed.wrapping_mul(40_503).rotate_left(13));
-    ((h % 10_000) as f32 / 10_000.0 - 0.5) * spread
-}
 
 pub(crate) struct TelemetryState {
     grip_force: f32,

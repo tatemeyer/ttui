@@ -4,6 +4,7 @@ use std::time::Duration;
 use ttui::app::{run, App};
 use ttui::buffer::{CellStyle, LayerStack};
 use ttui::layout::{Constraint, Direction, Layout, Rect};
+use ttui::noise::scatter;
 use ttui::theme::{BorderSet, Theme};
 use ttui::widgets::{bar_chart::BarChart, block::Block, sparkline::Sparkline};
 
@@ -44,11 +45,6 @@ fn mission_control_theme() -> Theme {
         border_style: CellStyle::default(),
         border_thick: false,
     }
-}
-
-fn scatter(seed: u32, spread: f32) -> f32 {
-    let h = (seed.wrapping_mul(2_654_435_761)) ^ (seed.wrapping_mul(40_503).rotate_left(13));
-    ((h % 10_000) as f32 / 10_000.0 - 0.5) * spread
 }
 
 struct MissionControl {

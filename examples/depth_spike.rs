@@ -14,6 +14,7 @@ use ttui::app::{run, App};
 use ttui::buffer::{Cell, LayerStack};
 use ttui::canvas::{Canvas, CanvasMode};
 use ttui::layout::Rect;
+use ttui::noise::scatter;
 
 /// Camera fixed at the origin, looking down `+Z` — no position/
 /// orientation changes this Arc (confirmed fixed-forward only).
@@ -230,14 +231,6 @@ struct Star {
     x: f32,
     y: f32,
     z: f32,
-}
-
-/// Deterministic pseudo-random scatter for star placement — no RNG
-/// dependency, matching every prior Arc's posture (same style as
-/// `src/glitch.rs`'s noise hash).
-fn scatter(seed: u32, spread: f32) -> f32 {
-    let h = (seed.wrapping_mul(2_654_435_761)) ^ (seed.wrapping_mul(40_503).rotate_left(13));
-    ((h % 10_000) as f32 / 10_000.0 - 0.5) * spread
 }
 
 struct DepthSpike {
