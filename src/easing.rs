@@ -69,6 +69,37 @@ pub fn lerp_color(from: Color, to: Color, t: f32) -> Color {
     }
 }
 
+/// Scales an `Rgb` color's brightness by `factor`, multiplying each
+/// channel: `1.0` leaves the color unchanged and `0.0` is black.
+///
+/// `factor` is **not clamped**. Above `1.0` the color brightens, and
+/// each channel saturates at `255` rather than wrapping (Rust's
+/// float-to-int cast saturates); below `0.0` it floors at black by the
+/// same rule. Clamping `factor` to `0..=1` would silently turn a
+/// deliberate highlight into a no-op, which is the harder bug to see.
+///
+/// A non-`Rgb` color passes through untouched at every factor. There is
+/// nothing to scale: `Color::Reset` means "whatever the terminal's
+/// default is" and a named color is whatever the terminal's theme maps
+/// it to, so its brightness was never disclosed and any RGB substituted
+/// for it would be fabricated.
+///
+/// Note this differs from `lerp_color`, deliberately: that one switches
+/// non-`Rgb` colors at the midpoint (#122) because a lerp has two
+/// endpoints and can honestly pick the nearer one. A scale has one
+/// color and no second endpoint to fall back to, so passing it through
+/// is the only non-fabricating answer.
+pub fn scale_color(c: Color, factor: f32) -> Color {
+    match c {
+        Color::Rgb { r, g, b } => Color::Rgb {
+            r: (r as f32 * factor) as u8,
+            g: (g as f32 * factor) as u8,
+            b: (b as f32 * factor) as u8,
+        },
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -216,5 +247,83 @@ mod tests {
                 b: 20
             }
         );
+    }
+
+    #[test]
+    fn scale_color_at_one_leaves_an_rgb_color_unchanged() {
+        let c = Color::Rgb {
+            r: 200,
+            g: 100,
+            b: 50,
+        };
+        assert_eq!(scale_color(c, 1.0), c);
+    }
+
+    #[test]
+    fn scale_color_at_zero_is_black() {
+        let c = Color::Rgb {
+            r: 200,
+            g: 100,
+            b: 50,
+        };
+        assert_eq!(scale_color(c, 0.0), Color::Rgb { r: 0, g: 0, b: 0 });
+    }
+
+    #[test]
+    fn scale_color_at_half_halves_each_channel() {
+        let c = Color::Rgb {
+            r: 200,
+            g: 100,
+            b: 50,
+        };
+        assert_eq!(
+            scale_color(c, 0.5),
+            Color::Rgb {
+                r: 100,
+                g: 50,
+                b: 25
+            }
+        );
+    }
+
+    #[test]
+    fn scale_color_passes_non_rgb_through_at_every_factor() {
+        for factor in [0.0, 0.5, 1.0, 2.0, -1.0] {
+            assert_eq!(scale_color(Color::Reset, factor), Color::Reset);
+            assert_eq!(scale_color(Color::Green, factor), Color::Green);
+        }
+    }
+
+    /// `factor` is deliberately not clamped: a factor above `1.0`
+    /// brightens, and each channel saturates at `255` rather than
+    /// wrapping. Asserted rather than assumed, because the whole
+    /// behaviour rests on Rust's saturating float-to-int cast.
+    #[test]
+    fn scale_color_above_one_brightens_and_saturates_at_255() {
+        let c = Color::Rgb {
+            r: 200,
+            g: 100,
+            b: 50,
+        };
+        assert_eq!(
+            scale_color(c, 2.0),
+            Color::Rgb {
+                r: 255,
+                g: 200,
+                b: 100
+            }
+        );
+    }
+
+    /// The same saturating cast at the other end: a negative factor
+    /// floors at `0` rather than wrapping to a bright channel.
+    #[test]
+    fn scale_color_below_zero_saturates_to_black() {
+        let c = Color::Rgb {
+            r: 200,
+            g: 100,
+            b: 50,
+        };
+        assert_eq!(scale_color(c, -1.0), Color::Rgb { r: 0, g: 0, b: 0 });
     }
 }
