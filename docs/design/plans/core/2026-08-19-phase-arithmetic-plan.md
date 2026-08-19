@@ -183,10 +183,39 @@ Seven call sites across four apps. Each is a pure refactor.
 
 ---
 
-## Slice 3 — Migrate the non-boot transitions (`coding`)
+## Slice 3 — Migrate the non-boot transitions (`coding`) — DONE
 
 Four sites using the same shape for screen transitions and effects.
 Independently droppable.
+
+**Outcome: two migrated, two declined.** Step 1's instruction to leave a
+site alone if it is not really phased earned its place.
+
+- **Migrated.** `omnitrix`'s mode-switch wipe (`if progress < 0.2` flash,
+  then wipe) and `smash_crabs`' screen change (`if progress < 0.4` card,
+  then radial wipe) are both exactly the shape `Phases` models. Both
+  spans are **bit-exact** under `Phases` — `1.0f32 - 0.2f32 == 0.8f32`
+  and `1.0f32 - 0.4f32 == 0.6f32` — so unlike Slice 2's `falcon` and
+  `tardis` there is no ULP drift here at all.
+- **Declined: `tardis::render_transition`.** Its phase 1 spans
+  `[0.3, 0.85)` — width `0.55` — but the void ramp inside it divides by
+  `0.4`, so the ramp completes at `progress == 0.7` and then holds for
+  the rest of the phase. That is deliberately *not* phase-local
+  progress. `Phases` would give `t = (progress - 0.3) / 0.55` and change
+  the animation. Expressing the existing curve through `t` would need an
+  obscure `t * 0.55 / 0.4` rescale, which is worse than the status quo.
+  Its sibling at `tardis.rs:288` (`progress / 0.3`) *is* genuine
+  phase-0 progress, but migrating one of two uses inside one function
+  would leave the boundary constants split across a `Phases` const and a
+  literal — so the function is left whole.
+
+Verification: both migrated transitions were captured before and after
+with scripts written to *trigger* them (the `.plumb` scenarios do not).
+Every stable frame is identical. The single mid-wipe frame moves — and a
+three-run control on unchanged code showed that frame reading `1.076`,
+`0.0`, `0.0`, so it varies more between runs of identical code than
+between old and new. A fast radial wipe sampled at ~50ms cadence is
+exactly #131.
 
 ### Task 9: `omnitrix.rs:262`, `smash_crabs.rs:353`, `tardis.rs:284` and `:316`
 
@@ -205,7 +234,35 @@ Independently droppable.
 
 ---
 
-## Slice 4 — Close out
+## Slice 4 — Close out — DONE except the release decision
+
+**Step 1 — sweep.** `grep -rn "progress - 0\.\|progress / 0\."` over
+`examples/` and `showcase/` returns only `tardis.rs:288` and `:320`, both
+deliberately declined and justified above. Every other site is migrated.
+
+**Step 2 — all five scenarios.** Run and measured:
+
+```
+omnitrix      [0.051, 2.316, 2.314, 2.314, 2.284, 2.284]   <- byte-identical to its session-long baseline
+tardis        [0.189, 0.465, 0.437, 0.463, 0.458, 0.442]
+falcon        [0.008, 85.297, 85.278, 85.28, 85.306, 84.561, 85.143, 85.268]
+mission_ctrl  [17.615, 17.948, 18.526, 19.089, 19.638, 19.521]
+control_panel [17.65, 17.658, 17.713, 17.65]
+```
+
+`mission_control` and `control_panel` were never touched by this Arc and
+serve as controls. `tardis`'s contact sheet was read directly — Psychic
+Paper screen, rotating console line, hint bar, post-boot — not merely
+measured.
+
+**Step 3 — docs.** No new Arc bucket needed; `core/` already exists. The
+design's open questions are resolved: Q1 batching (one PR per slice), Q2
+non-boot sites (migrated where genuinely phased, see Slice 3), Q3
+exposing ends (still not needed), Q4 durations (implemented in Slice 1).
+
+**Step 4 — the release decision is deliberately left open.** See the task
+below; it is the one item in this Arc that is a judgment call rather than
+work.
 
 ### Task 10: Verify the whole Arc
 
