@@ -13,7 +13,7 @@ use ttui::glitch::GlitchBuffer;
 use ttui::layout::Rect;
 use ttui::particles::{Particle, ParticleSystem};
 use ttui::theme::{BorderSet, Theme};
-use ttui::transition::Transition;
+use ttui::transition::{Phases, Transition};
 use ttui::widgets::{
     analog_toggle::AnalogToggle, roundel::Roundel, text::Text, time_rotor::TimeRotor,
 };
@@ -51,6 +51,10 @@ const GLITCH_DURATION_MS: u64 = 500;
 const LAGGING_TICK_INTERVAL: Duration = Duration::from_millis(66);
 const FLIGHT_TRANSITION_MS: u64 = 900;
 const BOOT_MS: u64 = 3000;
+/// Boot's five phases as fractions of `BOOT_MS`: the police box sitting
+/// closed, then shaking, then its doors open, a white flash, and finally
+/// the push through into the hub.
+const BOOT: Phases<5> = Phases::new([0.15, 0.35, 0.5, 0.65, 1.0]);
 
 const POLICE_BOX_CLOSED: [&str; 5] = ["+------+", "|POLICE|", "|BOX   |", "|[DOOR]|", "+------+"];
 const POLICE_BOX_OPEN: [&str; 5] = ["+------+", "|POLICE|", "|BOX   |", "|[    ]|", "+------+"];
