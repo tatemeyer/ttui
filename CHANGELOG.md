@@ -18,8 +18,9 @@ this project follows the SemVer policy defined in
   their total); both are `const fn`, so an app can declare its phases as
   a `const`. A boundary belongs to the later phase, mirroring the
   `if progress < 0.1` branching it replaces. `semver:minor` — a new
-  `pub` item, no existing signature changed, and no app migrated to it
-  yet, so no output changes.
+  `pub` item, no existing signature changed. The `falcon`, `omnitrix`,
+  `tardis` and `smash_crabs` boot sequences now derive their phases from
+  it; that migration is a pure refactor and changes no rendered output.
 
 ### Fixed
 
