@@ -7,6 +7,8 @@ this project follows the SemVer policy defined in
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-19
+
 ### Added
 
 - `transition::Phases<N>` — subdivides a `Transition`'s `0..1` progress

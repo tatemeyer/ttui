@@ -232,15 +232,59 @@ this Arc.
 
 ## Open questions for planning
 
+**All three resolved — see "Outcomes" below.**
+
 1. **Migration batching** — ten definitions across seven files. Arc 1's
    answer (one PR per slice, apps batched within a slice) probably
    carries over.
+   **Resolved: yes, carried over.** Four PRs, one per slice (#164, #166,
+   #167, and this one), apps batched within each. Separating the
+   primitives (Slice 1) from their consumers (Slices 2-3) was what let
+   each migration be measured against an unchanged baseline.
 2. **Whether `showcase` counts as an app for capture purposes.** It has
    no `.plumb` scenario, and `showcase/telemetry.rs` holds one of the
    four `scatter` copies. Arc 1 hit the same gap with `smash_crabs`.
+   **Resolved: yes, and it is capturable today.** `visual-snapshot
+   --bin showcase` reaches it, and the Telemetry vignette — the one that
+   holds the `scatter` copy — was driven to and reviewed directly
+   (`Right` x4, `Enter` from the tile menu). Its Grip Force and Servo
+   Load sparklines render with the expected jitter after migration. A
+   standing `.plumb` scenario for it would be an improvement, but the
+   absence of one is not a capture gap.
 3. **Whether `noise` should be one module or fold into an existing one.**
    One function is a thin module; the alternative is `easing`, which is
    the wrong shelf. Revisit if nothing else lands there.
+   **Resolved: kept as `src/noise.rs`.** Still one function, and still
+   the right shelf — `easing` is about interpolation over time, not
+   deterministic spatial hashing. Revisit only if it stays alone for
+   several more Arcs.
+
+## Outcomes
+
+Delivered in full: all ten duplicate definitions are gone. A sweep of
+`src/ examples/ showcase/` returns only the three new primitives plus
+`Canvas::blit` and `camera::dim`.
+
+Three things worth carrying forward:
+
+- **`camera::dim`'s clamp turned out to be load-bearing**, and nothing
+  pinned it. The four existing `dim` tests covered the convention
+  (`0.0` unchanged, `1.0` black) but not out-of-range factors — so
+  delegating to the deliberately-unclamped `scale_color` without the
+  clamp made `dim(&buf, -1.0)` *brighten* a buffer while all four tests
+  still passed. The characterisation test added in Slice 2 catches it.
+- **The three private `blit` copies never actually overhung.**
+  `Buffer::blit` was temporarily instrumented to log any clipping, and
+  224 frames across 9 runs — every blit-using app, boots included, plus
+  three deliberately undersized terminals — recorded none. The clipping
+  is insurance, not a behaviour change. The instrumentation was proven
+  to fire first, so the empty log means "never engaged", not "never
+  checked".
+- **Capture comparison needs a same-code control run, always.** A first
+  pass flagged two apps, including a 100%-different `tardisboot` frame.
+  Two runs of the *identical* binary reproduced the exact same figures:
+  it was the boot white-flash landing one frame earlier or later. See
+  #165, filed during this Arc, for a related capture-coverage defect.
 
 ## Filed during this design
 
