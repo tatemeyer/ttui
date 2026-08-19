@@ -71,6 +71,8 @@ const BOOT_MS: u64 = 2500;
 /// out, the full-screen green flash, then the Omnitrix panel tracing
 /// itself open.
 const BOOT: Phases<3> = Phases::new([0.4, 0.55, 1.0]);
+/// Mode-switch wipe: a yellow flash, then the wipe itself.
+const TRANSITION: Phases<2> = Phases::new([0.2, 1.0]);
 /// Breathing-pulse brightness (0.0-1.0) above which the border goes bold.
 const BORDER_BOLD_BRIGHTNESS: f32 = 0.6;
 
@@ -244,7 +246,8 @@ impl Omnitrix {
     }
 
     fn render_transition(&self, old_mode: AppMode, area: Rect, progress: f32, buf: &mut Buffer) {
-        if progress < 0.2 {
+        let (phase, wave) = TRANSITION.at(progress);
+        if phase == 0 {
             for y in 0..area.height {
                 for x in 0..area.width {
                     buf.set(
@@ -263,7 +266,6 @@ impl Omnitrix {
             return;
         }
 
-        let wave = (progress - 0.2) / 0.8;
         let wave_row = (wave * area.height as f32) as u16;
         let old_content = self.render_mode_content(old_mode, area);
         let new_content = self.render_mode_content(self.mode, area);
