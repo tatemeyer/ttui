@@ -21,6 +21,35 @@ this project follows the SemVer policy defined in
   `pub` item, no existing signature changed. The `falcon`, `omnitrix`,
   `tardis` and `smash_crabs` boot sequences now derive their phases from
   it; that migration is a pure refactor and changes no rendered output.
+- `easing::scale_color` — multiplies an `Rgb` color's channels by a
+  factor, `1.0` unchanged and `0.0` black, replacing the three private
+  copies this repo had grown (`camera`, `widgets::roundel`, `launcher`),
+  one of which — `camera`'s — read its factor inverted, so the same call
+  meant opposite things depending on which copy you landed on. `factor`
+  is deliberately not clamped: above `1.0` the color brightens and each
+  channel saturates at `255` rather than wrapping, because clamping
+  would silently turn a deliberate highlight into a no-op. A non-`Rgb`
+  color passes through untouched at every factor — its brightness was
+  never disclosed by the terminal, so there is nothing honest to scale.
+  That differs from `lerp_color`'s midpoint switch (#122) on purpose: a
+  lerp has two endpoints and can pick the nearer one, a scale has none.
+  `semver:minor` — a new `pub` item, no existing signature changed.
+- `noise::scatter` — deterministically maps a `u32` seed to an offset in
+  `-spread/2 .. spread/2`, the jitter four bundled apps (`depth_spike`,
+  `falcon`, `mission_control`, `showcase`'s telemetry) each carried a
+  byte-identical private copy of, to place stars and scatter glyphs. A
+  move, not a rewrite: the hash and its constants are reproduced
+  verbatim, so every existing layout is bit-for-bit unchanged.
+  `semver:minor` — a new `pub` item, no existing signature changed.
+- `Buffer::blit` — draws one `Buffer` into another with its top-left at
+  `(x, y)`, the Buffer-to-Buffer counterpart to `Canvas::blit` that the
+  engine simply did not have, and which `omnitrix`, `tardis` and
+  `smash_crabs` each hand-rolled identically. Argument order mirrors
+  `Canvas::blit(&self, buf, x, y)` so the two read the same way round.
+  It clips explicitly instead of relying on `Buffer::set`'s bounds
+  behaviour, which checks only the flat index and so silently wraps an
+  out-of-range `x` onto a later row (#161) — `set` itself is unchanged.
+  `semver:minor` — a new `pub` item, no existing signature changed.
 
 ### Fixed
 
