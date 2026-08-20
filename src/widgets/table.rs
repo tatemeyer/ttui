@@ -86,17 +86,24 @@ impl<'a> Table<'a> {
     fn render_row(
         &self,
         rects: &[Rect],
+        area: Rect,
         y: u16,
         cells: &[String],
-        fg: Color,
-        bg: Color,
+        colors: (Color, Color),
         buf: &mut Buffer,
     ) {
+        let (fg, bg) = colors;
         for (rect, cell) in rects.iter().zip(cells) {
-            for i in 0..rect.width {
-                let ch = cell.chars().nth(i as usize).unwrap_or(' ');
+            let text = fit(cell, rect.width);
+            let mut x = rect.x;
+            for ch in text.chars() {
+                // Explicit clip: Layout::split does not clamp, and
+                // Buffer::set wraps an out-of-range x onto a later row.
+                if x >= area.x + area.width || x >= rect.x + rect.width {
+                    break;
+                }
                 buf.set(
-                    rect.x + i,
+                    x,
                     y,
                     Cell {
                         symbol: ch,
@@ -106,6 +113,7 @@ impl<'a> Table<'a> {
                         ..Default::default()
                     },
                 );
+                x += ch.width().unwrap_or(1) as u16;
             }
         }
     }
@@ -117,15 +125,22 @@ impl<'a> Table<'a> {
         }
         let rects = self.column_rects(area);
         let header_fg = self.theme.map_or(Color::Reset, |t| t.secondary);
-        self.render_row(&rects, area.y, self.headers, header_fg, Color::Reset, buf);
+        self.render_row(
+            &rects,
+            area,
+            area.y,
+            self.headers,
+            (header_fg, Color::Reset),
+            buf,
+        );
         for (row_idx, row) in self
             .rows
             .iter()
             .take(area.height.saturating_sub(1) as usize)
             .enumerate()
         {
-            let (fg, bg) = selection_colors(self.theme, row_idx == self.selected);
-            self.render_row(&rects, area.y + 1 + row_idx as u16, row, fg, bg, buf);
+            let colors = selection_colors(self.theme, row_idx == self.selected);
+            self.render_row(&rects, area, area.y + 1 + row_idx as u16, row, colors, buf);
         }
     }
 }
@@ -134,9 +149,6 @@ impl<'a> Table<'a> {
 /// cut. Measures display width rather than `char` count, so wide glyphs
 /// (CJK) do not misalign the columns after them, and never splits a
 /// wide glyph across the boundary.
-// Not yet called from `render_row` -- Task 12 wires it in. Kept private
-// (no undesigned API surface) with `dead_code` allowed until then.
-#[allow(dead_code)]
 fn fit(cell: &str, width: u16) -> String {
     let width = width as usize;
     if width == 0 {
@@ -441,5 +453,78 @@ mod tests {
         assert_eq!(buf.get(0, 1).fg, Color::Black); // selected
         assert_eq!(buf.get(0, 1).bg, Color::White);
         assert_eq!(buf.get(0, 2).fg, Color::Reset); // unselected
+    }
+
+    #[test]
+    fn renders_each_cell_inside_its_own_column_rect() {
+        let headers = vec!["a".into(), "b".into()];
+        let rows = vec![vec!["xx".into(), "yy".into()]];
+        let widths = [Constraint::Fixed(4), Constraint::Fixed(4)];
+        let mut buf = Buffer::new(20, 2);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 2,
+        };
+
+        Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .render(area, &mut buf);
+
+        assert_eq!(buf.get(0, 1).symbol, 'x');
+        assert_eq!(buf.get(4, 1).symbol, 'y'); // second column starts at 4
+    }
+
+    #[test]
+    fn a_column_wider_than_the_area_does_not_wrap_onto_the_next_row() {
+        // Layout::split does not clamp, and Buffer::set wraps an
+        // out-of-range x onto a later row (#161). Table must clip itself.
+        let headers = vec!["a".into()];
+        let rows = vec![vec!["abcdefghij".into()]];
+        let widths = [Constraint::Fixed(50)]; // far wider than the area
+        let mut buf = Buffer::new(4, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 4,
+            height: 3,
+        };
+
+        Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .render(area, &mut buf);
+
+        // Row 2 was never written to.
+        for x in 0..4 {
+            assert_eq!(buf.get(x, 2).symbol, ' ');
+        }
+    }
+
+    #[test]
+    fn a_wide_glyph_cell_leaves_the_next_column_aligned() {
+        let headers = vec!["a".into(), "b".into()];
+        let rows = vec![vec!["東京".into(), "ok".into()]];
+        let widths = [Constraint::Fixed(4), Constraint::Fixed(4)];
+        let mut buf = Buffer::new(20, 2);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 2,
+        };
+
+        Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .render(area, &mut buf);
+
+        // Sanity check: within column 1, "京" starts at x=2 (after "東"'s
+        // two display cells) rather than x=1 -- if `x` advanced by 1 per
+        // `char` instead of by display width, this would land at x=1 and
+        // leave x=2 blank. The column-2 assertion below would pass either
+        // way (each column resets `x` to its own rect.x), so it alone
+        // wouldn't catch that regression.
+        assert_eq!(buf.get(2, 1).symbol, '京');
+        assert_eq!(buf.get(4, 1).symbol, 'o'); // still starts at 4
     }
 }

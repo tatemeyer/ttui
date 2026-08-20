@@ -84,13 +84,9 @@ impl App for Demo {
         List::new(&self.list_items, self.list_selected).render(list_inner, buf);
 
         let table_inner = Block::new().title("Services").render(cols[1], buf);
-        Table::new(
-            &self.table_headers,
-            &self.table_rows,
-            self.table_selected,
-            8,
-        )
-        .render(table_inner, buf);
+        Table::new(&self.table_headers, &self.table_rows, self.table_selected)
+            .widths(&[Constraint::Fill(1), Constraint::Fill(1)])
+            .render(table_inner, buf);
 
         Text::new("Tab: switch focus | Up/Down: navigate | q: quit").render(rows[1], buf);
     }
