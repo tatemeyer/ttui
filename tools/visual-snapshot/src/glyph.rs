@@ -11,12 +11,30 @@ pub enum GlyphError {
     Unmapped(char),
 }
 
+/// U+2026 HORIZONTAL ELLIPSIS. Not in any `font8x8` table, but `Table`
+/// emits it on every truncated cell, so it is supplied here rather than
+/// letting captures of a normal table hard-error. Three dots on the
+/// baseline with side bearing: dots at x=1, x=3, x=5 via 0b0010_1010.
+const ELLIPSIS: [u8; 8] = [
+    0b0000_0000,
+    0b0000_0000,
+    0b0000_0000,
+    0b0000_0000,
+    0b0000_0000,
+    0b0000_0000,
+    0b0010_1010,
+    0b0000_0000,
+];
+
 /// Looks up `ch`'s 8x8 bitmap across every font8x8 table TTUI's actual
-/// glyph set draws from, plus algorithmically-generated Braille Patterns
-/// glyphs (`braille_glyph_for`) — `font8x8` doesn't cover that block at
-/// all. Returns a hard error naming the codepoint if nothing covers it —
-/// see `GlyphError::Unmapped`.
+/// glyph set draws from, plus U+2026 HORIZONTAL ELLIPSIS (supplied directly)
+/// and algorithmically-generated Braille Patterns glyphs (`braille_glyph_for`)
+/// — `font8x8` doesn't cover those blocks at all. Returns a hard error naming
+/// the codepoint if nothing covers it — see `GlyphError::Unmapped`.
 pub fn glyph_for(ch: char) -> Result<[u8; 8], GlyphError> {
+    if ch == '\u{2026}' {
+        return Ok(ELLIPSIS);
+    }
     if let Some(bitmap) = braille_glyph_for(ch) {
         return Ok(bitmap);
     }
@@ -163,6 +181,23 @@ mod tests {
         assert_eq!(
             glyph_for('\u{2726}').unwrap_err(),
             GlyphError::Unmapped('\u{2726}')
+        );
+    }
+
+    #[test]
+    fn ellipsis_is_mapped_because_table_truncation_emits_it() {
+        // `Table` renders U+2026 whenever a cell overflows its column,
+        // which is its normal state — an unmapped ellipsis would hard-error
+        // every capture of a truncated table.
+        assert!(glyph_for('\u{2026}').is_ok());
+    }
+
+    #[test]
+    fn ellipsis_bitmap_is_three_dots_on_the_baseline() {
+        // .#.#.#..  — three dots at x=1,3,5, bearing at x=0 and x=6-7
+        assert_eq!(
+            glyph_for('\u{2026}').unwrap(),
+            [0, 0, 0, 0, 0, 0, 0b0010_1010, 0]
         );
     }
 }

@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-#![doc(html_root_url = "https://docs.rs/ttui/1.1.0")]
+#![doc(html_root_url = "https://docs.rs/ttui/2.0.0")]
 
 //! `ttui` — a terminal UI framework built around layered buffers,
 //! `Transition`-driven animation, and dumb (no-internal-state) widgets.
@@ -113,8 +113,6 @@
 pub mod app;
 /// `AudioSink` trait for optional sound-effect playback.
 pub mod audio;
-/// Alpha-blending prototype — spike prototype, not a committed API.
-pub mod blend;
 /// Cell/`Buffer`/`LayerStack` — the framework's core render target.
 pub mod buffer;
 /// Deterministic camera viewport and brightness scaling.

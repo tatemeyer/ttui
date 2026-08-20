@@ -10,10 +10,9 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use crossterm::style::Color;
 use std::time::Duration;
 use ttui::app::{run, App};
-use ttui::blend::{blend_over, fade_toward};
 use ttui::buffer::{Buffer, Cell, LayerStack};
 use ttui::canvas::{Canvas, CanvasMode};
-use ttui::easing::lerp_color;
+use ttui::easing::{lerp_color, scale_color};
 use ttui::layout::{Constraint, Direction, Layout, Rect};
 use ttui::particles::{Particle, ParticleSystem};
 
@@ -151,14 +150,58 @@ impl RenderSpike {
     }
 
     fn blend_trail(&self, buf: &mut LayerStack) {
-        let scene = buf.composite();
-        let scene = blend_over(&scene, &self.trail, 1.0);
-        // Assumes `buf` is always depth 1 (no `push_layer()` calls) —
-        // if a future edit adds an upper layer, it would get
-        // composited over this blended result and silently undo the
-        // trail blend.
-        *buf.layer_mut(0) = scene;
+        // Ported off the historical `blend::blend_over`: write the
+        // trail as its own top layer (each painted cell already
+        // carries alpha 1.0 from `ParticleSystem::render`, and
+        // untouched cells stay `Cell::default()` at alpha 0.0) and let
+        // `LayerStack::composite`'s Porter-Duff "over" pass do the
+        // blending when the app runner composites this stack.
+        let layer = buf.push_layer();
+        for y in 0..layer.height.min(self.trail.height) {
+            for x in 0..layer.width.min(self.trail.width) {
+                layer.set(x, y, self.trail.get(x, y).clone());
+            }
+        }
     }
+}
+
+/// Fades every non-default cell's fg/bg toward black by `factor`
+/// (`0` = unchanged, `1` = fully black) via `easing::scale_color` —
+/// ported off the historical `blend::fade_toward`, specialized to a
+/// black target since that's `render_spike`'s only use. Collapses a
+/// cell all the way to `Cell::default()` once both channels are
+/// within 2 RGB steps of black, so a fully-faded trail cell becomes
+/// transparent (alpha 0.0) again instead of lingering as an opaque
+/// near-black cell.
+fn fade_trail_toward_black(buf: &Buffer, factor: f32) -> Buffer {
+    let mut out = buf.clone();
+    let remaining = 1.0 - factor;
+    let near_black =
+        |c: Color| -> bool { matches!(c, Color::Rgb { r, g, b } if r <= 2 && g <= 2 && b <= 2) };
+    for y in 0..buf.height {
+        for x in 0..buf.width {
+            let c = buf.get(x, y);
+            if *c == Cell::default() {
+                continue;
+            }
+            let fg = scale_color(c.fg, remaining);
+            let bg = scale_color(c.bg, remaining);
+            if near_black(fg) && near_black(bg) {
+                out.set(x, y, Cell::default());
+            } else {
+                out.set(
+                    x,
+                    y,
+                    Cell {
+                        fg,
+                        bg,
+                        ..c.clone()
+                    },
+                );
+            }
+        }
+    }
+    out
 }
 
 /// Cheap HSV(hue, 1.0, 1.0)->RGB — used only to paint smooth test
@@ -291,7 +334,7 @@ impl App for RenderSpike {
         self.gauge_phase += elapsed.as_secs_f32() * 1.5;
         self.plot_phase += elapsed.as_secs_f32() * 4.0;
         self.particles.update(elapsed);
-        self.trail = fade_toward(&self.trail, Color::Rgb { r: 0, g: 0, b: 0 }, 0.2);
+        self.trail = fade_trail_toward_black(&self.trail, 0.2);
         self.particles.render(&mut self.trail);
     }
 }

@@ -10,6 +10,10 @@ use crate::buffer::{Buffer, Cell, CellStyle};
 use crossterm::style::Color;
 
 /// Which sub-cell rasterization technique a `Canvas` uses.
+///
+/// `#[non_exhaustive]`: new variants may be added in a minor release,
+/// so downstream `match`es need a wildcard arm.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CanvasMode {
     /// 1x2 subpixels per cell, full 2-color fidelity (▀/▄/█).

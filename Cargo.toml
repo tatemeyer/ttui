@@ -1,6 +1,6 @@
 [package]
 name = "ttui"
-version = "1.1.0"
+version = "2.0.0"
 edition = "2021"
 description = "A terminal UI framework built from first principles: direct control over text rendering, color, pane layout, and multiplexing."
 license = "MIT"
@@ -18,6 +18,7 @@ exclude = [
     ".claude/",
     ".code-review-graph/",
     ".github/",
+    ".mcp.json",
     ".plumb/",
     "CLAUDE.md",
     "docs/",
@@ -29,6 +30,7 @@ members = [".", "tools/visual-snapshot"]
 
 [dependencies]
 crossterm = "0.27"
+unicode-width = "0.2"
 
 [dev-dependencies]
 rodio = "0.22"
@@ -36,6 +38,10 @@ criterion = "0.5"
 
 [[bench]]
 name = "render"
+harness = false
+
+[[bench]]
+name = "set"
 harness = false
 
 [[example]]

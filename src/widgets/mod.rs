@@ -24,12 +24,17 @@ pub mod list;
 pub mod roundel;
 /// Jerky, two-frame navigation cursor.
 pub mod scuttle_cursor;
+/// Shared selection-highlight colour resolution.
+pub(crate) mod selection;
 /// Three-ring beveled border, drawn inward.
 pub mod smash_border;
 /// Single-row auto-scaled trend indicator.
 pub mod sparkline;
 /// Header-row-plus-data-rows table.
 pub mod table;
+/// Shared test-only fixtures for widget test modules.
+#[cfg(test)]
+pub(crate) mod test_support;
 /// Single-line plain text.
 pub mod text;
 /// Braille-glyph rotating speed indicator.

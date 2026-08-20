@@ -7,6 +7,82 @@ this project follows the SemVer policy defined in
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-19
+
+### Migration
+
+| 1.x | 2.0 |
+|---|---|
+| `Table::new(headers, rows, selected, col_width)` | `Table::new(headers, rows, selected).widths(&vec![Constraint::Fixed(col_width); headers.len()])` reproduces 1.x geometry exactly |
+| `blend::blend_over` | `LayerStack::composite` |
+| `blend::fade_toward` | `easing::scale_color` |
+| exhaustive `match` on `Constraint` / `Direction` / `CanvasMode` / `Intensity` | add a `_ => …` arm — all four are now `#[non_exhaustive]` |
+| `List`/`Dial`/`Table` selection colors always black-on-white | unchanged unless you opt in via `.theme(&theme)` |
+| `Buffer::get`/`set` documented a panic on out-of-range `x` but silently wrote/read a later row instead (#161) | debug builds now panic as documented; release builds still do not check, and the docs say so explicitly |
+
+### Breaking
+
+- `Intensity`, `CanvasMode`, `Direction` and `Constraint` are now
+  `#[non_exhaustive]`. Downstream `match`es on them need a wildcard
+  (`_ => …`) arm. This buys the ability to add variants — for example a
+  content-sizing `Constraint::Auto` — in a *minor* release rather than
+  another major.
+- Removed the `blend` module. Its own documentation described it as
+  "spike-only, and now historical": the rendering-fidelity spike's
+  recommendation was adopted, and `LayerStack::composite` has done real
+  Porter-Duff "over" compositing on `Cell::alpha` ever since. Callers
+  should use `LayerStack::composite` (for `blend_over`) and
+  `easing::scale_color` (for `fade_toward`).
+- `Buffer::get`/`set` now bounds-check `x` in debug builds — previously
+  only the flat index was checked, so on a 4x3 buffer `set(5, 0, ..)`
+  silently wrote to `(1, 1)` instead of panicking as documented (#161).
+  An A/B/A rerun of `benches/set.rs` in a single machine state
+  (`debug_assert!` -> `assert!` -> `debug_assert!`) measured a real
+  `assert!` at +10.1%/+17.0% (full_paint/single_cell) over
+  `debug_assert!`, clearing the ~5% drift observed between the two
+  `debug_assert!` runs, so the check is `debug_assert!`-gated rather
+  than unconditional; release builds are unchanged and the docs now
+  describe that release behavior explicitly instead of promising a
+  panic that never happened.
+- `List`, `Dial` and `Table` accept a `Theme` via `.theme(&theme)` for
+  their selection highlight; all three previously hardcoded black-on-
+  white and took no colours at all. Omitting `.theme()` renders exactly
+  as 1.x did.
+- **`Table::new` no longer takes `col_width`.** Columns are sized with
+  `Constraint`s — the same vocabulary `Layout` uses — via
+  `.widths(&[...])`, so a table can mix narrow fixed columns with one
+  that takes the remaining width (#170). To reproduce 1.x geometry
+  exactly, pass `.widths(&vec![Constraint::Fixed(col_width);
+  headers.len()])` — see the Migration table above. **Omitting
+  `.widths()` entirely is new behaviour, not equivalent to
+  `col_width`:** it now defaults to `Fill(1)` per column, splitting the
+  *whole* area evenly, whereas `col_width` gave every column exactly
+  `col_width` cells and left any remaining area unpainted. `.spacing(n)`
+  inserts a gap between columns, and cells that overflow their column
+  are cut with an ellipsis instead of silently ending. Cells are
+  measured by display width, so CJK no longer misaligns the columns
+  after it; a combining mark keeps the columns after it aligned too,
+  but — because `Cell::symbol` holds one `char` — it still overwrites
+  its base glyph rather than combining with it, so full combining-mark
+  rendering is not claimed. Every row's background span now derives
+  from the column `Rect`s rather than from how many cells the row
+  supplies, so a row with fewer cells than there are columns still
+  paints its selection highlight across every column, not just the
+  ones it has data for.
+
+  The example below shows the new mixed-width capability (#170), not a
+  migration — see the Migration table above for the identity port:
+
+  ```rust
+  // 1.x
+  Table::new(&headers, &rows, selected, 12).render(area, buf);
+  // 2.0 (#170's new capability: a narrow fixed column plus one that
+  // takes the rest, not a port of the call above)
+  Table::new(&headers, &rows, selected)
+      .widths(&[Constraint::Fixed(6), Constraint::Fill(1)])
+      .render(area, buf);
+  ```
+
 ### Added
 
 - Standard open-source project files: `CONTRIBUTING.md` (build, test, the
@@ -31,7 +107,7 @@ this project follows the SemVer policy defined in
   it. Future MSRV increases are treated as minor bumps.
 - The published package no longer ships development-only material —
   `docs/`, `.claude/`, `.plumb/`, `.github/`, `CLAUDE.md` and
-  `parallax.yaml` are now excluded, taking it from 229 files to 92. No
+  `parallax.yaml` are now excluded, taking it from 229 files to 96. No
   code, example, test or bench is affected.
 
 ## [1.1.0] - 2026-08-19

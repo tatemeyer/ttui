@@ -3,18 +3,32 @@
 
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
-use crossterm::style::Color;
+use crate::theme::Theme;
+use crate::widgets::selection::selection_colors;
 
 /// A ring of selectable items arranged around an ellipse.
 pub struct Dial<'a> {
     items: &'a [String],
     selected: usize,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Dial<'a> {
     /// Creates a dial over `items`, highlighting the one at `selected`.
     pub fn new(items: &'a [String], selected: usize) -> Self {
-        Dial { items, selected }
+        Dial {
+            items,
+            selected,
+            theme: None,
+        }
+    }
+
+    /// Renders selection with `theme`'s `accent` on `background`, and
+    /// unselected items in `primary`. Without it, the pre-2.0 fixed
+    /// black-on-white highlight is used.
+    pub fn theme(mut self, theme: &'a Theme) -> Self {
+        self.theme = Some(theme);
+        self
     }
 
     /// Renders every item around the dial, centered in `area`.
@@ -70,11 +84,7 @@ impl<'a> Dial<'a> {
             let (x, y) = point_at(angle, radius_x, radius_y);
             let (px, py) = (x.round() as i32, y.round() as i32);
             let selected = i == self.selected;
-            let (fg, bg) = if selected {
-                (Color::Black, Color::White)
-            } else {
-                (Color::Reset, Color::Reset)
-            };
+            let (fg, bg) = selection_colors(self.theme, selected);
 
             let chars: Vec<char> = item.chars().collect();
             if x >= cx {
@@ -143,6 +153,9 @@ fn in_area(x: i32, y: i32, area: Rect) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::buffer::Buffer;
+    use crate::widgets::test_support::test_theme;
+    use crossterm::style::Color;
 
     #[test]
     fn item_zero_lands_at_top_center_column() {
@@ -239,5 +252,42 @@ mod tests {
         // fit before the area's left edge clips the rest.
         assert_eq!(buf.get(0, 2).symbol, 'F');
         assert_eq!(buf.get(1, 2).symbol, 'T');
+    }
+
+    #[test]
+    fn themed_dial_uses_accent_on_background_for_the_selected_item() {
+        let items = vec!["alpha".to_string(), "beta".to_string()];
+        let mut buf = Buffer::new(10, 8);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 8,
+        };
+        let theme = test_theme();
+
+        Dial::new(&items, 0).theme(&theme).render(area, &mut buf);
+
+        assert_eq!(buf.get(5, 1).fg, Color::Rgb { r: 255, g: 0, b: 0 });
+        assert_eq!(buf.get(5, 1).bg, Color::Rgb { r: 0, g: 0, b: 32 });
+    }
+
+    #[test]
+    fn unthemed_dial_keeps_the_pre_2_0_colours() {
+        // Characterisation test: no `.theme()` must render exactly as 1.x
+        // did. Worthless if written after the change.
+        let items = vec!["alpha".to_string(), "beta".to_string()];
+        let mut buf = Buffer::new(10, 8);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 8,
+        };
+
+        Dial::new(&items, 0).render(area, &mut buf);
+
+        assert_eq!(buf.get(5, 1).fg, Color::Black);
+        assert_eq!(buf.get(5, 1).bg, Color::White);
     }
 }

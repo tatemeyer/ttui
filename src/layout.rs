@@ -24,6 +24,10 @@ impl Rect {
 }
 
 /// Axis a `Layout` splits its area along.
+///
+/// `#[non_exhaustive]`: new variants may be added in a minor release,
+/// so downstream `match`es need a wildcard arm.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Direction {
     /// Split left-to-right.
@@ -33,6 +37,11 @@ pub enum Direction {
 }
 
 /// How much space one child of a `Layout` split should take.
+///
+/// `#[non_exhaustive]`: new variants (e.g. a content-sizing `Auto`)
+/// may be added in a minor release, so downstream `match`es need a
+/// wildcard arm.
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Constraint {
     /// Exactly this many cells.
@@ -107,16 +116,16 @@ impl Layout {
             match c {
                 Constraint::Fixed(v) => {
                     sizes[i] = *v;
-                    used += v;
+                    used = used.saturating_add(*v);
                 }
                 Constraint::Percentage(p) => {
                     let v = (total as u32 * *p as u32 / 100) as u16;
                     sizes[i] = v;
-                    used += v;
+                    used = used.saturating_add(v);
                 }
                 Constraint::Min(v) => {
                     sizes[i] = *v;
-                    used += v;
+                    used = used.saturating_add(*v);
                 }
                 Constraint::Fill(w) => {
                     fill_indices.push(i);
@@ -154,7 +163,7 @@ impl Layout {
                 },
             };
             rects.push(rect);
-            offset += size + self.spacing;
+            offset = offset.saturating_add(size).saturating_add(self.spacing);
         }
         rects
     }

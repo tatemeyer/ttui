@@ -120,15 +120,16 @@ cargo run -p visual-snapshot -- --example <name> --size <cols>x<rows> --script <
   versa.
 
 **Known glyph-coverage limitation:** the rasterizer (`font8x8`, plus an
-algorithmic Braille Patterns renderer added for `TimeRotor`) does not
-cover every glyph TTUI's examples draw, and hard-errors naming the
-unmapped codepoint rather than silently skipping it. As of this
-writing, this affects: `EnergyCore`'s charged-state dingbat star (`✦`,
-also used separately by `launcher`'s starfield), `launcher`'s
-portal/nexus decorative glyphs (geometric shapes and arrows),
-`tardis`'s psychic relay log (em dash), and `smash_crabs`'s explosion
-emoji (`💥`) — see the design spec's "Resolved during planning" section
-for the full, current gap list.
+algorithmic Braille Patterns renderer added for `TimeRotor`, plus
+U+2026 HORIZONTAL ELLIPSIS supplied directly for `Table` column
+truncation) does not cover every glyph TTUI's examples draw, and
+hard-errors naming the unmapped codepoint rather than silently skipping
+it. As of this writing, this affects: `EnergyCore`'s charged-state
+dingbat star (`✦`, also used separately by `launcher`'s starfield),
+`launcher`'s portal/nexus decorative glyphs (geometric shapes and
+arrows), `tardis`'s psychic relay log (em dash), and `smash_crabs`'s
+explosion emoji (`💥`) — see the design spec's "Resolved during
+planning" section for the full, current gap list.
 **If the tool hard-errors naming an unmapped glyph** while doing a
 mandated review, that is not a reason to block the review or skip
 visual review of everything else that *is* renderable: note the
