@@ -18,7 +18,7 @@ this project follows the SemVer policy defined in
 | `blend::fade_toward` | `easing::scale_color` |
 | exhaustive `match` on `Constraint` / `Direction` / `CanvasMode` / `Intensity` | add a `_ => …` arm — all four are now `#[non_exhaustive]` |
 | `List`/`Dial`/`Table` selection colors always black-on-white | unchanged unless you opt in via `.theme(&theme)` |
-| `Buffer::get`/`set` bounds-checked `x` unconditionally | bounds-checked in debug builds only; release builds no longer panic on an out-of-range `x` (see #161) |
+| `Buffer::get`/`set` documented a panic on out-of-range `x` but silently wrote/read a later row instead (#161) | debug builds now panic as documented; release builds still do not check, and the docs say so explicitly |
 
 ### Breaking
 
