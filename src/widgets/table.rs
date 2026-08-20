@@ -109,7 +109,10 @@ impl<'a> Table<'a> {
             let span_start = first.x;
             let span_end = last.x.saturating_add(last.width);
             let mut x = span_start;
-            while x < span_end && x < area.x + area.width {
+            // saturating: `area.x + area.width` can exceed u16 for an area
+            // near the right edge of a very wide buffer (#172).
+            let area_end = area.x.saturating_add(area.width);
+            while x < span_end && x < area_end {
                 buf.set(
                     x,
                     y,
@@ -131,7 +134,10 @@ impl<'a> Table<'a> {
             for ch in text.chars() {
                 // Explicit clip: Layout::split does not clamp, and
                 // Buffer::set wraps an out-of-range x onto a later row.
-                if x >= area.x + area.width || x >= rect.x + rect.width {
+                // Both bounds saturate -- either sum can exceed u16 with a
+                // far-right area or a wide Fixed column (#172).
+                if x >= area.x.saturating_add(area.width) || x >= rect.x.saturating_add(rect.width)
+                {
                     break;
                 }
                 buf.set(
@@ -334,6 +340,53 @@ mod tests {
         assert_eq!(buf.get(0, 1).fg, theme.accent); // selected
         assert_eq!(buf.get(0, 1).bg, theme.background);
         assert_eq!(buf.get(0, 2).fg, theme.primary); // unselected
+    }
+
+    #[test]
+    fn a_far_right_area_does_not_overflow_the_span_bound() {
+        // `area.x + area.width` exceeds u16 for an area sitting near the
+        // right edge of a very wide buffer -- panicking in debug and
+        // wrapping in release. A wrap is the worse half: since 2.0,
+        // `Buffer::set`'s bounds check is debug-only (#161), so a wrapped
+        // bound in release lets writes land wherever with nothing to
+        // catch them (#172).
+        let headers = vec!["a".to_string()];
+        let rows = vec![vec!["x".to_string()]];
+        let mut buf = Buffer::new(u16::MAX, 2);
+        let area = Rect {
+            x: 60000,
+            y: 0,
+            width: 10000,
+            height: 2,
+        };
+
+        Table::new(&headers, &rows, 0)
+            .widths(&[Constraint::Fixed(4)])
+            .render(area, &mut buf);
+
+        assert_eq!(buf.get(60000, 1).symbol, 'x');
+    }
+
+    #[test]
+    fn a_column_extending_past_u16_does_not_overflow_the_clip_bound() {
+        // `rect.x + rect.width` exceeds u16 when a Fixed column is wide
+        // enough and the area starts far right. The area check does not
+        // short-circuit here, because x is still inside the area.
+        let headers = vec!["a".to_string()];
+        let rows = vec![vec!["xyz".to_string()]];
+        let mut buf = Buffer::new(u16::MAX, 2);
+        let area = Rect {
+            x: 60000,
+            y: 0,
+            width: 5000,
+            height: 2,
+        };
+
+        Table::new(&headers, &rows, 0)
+            .widths(&[Constraint::Fixed(40000)])
+            .render(area, &mut buf);
+
+        assert_eq!(buf.get(60000, 1).symbol, 'x');
     }
 
     #[test]
