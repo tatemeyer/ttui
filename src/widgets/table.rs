@@ -2,6 +2,8 @@
 
 use crate::buffer::{Buffer, Cell};
 use crate::layout::Rect;
+use crate::theme::Theme;
+use crate::widgets::selection::selection_colors;
 use crossterm::style::Color;
 
 /// A table with a header row and selectable data rows, fixed-width
@@ -11,6 +13,7 @@ pub struct Table<'a> {
     rows: &'a [Vec<String>],
     selected: usize,
     col_width: u16,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Table<'a> {
@@ -27,7 +30,18 @@ impl<'a> Table<'a> {
             rows,
             selected,
             col_width,
+            theme: None,
         }
+    }
+
+    /// Renders the selected row with `theme`'s `accent` on
+    /// `background`, unselected rows in `primary`, and the header in
+    /// `secondary`. Without it, the pre-2.0 fixed black-on-white
+    /// selection highlight is used and the header renders in
+    /// `Color::Reset`.
+    pub fn theme(mut self, theme: &'a Theme) -> Self {
+        self.theme = Some(theme);
+        self
     }
 
     fn render_row(
@@ -67,18 +81,15 @@ impl<'a> Table<'a> {
         if area.height == 0 {
             return;
         }
-        self.render_row(area, area.y, self.headers, Color::Reset, Color::Reset, buf);
+        let header_fg = self.theme.map_or(Color::Reset, |t| t.secondary);
+        self.render_row(area, area.y, self.headers, header_fg, Color::Reset, buf);
         for (row_idx, row) in self
             .rows
             .iter()
             .take(area.height.saturating_sub(1) as usize)
             .enumerate()
         {
-            let (fg, bg) = if row_idx == self.selected {
-                (Color::Black, Color::White)
-            } else {
-                (Color::Reset, Color::Reset)
-            };
+            let (fg, bg) = selection_colors(self.theme, row_idx == self.selected);
             self.render_row(area, area.y + 1 + row_idx as u16, row, fg, bg, buf);
         }
     }
@@ -142,5 +153,52 @@ mod tests {
 
         Table::new(&headers, &rows, 0, 5).render(area, &mut buf);
         // Should return without panicking; buffer is untouched
+    }
+
+    #[test]
+    fn themed_table_colours_header_selected_and_unselected_rows() {
+        use crate::widgets::test_support::test_theme;
+
+        let headers = vec!["Name".to_string()];
+        let rows = vec![vec!["svc-a".to_string()], vec!["svc-b".to_string()]];
+        let mut buf = Buffer::new(10, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 3,
+        };
+        let theme = test_theme();
+
+        Table::new(&headers, &rows, 0, 5)
+            .theme(&theme)
+            .render(area, &mut buf);
+
+        assert_eq!(buf.get(0, 0).fg, theme.secondary); // header
+        assert_eq!(buf.get(0, 1).fg, theme.accent); // selected
+        assert_eq!(buf.get(0, 1).bg, theme.background);
+        assert_eq!(buf.get(0, 2).fg, theme.primary); // unselected
+    }
+
+    #[test]
+    fn unthemed_table_keeps_the_pre_2_0_colours() {
+        // Characterisation test: no `.theme()` must render exactly as 1.x
+        // did. Worthless if written after the change.
+        let headers = vec!["Name".to_string()];
+        let rows = vec![vec!["svc-a".to_string()], vec!["svc-b".to_string()]];
+        let mut buf = Buffer::new(10, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 3,
+        };
+
+        Table::new(&headers, &rows, 0, 5).render(area, &mut buf);
+
+        assert_eq!(buf.get(0, 0).fg, Color::Reset); // header
+        assert_eq!(buf.get(0, 1).fg, Color::Black); // selected
+        assert_eq!(buf.get(0, 1).bg, Color::White);
+        assert_eq!(buf.get(0, 2).fg, Color::Reset); // unselected
     }
 }

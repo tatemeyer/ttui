@@ -31,6 +31,10 @@ this project follows the SemVer policy defined in
   than unconditional; release builds are unchanged and the docs now
   describe that release behavior explicitly instead of promising a
   panic that never happened.
+- `List`, `Dial` and `Table` accept a `Theme` via `.theme(&theme)` for
+  their selection highlight; all three previously hardcoded black-on-
+  white and took no colours at all. Omitting `.theme()` renders exactly
+  as 1.x did.
 
 ### Added
 
