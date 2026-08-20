@@ -48,7 +48,10 @@ impl<'a> Table<'a> {
         self
     }
 
-    /// Inserts `gap` blank cells between adjacent columns.
+    /// Inserts `gap` blank cells between adjacent columns. A row's
+    /// background (e.g. the selection highlight) paints across these
+    /// gap cells too, so the highlight stays one continuous bar
+    /// rather than breaking into a separate island per column.
     pub fn spacing(mut self, gap: u16) -> Self {
         self.spacing = gap;
         self
@@ -93,6 +96,35 @@ impl<'a> Table<'a> {
         buf: &mut Buffer,
     ) {
         let (fg, bg) = colors;
+
+        // Fill one contiguous background span from the first rendered
+        // column's left edge to the last column's right edge -- gaps
+        // introduced by `.spacing()` included. This is what keeps a
+        // selected row's highlight one continuous bar instead of
+        // breaking into per-column islands with unhighlighted holes
+        // at each gap. The span stops at the last column's right edge
+        // rather than the area's edge, matching pre-2.0 behaviour
+        // when there is no spacing.
+        if let (Some(first), Some(last)) = (rects.first(), rects.last()) {
+            let span_start = first.x;
+            let span_end = last.x + last.width;
+            let mut x = span_start;
+            while x < span_end && x < area.x + area.width {
+                buf.set(
+                    x,
+                    y,
+                    Cell {
+                        symbol: ' ',
+                        fg,
+                        bg,
+                        alpha: 1.0,
+                        ..Default::default()
+                    },
+                );
+                x += 1;
+            }
+        }
+
         for (rect, cell) in rects.iter().zip(cells) {
             let text = fit(cell, rect.width);
             let mut x = rect.x;
@@ -114,25 +146,6 @@ impl<'a> Table<'a> {
                     },
                 );
                 x += ch.width().unwrap_or(1) as u16;
-            }
-            // Pad the rest of the column with blanks carrying the same
-            // fg/bg: a cell narrower than its column must still paint
-            // the whole column's background, or a selection highlight
-            // breaks into separate islands instead of one contiguous
-            // bar. Same clip as above.
-            while x < rect.x + rect.width && x < area.x + area.width {
-                buf.set(
-                    x,
-                    y,
-                    Cell {
-                        symbol: ' ',
-                        fg,
-                        bg,
-                        alpha: 1.0,
-                        ..Default::default()
-                    },
-                );
-                x += 1;
             }
         }
     }
@@ -545,6 +558,90 @@ mod tests {
         // wouldn't catch that regression.
         assert_eq!(buf.get(2, 1).symbol, '京');
         assert_eq!(buf.get(4, 1).symbol, 'o'); // still starts at 4
+    }
+
+    #[test]
+    fn selected_row_highlight_spans_the_gap_between_columns() {
+        // #170 follow-up: `.spacing()` introduces cells that fall
+        // outside every column rect. Nothing painted them, so a
+        // selected row's highlight broke into islands with an
+        // unhighlighted gap between columns instead of one continuous
+        // bar.
+        use crate::widgets::test_support::test_theme;
+
+        let headers = vec!["a".into(), "b".into()];
+        let rows = vec![vec!["x".into(), "y".into()]];
+        let widths = [Constraint::Fixed(4), Constraint::Fixed(4)];
+        let mut buf = Buffer::new(20, 2);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 2,
+        };
+        let theme = test_theme();
+
+        Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .spacing(1)
+            .theme(&theme)
+            .render(area, &mut buf);
+
+        // Column 0 occupies x=0..4, the spacing gap is x=4, column 1
+        // starts at x=5. The gap cell must carry the selected row's
+        // bg, not the default -- otherwise the highlight has a visible
+        // hole at exactly the gap.
+        assert_eq!(buf.get(4, 1).bg, theme.background);
+        assert_eq!(buf.get(4, 1).symbol, ' ');
+    }
+
+    #[test]
+    fn selected_row_highlight_stops_at_the_last_column_right_edge() {
+        // The span must not extend to the area's edge -- only to
+        // where the last rendered column ends. Otherwise a table
+        // narrower than its area would highlight past its own content.
+        use crate::widgets::test_support::test_theme;
+
+        let headers = vec!["a".into(), "b".into()];
+        let rows = vec![vec!["x".into(), "y".into()]];
+        let widths = [Constraint::Fixed(4), Constraint::Fixed(4)];
+        let mut buf = Buffer::new(20, 2);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 2,
+        };
+        let theme = test_theme();
+
+        Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .theme(&theme)
+            .render(area, &mut buf);
+
+        // Last column (col 1) is x=4..8. x=8 is past its right edge
+        // and must not carry the selected bg.
+        assert_eq!(buf.get(8, 1).bg, Color::Reset);
+        assert_ne!(buf.get(8, 1).bg, theme.background);
+    }
+
+    #[test]
+    fn no_headers_means_no_columns_and_render_does_not_panic() {
+        // Empty column list -- `render_row` must not index `rects[0]`
+        // unguarded when there is nothing to span.
+        let headers: Vec<String> = vec![];
+        let rows: Vec<Vec<String>> = vec![vec![]];
+        let mut buf = Buffer::new(10, 3);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 10,
+            height: 3,
+        };
+
+        Table::new(&headers, &rows, 0).render(area, &mut buf);
+        // Should return without panicking; nothing was rendered.
+        assert_eq!(buf.get(0, 0).symbol, ' ');
     }
 
     #[test]
