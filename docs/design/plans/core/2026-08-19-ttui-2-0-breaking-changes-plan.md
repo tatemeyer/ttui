@@ -673,7 +673,11 @@ And the shared fixture, inside the `mod tests` block so it does not ship:
 
 ```rust
     /// Shared across `selection`, `list`, `dial` and `table` tests.
-    /// `Theme` has no `Default`, so every field must be set.
+    /// Every field is set explicitly rather than via
+    /// `..Default::default()`, so a fixture reader sees the whole
+    /// palette the assertions depend on. (`Theme` does have a
+    /// `Default` impl — src/theme.rs — this is a deliberate choice,
+    /// not a necessity.)
     pub(crate) fn test_theme() -> Theme {
         use crate::theme::BorderSet;
         use crate::buffer::CellStyle;
