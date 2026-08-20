@@ -22,7 +22,7 @@ Or in `Cargo.toml`:
 
 ```toml
 [dependencies]
-ttui = "1.1"
+ttui = "2.0"
 ```
 
 ## Quick start
@@ -92,16 +92,21 @@ key/chord input binder, and data-viz widgets.
 
 ## Status
 
-**v1.1.0.** The core render pipeline, constraint layout, alpha-compositing
+**v2.0.0.** The core render pipeline, constraint layout, alpha-compositing
 buffer layering, and a full widget set — `Text`/`List`/`Table`/`Block`
 plus glitch effects, particles, a perspective camera, a chord input
 binder, and data-viz widgets — are implemented and exercised by ten
 example apps and the `showcase` demo reel.
 
-v1.1 is additive: `transition::Phases<N>` for phase arithmetic, plus
-three shared primitives — `easing::scale_color`, `noise::scatter` and
-`Buffer::blit` — replacing ten duplicate definitions the example apps and
-the library itself had each grown by hand.
+v2.0 is a breaking release: `Intensity`, `CanvasMode`, `Direction` and
+`Constraint` are now `#[non_exhaustive]`, so an exhaustive downstream
+`match` needs a wildcard arm; the `blend` module is removed in favor of
+`LayerStack::composite` and `easing::scale_color`; `Table::new` no
+longer takes a `col_width` argument — columns are sized with
+`Constraint`s via `.widths(&[...])` instead; and `List`, `Dial` and
+`Table` now accept an optional `.theme(&theme)` for their selection
+highlight. See [`CHANGELOG.md`](CHANGELOG.md) for the full migration
+table.
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full release history.
 

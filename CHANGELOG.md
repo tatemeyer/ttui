@@ -7,6 +7,19 @@ this project follows the SemVer policy defined in
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-19
+
+### Migration
+
+| 1.x | 2.0 |
+|---|---|
+| `Table::new(headers, rows, selected, col_width)` | `Table::new(headers, rows, selected).widths(&[Constraint::…, …])` |
+| `blend::blend_over` | `LayerStack::composite` |
+| `blend::fade_toward` | `easing::scale_color` |
+| exhaustive `match` on `Constraint` / `Direction` / `CanvasMode` / `Intensity` | add a `_ => …` arm — all four are now `#[non_exhaustive]` |
+| `List`/`Dial`/`Table` selection colors always black-on-white | unchanged unless you opt in via `.theme(&theme)` |
+| `Buffer::get`/`set` bounds-checked `x` unconditionally | bounds-checked in debug builds only; release builds no longer panic on an out-of-range `x` (see #161) |
+
 ### Breaking
 
 - `Intensity`, `CanvasMode`, `Direction` and `Constraint` are now

@@ -1,5 +1,5 @@
 #![warn(missing_docs)]
-#![doc(html_root_url = "https://docs.rs/ttui/1.1.0")]
+#![doc(html_root_url = "https://docs.rs/ttui/2.0.0")]
 
 //! `ttui` — a terminal UI framework built around layered buffers,
 //! `Transition`-driven animation, and dumb (no-internal-state) widgets.
