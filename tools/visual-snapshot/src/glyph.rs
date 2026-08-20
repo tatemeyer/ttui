@@ -13,7 +13,8 @@ pub enum GlyphError {
 
 /// U+2026 HORIZONTAL ELLIPSIS. Not in any `font8x8` table, but `Table`
 /// emits it on every truncated cell, so it is supplied here rather than
-/// letting captures of a normal table hard-error.
+/// letting captures of a normal table hard-error. Three dots on the
+/// baseline with side bearing: dots at x=1, x=3, x=5 via 0b0010_1010.
 const ELLIPSIS: [u8; 8] = [
     0b0000_0000,
     0b0000_0000,
@@ -21,7 +22,7 @@ const ELLIPSIS: [u8; 8] = [
     0b0000_0000,
     0b0000_0000,
     0b0000_0000,
-    0b0101_0101,
+    0b0010_1010,
     0b0000_0000,
 ];
 
@@ -194,10 +195,26 @@ mod tests {
     #[test]
     fn ellipsis_bitmap_is_three_dots_on_the_baseline() {
         let bitmap = glyph_for('\u{2026}').unwrap();
-        // Rows 0-5 blank, row 6 carries the dots, row 7 blank.
+        // Rows 0-5 blank, row 6 carries exactly three dots, row 7 blank.
         assert_eq!(bitmap[0], 0b0000_0000);
         assert_eq!(bitmap[5], 0b0000_0000);
-        assert_ne!(bitmap[6], 0b0000_0000);
+        assert_eq!(
+            bitmap[6].count_ones(),
+            3,
+            "row 6 must have exactly three dots"
+        );
         assert_eq!(bitmap[7], 0b0000_0000);
+    }
+
+    #[test]
+    fn ellipsis_visual_verification() {
+        let bitmap = glyph_for('\u{2026}').unwrap();
+        println!("\nEllipsis (U+2026) bitmap (LSB-first, as rendered):");
+        for row in bitmap {
+            let line = (0..8)
+                .map(|gx| if (row >> gx) & 1 == 1 { '#' } else { '.' })
+                .collect::<String>();
+            println!("{}", line);
+        }
     }
 }
