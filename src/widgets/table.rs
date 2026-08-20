@@ -5,6 +5,7 @@ use crate::layout::Rect;
 use crate::theme::Theme;
 use crate::widgets::selection::selection_colors;
 use crossterm::style::Color;
+use unicode_width::UnicodeWidthChar;
 
 /// A table with a header row and selectable data rows, fixed-width
 /// columns.
@@ -95,6 +96,62 @@ impl<'a> Table<'a> {
     }
 }
 
+/// Fits `cell` into `width` display cells, appending U+2026 when it is
+/// cut. Measures display width rather than `char` count, so wide glyphs
+/// (CJK) do not misalign the columns after them, and never splits a
+/// wide glyph across the boundary.
+// Not yet called from `render_row` -- Task 12 wires it in. Kept private
+// (no undesigned API surface) with `dead_code` allowed until then.
+#[allow(dead_code)]
+fn fit(cell: &str, width: u16) -> String {
+    let width = width as usize;
+    if width == 0 {
+        return String::new();
+    }
+
+    let total: usize = cell.chars().map(|c| c.width().unwrap_or(0)).sum();
+    if total <= width {
+        return cell.to_string();
+    }
+
+    // Try reserving one cell for the marker. Only meaningful when
+    // width > 1 -- at width 1 a lone marker carries no information, so
+    // that case always spends the cell on content instead (below).
+    if width > 1 {
+        let budget = width - 1;
+        let mut out = String::new();
+        let mut used = 0usize;
+        for c in cell.chars() {
+            let w = c.width().unwrap_or(0);
+            if used + w > budget {
+                break;
+            }
+            out.push(c);
+            used += w;
+        }
+        if !out.is_empty() {
+            out.push('\u{2026}');
+            return out;
+        }
+        // Reserving a cell for the marker left no room for even the
+        // first glyph (it's wider than the budget) -- fall through and
+        // fill the full width with content only, no marker, rather
+        // than emit a marker with nothing in front of it.
+    }
+
+    let mut out = String::new();
+    let mut used = 0usize;
+    for c in cell.chars() {
+        let w = c.width().unwrap_or(0);
+        if used + w > width {
+            break;
+        }
+        out.push(c);
+        used += w;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,6 +235,42 @@ mod tests {
         assert_eq!(buf.get(0, 1).fg, theme.accent); // selected
         assert_eq!(buf.get(0, 1).bg, theme.background);
         assert_eq!(buf.get(0, 2).fg, theme.primary); // unselected
+    }
+
+    #[test]
+    fn fit_returns_short_content_untouched() {
+        assert_eq!(fit("ok", 5), "ok");
+    }
+
+    #[test]
+    fn fit_truncates_with_an_ellipsis_when_content_overflows() {
+        // 11 display cells of content into 6 -> 5 kept plus the marker.
+        assert_eq!(fit("tardis-idle", 6), "tardi…");
+    }
+
+    #[test]
+    fn fit_into_one_cell_truncates_without_a_lone_marker() {
+        // A bare "…" carries no information; prefer the first character.
+        assert_eq!(fit("tardis", 1), "t");
+    }
+
+    #[test]
+    fn fit_measures_display_width_not_char_count() {
+        // "東京" is 2 chars but occupies 4 cells; into 3 cells only the
+        // first wide glyph plus the marker fit.
+        assert_eq!(fit("東京", 3), "東…");
+    }
+
+    #[test]
+    fn fit_never_splits_a_wide_glyph_across_the_boundary() {
+        // Into 2 cells, "東" alone exactly fills it; the marker would
+        // overflow, so it is dropped rather than cutting the glyph.
+        assert_eq!(fit("東京", 2), "東");
+    }
+
+    #[test]
+    fn fit_to_zero_width_is_empty() {
+        assert_eq!(fit("anything", 0), "");
     }
 
     #[test]
