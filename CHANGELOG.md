@@ -20,6 +20,14 @@ this project follows the SemVer policy defined in
   Porter-Duff "over" compositing on `Cell::alpha` ever since. Callers
   should use `LayerStack::composite` (for `blend_over`) and
   `easing::scale_color` (for `fade_toward`).
+- `Buffer::get`/`set` now bounds-check `x` in debug builds — previously
+  only the flat index was checked, so on a 4x3 buffer `set(5, 0, ..)`
+  silently wrote to `(1, 1)` instead of panicking as documented (#161).
+  A real `assert!` measured a 22.6%/11.9% (full_paint/single_cell)
+  regression on `benches/set.rs`, so the check is `debug_assert!`-gated
+  rather than unconditional; release builds are unchanged and the docs
+  now describe that release behavior explicitly instead of promising a
+  panic that never happened.
 
 ### Added
 

@@ -91,12 +91,25 @@ impl Buffer {
         }
     }
 
-    /// Returns the cell at `(x, y)`. Panics if out of bounds.
+    /// Returns the cell at `(x, y)`.
+    ///
+    /// # Panics
+    /// In debug builds, if `x >= width` or `y >= height`. Release builds
+    /// do not check; an out-of-range `x` reads a later row (see #161 —
+    /// a real `assert!` here measured a 22%/12% (full-paint/single-cell)
+    /// regression on `benches/set.rs`, so the check stays debug-only).
     pub fn get(&self, x: u16, y: u16) -> &Cell {
         &self.cells[self.index(x, y)]
     }
 
-    /// Overwrites the cell at `(x, y)`. Panics if out of bounds.
+    /// Overwrites the cell at `(x, y)`.
+    ///
+    /// # Panics
+    /// In debug builds, if `x >= width` or `y >= height`. Release builds
+    /// do not check; an out-of-range `x` writes into a later row (see
+    /// #161 — a real `assert!` here measured a 22%/12%
+    /// (full-paint/single-cell) regression on `benches/set.rs`, so the
+    /// check stays debug-only).
     pub fn set(&mut self, x: u16, y: u16, cell: Cell) {
         let idx = self.index(x, y);
         self.cells[idx] = cell;
@@ -112,10 +125,12 @@ impl Buffer {
     ///
     /// Anything falling outside `dest` is clipped and nothing panics,
     /// including an `x` or `y` past the far edge. The clipping is
-    /// explicit rather than left to `set`: `set` checks only the flat
-    /// index, so an out-of-range `x` silently lands on a later row
-    /// instead of panicking (#161), and a blit that inherited that
-    /// would smear its overhang across the rows below.
+    /// explicit rather than left to `set`: in release builds `set`
+    /// doesn't check `x` against `width` at all (see #161 and its
+    /// `debug_assert!` in `index`), so an out-of-range `x` would
+    /// silently land on a later row instead of panicking, and a blit
+    /// that inherited that would smear its overhang across the rows
+    /// below.
     pub fn blit(&self, dest: &mut Buffer, x: u16, y: u16) {
         for row in 0..self.height {
             let Some(dy) = y.checked_add(row) else { break };
@@ -133,6 +148,12 @@ impl Buffer {
     }
 
     fn index(&self, x: u16, y: u16) -> usize {
+        debug_assert!(
+            x < self.width && y < self.height,
+            "index ({x}, {y}) out of bounds for a {}x{} buffer",
+            self.width,
+            self.height
+        );
         y as usize * self.width as usize + x as usize
     }
 }
@@ -1035,12 +1056,13 @@ mod tests {
         assert_eq!(*dest.get(0, 1), Cell::default());
     }
 
-    /// #161's shape: `Buffer::set` documents "panics if out of bounds"
-    /// but only checks the flat index, so on a 4x3 buffer `set(5, 0, ..)`
-    /// indexes `0 * 4 + 5` and silently writes to `(1, 1)` instead of
-    /// panicking. `blit` clips on `x` explicitly rather than inheriting
-    /// that, so an `x` past the right edge writes nothing and leaves the
-    /// next row alone.
+    /// #161's shape: in a release build, `Buffer::set` only checks the
+    /// flat index, so on a 4x3 buffer `set(5, 0, ..)` indexes `0 * 4 + 5`
+    /// and silently writes to `(1, 1)` instead of panicking (debug builds
+    /// catch it via `index`'s `debug_assert!`). `blit` clips on `x`
+    /// explicitly rather than inheriting that, so an `x` past the right
+    /// edge writes nothing and leaves the next row alone, in both build
+    /// profiles.
     #[test]
     fn blit_past_the_right_edge_does_not_wrap_onto_the_next_row() {
         let src = filled(2, 1, 'x');
@@ -1097,5 +1119,39 @@ mod tests {
         src.blit(&mut dest, u16::MAX - 1, u16::MAX - 1); // must not panic
 
         assert_eq!(*dest.get(0, 0), Cell::default());
+    }
+
+    // debug_assert!-gated: benches/set.rs measured a real `assert!` here at
+    // +22.6%/+11.9% (full_paint/single_cell) versus Task 3's baseline, both
+    // p < 0.05 ("Performance has regressed") — see #161. The check (and
+    // these two tests, which exercise it) exists only in debug builds.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn set_with_an_x_past_the_width_panics_instead_of_wrapping() {
+        // Documented as a panic since 1.0, but `index` only checked the
+        // flat offset: on a 4x3 buffer, set(5, 0, ..) landed on (1, 1).
+        let mut buf = Buffer::new(4, 3);
+        let mut cell = buf.get(0, 0).clone();
+        cell.symbol = 'X';
+        buf.set(5, 0, cell);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "out of bounds")]
+    fn get_with_an_x_past_the_width_panics_instead_of_reading_a_neighbour() {
+        let buf = Buffer::new(4, 3);
+        let _ = buf.get(5, 0);
+    }
+
+    #[test]
+    fn set_at_the_last_valid_cell_still_works() {
+        // Guards against an off-by-one in the new check.
+        let mut buf = Buffer::new(4, 3);
+        let mut cell = buf.get(0, 0).clone();
+        cell.symbol = 'Z';
+        buf.set(3, 2, cell);
+        assert_eq!(buf.get(3, 2).symbol, 'Z');
     }
 }
