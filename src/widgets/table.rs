@@ -1,6 +1,6 @@
 //! Header-row-plus-data-rows table. Column geometry is delegated to
-//! [`Layout`] rather than reimplemented here: [`Table::widths`] takes
-//! the same [`Constraint`] vocabulary `Layout` splits areas with, so a
+//! [`Layout`](crate::layout::Layout) rather than reimplemented here: [`widths`](crate::widgets::table::Table::widths) takes
+//! the same [`Constraint`](crate::layout::Constraint) vocabulary `Layout` splits areas with, so a
 //! `Fill(1)` column adapts to terminal width instead of needing one
 //! fixed number that works for every column.
 
@@ -12,7 +12,7 @@ use crossterm::style::Color;
 use unicode_width::UnicodeWidthChar;
 
 /// A table with a header row and selectable data rows. Column widths
-/// follow [`Constraint`]s given via [`Table::widths`], splitting evenly
+/// follow [`Constraint`]s given via [`widths`](crate::widgets::table::Table::widths), splitting evenly
 /// by default.
 pub struct Table<'a> {
     headers: &'a [String],
@@ -25,8 +25,8 @@ pub struct Table<'a> {
 
 impl<'a> Table<'a> {
     /// Creates a table over `headers`/`rows`, highlighting the data row
-    /// at `selected`. Columns split equally unless [`Table::widths`] is
-    /// given.
+    /// at `selected`. Columns split equally unless the [`widths`](crate::widgets::table::Table::widths) method is
+    /// called.
     pub fn new(headers: &'a [String], rows: &'a [Vec<String>], selected: usize) -> Self {
         Table {
             headers,
@@ -58,7 +58,7 @@ impl<'a> Table<'a> {
     }
 
     /// One `Rect` per rendered column, computed by handing this
-    /// table's constraints to [`Layout`]. `headers.len()` defines the
+    /// table's constraints to [`Layout`](crate::layout::Layout). `headers.len()` defines the
     /// column count; supplying fewer widths renders fewer columns, and
     /// supplying more than `headers.len()` renders only
     /// `headers.len()`.
