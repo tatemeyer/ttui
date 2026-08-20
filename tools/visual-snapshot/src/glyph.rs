@@ -27,10 +27,10 @@ const ELLIPSIS: [u8; 8] = [
 ];
 
 /// Looks up `ch`'s 8x8 bitmap across every font8x8 table TTUI's actual
-/// glyph set draws from, plus algorithmically-generated Braille Patterns
-/// glyphs (`braille_glyph_for`) — `font8x8` doesn't cover that block at
-/// all. Returns a hard error naming the codepoint if nothing covers it —
-/// see `GlyphError::Unmapped`.
+/// glyph set draws from, plus U+2026 HORIZONTAL ELLIPSIS (supplied directly)
+/// and algorithmically-generated Braille Patterns glyphs (`braille_glyph_for`)
+/// — `font8x8` doesn't cover those blocks at all. Returns a hard error naming
+/// the codepoint if nothing covers it — see `GlyphError::Unmapped`.
 pub fn glyph_for(ch: char) -> Result<[u8; 8], GlyphError> {
     if ch == '\u{2026}' {
         return Ok(ELLIPSIS);
@@ -194,27 +194,10 @@ mod tests {
 
     #[test]
     fn ellipsis_bitmap_is_three_dots_on_the_baseline() {
-        let bitmap = glyph_for('\u{2026}').unwrap();
-        // Rows 0-5 blank, row 6 carries exactly three dots, row 7 blank.
-        assert_eq!(bitmap[0], 0b0000_0000);
-        assert_eq!(bitmap[5], 0b0000_0000);
+        // .#.#.#..  — three dots at x=1,3,5, bearing at x=0 and x=6-7
         assert_eq!(
-            bitmap[6].count_ones(),
-            3,
-            "row 6 must have exactly three dots"
+            glyph_for('\u{2026}').unwrap(),
+            [0, 0, 0, 0, 0, 0, 0b0010_1010, 0]
         );
-        assert_eq!(bitmap[7], 0b0000_0000);
-    }
-
-    #[test]
-    fn ellipsis_visual_verification() {
-        let bitmap = glyph_for('\u{2026}').unwrap();
-        println!("\nEllipsis (U+2026) bitmap (LSB-first, as rendered):");
-        for row in bitmap {
-            let line = (0..8)
-                .map(|gx| if (row >> gx) & 1 == 1 { '#' } else { '.' })
-                .collect::<String>();
-            println!("{}", line);
-        }
     }
 }
