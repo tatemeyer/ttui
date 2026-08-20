@@ -107,7 +107,7 @@ impl<'a> Table<'a> {
         // when there is no spacing.
         if let (Some(first), Some(last)) = (rects.first(), rects.last()) {
             let span_start = first.x;
-            let span_end = last.x + last.width;
+            let span_end = last.x.saturating_add(last.width);
             let mut x = span_start;
             while x < span_end && x < area.x + area.width {
                 buf.set(
@@ -145,6 +145,8 @@ impl<'a> Table<'a> {
                         ..Default::default()
                     },
                 );
+                // `unwrap_or(1)` matches `fit`'s measurement for an
+                // unknown-width char -- see the comment there.
                 x += ch.width().unwrap_or(1) as u16;
             }
         }
@@ -187,10 +189,22 @@ fn fit(cell: &str, width: u16) -> String {
         return String::new();
     }
 
-    let total: usize = cell.chars().map(|c| c.width().unwrap_or(0)).sum();
+    // `unwrap_or(1)` here matches `render_row`'s advance for a char
+    // `unicode_width` can't measure -- the two must agree, since `fit`
+    // decides what fits and `render_row` is what actually paints it.
+    // An unknown char almost certainly occupies at least one terminal
+    // cell, so treating it as 0 (as `fit` alone once did) let it
+    // measure as fitting when render would go on to clip it.
+    let total: usize = cell.chars().map(|c| c.width().unwrap_or(1)).sum();
     if total <= width {
         return cell.to_string();
     }
+
+    // Ellipsis marker is assumed to cost exactly one display cell.
+    // True under `unicode_width`'s default (non-`width_cjk`) table --
+    // U+2026 is East Asian Ambiguous, so this would need revisiting if
+    // the crate ever switched tables.
+    debug_assert_eq!('\u{2026}'.width(), Some(1));
 
     // Try reserving one cell for the marker. Only meaningful when
     // width > 1 -- at width 1 a lone marker carries no information, so
@@ -200,7 +214,7 @@ fn fit(cell: &str, width: u16) -> String {
         let mut out = String::new();
         let mut used = 0usize;
         for c in cell.chars() {
-            let w = c.width().unwrap_or(0);
+            let w = c.width().unwrap_or(1);
             if used + w > budget {
                 break;
             }
@@ -220,7 +234,7 @@ fn fit(cell: &str, width: u16) -> String {
     let mut out = String::new();
     let mut used = 0usize;
     for c in cell.chars() {
-        let w = c.width().unwrap_or(0);
+        let w = c.width().unwrap_or(1);
         if used + w > width {
             break;
         }

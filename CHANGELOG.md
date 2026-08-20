@@ -13,7 +13,7 @@ this project follows the SemVer policy defined in
 
 | 1.x | 2.0 |
 |---|---|
-| `Table::new(headers, rows, selected, col_width)` | `Table::new(headers, rows, selected).widths(&[Constraint::…, …])` |
+| `Table::new(headers, rows, selected, col_width)` | `Table::new(headers, rows, selected).widths(&vec![Constraint::Fixed(col_width); headers.len()])` reproduces 1.x geometry exactly |
 | `blend::blend_over` | `LayerStack::composite` |
 | `blend::fade_toward` | `easing::scale_color` |
 | exhaustive `match` on `Constraint` / `Direction` / `CanvasMode` / `Intensity` | add a `_ => …` arm — all four are now `#[non_exhaustive]` |
@@ -51,17 +51,33 @@ this project follows the SemVer policy defined in
 - **`Table::new` no longer takes `col_width`.** Columns are sized with
   `Constraint`s — the same vocabulary `Layout` uses — via
   `.widths(&[...])`, so a table can mix narrow fixed columns with one
-  that takes the remaining width (#170). Without `.widths()`, columns
-  split equally, as `col_width` effectively did. `.spacing(n)` inserts
-  a gap between columns, and cells that overflow their column are cut
-  with an ellipsis instead of silently ending. Cells are measured by
-  display width, so CJK and combining marks no longer misalign the
-  columns after them.
+  that takes the remaining width (#170). To reproduce 1.x geometry
+  exactly, pass `.widths(&vec![Constraint::Fixed(col_width);
+  headers.len()])` — see the Migration table above. **Omitting
+  `.widths()` entirely is new behaviour, not equivalent to
+  `col_width`:** it now defaults to `Fill(1)` per column, splitting the
+  *whole* area evenly, whereas `col_width` gave every column exactly
+  `col_width` cells and left any remaining area unpainted. `.spacing(n)`
+  inserts a gap between columns, and cells that overflow their column
+  are cut with an ellipsis instead of silently ending. Cells are
+  measured by display width, so CJK no longer misaligns the columns
+  after it; a combining mark keeps the columns after it aligned too,
+  but — because `Cell::symbol` holds one `char` — it still overwrites
+  its base glyph rather than combining with it, so full combining-mark
+  rendering is not claimed. Every row's background span now derives
+  from the column `Rect`s rather than from how many cells the row
+  supplies, so a row with fewer cells than there are columns still
+  paints its selection highlight across every column, not just the
+  ones it has data for.
+
+  The example below shows the new mixed-width capability (#170), not a
+  migration — see the Migration table above for the identity port:
 
   ```rust
   // 1.x
   Table::new(&headers, &rows, selected, 12).render(area, buf);
-  // 2.0
+  // 2.0 (#170's new capability: a narrow fixed column plus one that
+  // takes the rest, not a port of the call above)
   Table::new(&headers, &rows, selected)
       .widths(&[Constraint::Fixed(6), Constraint::Fill(1)])
       .render(area, buf);

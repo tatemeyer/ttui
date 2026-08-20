@@ -18,6 +18,7 @@ exclude = [
     ".claude/",
     ".code-review-graph/",
     ".github/",
+    ".mcp.json",
     ".plumb/",
     "CLAUDE.md",
     "docs/",
