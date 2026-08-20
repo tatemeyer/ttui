@@ -1,38 +1,76 @@
-//! Header-row-plus-data-rows table with fixed-width columns.
+//! Header-row-plus-data-rows table. Column geometry is delegated to
+//! [`Layout`] rather than reimplemented here: [`Table::widths`] takes
+//! the same [`Constraint`] vocabulary `Layout` splits areas with, so a
+//! `Fill(1)` column adapts to terminal width instead of needing one
+//! fixed number that works for every column.
 
 use crate::buffer::{Buffer, Cell};
-use crate::layout::Rect;
+use crate::layout::{Constraint, Direction, Layout, Rect};
 use crate::theme::Theme;
 use crate::widgets::selection::selection_colors;
 use crossterm::style::Color;
 use unicode_width::UnicodeWidthChar;
 
-/// A table with a header row and selectable data rows, fixed-width
-/// columns.
+/// A table with a header row and selectable data rows. Column widths
+/// follow [`Constraint`]s given via [`Table::widths`], splitting evenly
+/// by default.
 pub struct Table<'a> {
     headers: &'a [String],
     rows: &'a [Vec<String>],
     selected: usize,
-    col_width: u16,
+    widths: Option<&'a [Constraint]>,
+    spacing: u16,
     theme: Option<&'a Theme>,
 }
 
 impl<'a> Table<'a> {
-    /// Creates a table over `headers`/`rows`, highlighting the data
-    /// row at `selected`, each column `col_width` cells wide.
-    pub fn new(
-        headers: &'a [String],
-        rows: &'a [Vec<String>],
-        selected: usize,
-        col_width: u16,
-    ) -> Self {
+    /// Creates a table over `headers`/`rows`, highlighting the data row
+    /// at `selected`. Columns split equally unless [`Table::widths`] is
+    /// given.
+    pub fn new(headers: &'a [String], rows: &'a [Vec<String>], selected: usize) -> Self {
         Table {
             headers,
             rows,
             selected,
-            col_width,
+            widths: None,
+            spacing: 0,
             theme: None,
         }
+    }
+
+    /// Sizes each column by a [`Constraint`], the same vocabulary
+    /// [`Layout`] uses -- so `Fill(1)` gives a column whatever space the
+    /// fixed ones leave. `headers.len()` defines the column count:
+    /// columns beyond it are ignored, and headers beyond `widths.len()`
+    /// are not rendered.
+    pub fn widths(mut self, widths: &'a [Constraint]) -> Self {
+        self.widths = Some(widths);
+        self
+    }
+
+    /// Inserts `gap` blank cells between adjacent columns.
+    pub fn spacing(mut self, gap: u16) -> Self {
+        self.spacing = gap;
+        self
+    }
+
+    /// One `Rect` per rendered column, computed by handing this
+    /// table's constraints to [`Layout`]. `headers.len()` defines the
+    /// column count; supplying fewer widths renders fewer columns, and
+    /// supplying more than `headers.len()` renders only
+    /// `headers.len()`.
+    fn column_rects(&self, area: Rect) -> Vec<Rect> {
+        let n = match self.widths {
+            Some(w) => w.len().min(self.headers.len()),
+            None => self.headers.len(),
+        };
+        let constraints: Vec<Constraint> = match self.widths {
+            Some(w) => w[..n].to_vec(),
+            None => vec![Constraint::Fill(1); n],
+        };
+        Layout::new(Direction::Horizontal, constraints)
+            .spacing(self.spacing)
+            .split(area)
     }
 
     /// Renders the selected row with `theme`'s `accent` on
@@ -47,22 +85,18 @@ impl<'a> Table<'a> {
 
     fn render_row(
         &self,
-        area: Rect,
+        rects: &[Rect],
         y: u16,
         cells: &[String],
         fg: Color,
         bg: Color,
         buf: &mut Buffer,
     ) {
-        let mut x = area.x;
-        for cell in cells {
-            for i in 0..self.col_width {
-                if x + i >= area.x + area.width {
-                    break;
-                }
+        for (rect, cell) in rects.iter().zip(cells) {
+            for i in 0..rect.width {
                 let ch = cell.chars().nth(i as usize).unwrap_or(' ');
                 buf.set(
-                    x + i,
+                    rect.x + i,
                     y,
                     Cell {
                         symbol: ch,
@@ -73,7 +107,6 @@ impl<'a> Table<'a> {
                     },
                 );
             }
-            x += self.col_width;
         }
     }
 
@@ -82,8 +115,9 @@ impl<'a> Table<'a> {
         if area.height == 0 {
             return;
         }
+        let rects = self.column_rects(area);
         let header_fg = self.theme.map_or(Color::Reset, |t| t.secondary);
-        self.render_row(area, area.y, self.headers, header_fg, Color::Reset, buf);
+        self.render_row(&rects, area.y, self.headers, header_fg, Color::Reset, buf);
         for (row_idx, row) in self
             .rows
             .iter()
@@ -91,7 +125,7 @@ impl<'a> Table<'a> {
             .enumerate()
         {
             let (fg, bg) = selection_colors(self.theme, row_idx == self.selected);
-            self.render_row(area, area.y + 1 + row_idx as u16, row, fg, bg, buf);
+            self.render_row(&rects, area.y + 1 + row_idx as u16, row, fg, bg, buf);
         }
     }
 }
@@ -171,7 +205,9 @@ mod tests {
             height: 3,
         };
 
-        Table::new(&headers, &rows, 0, 5).render(area, &mut buf);
+        Table::new(&headers, &rows, 0)
+            .widths(&[Constraint::Fixed(5)])
+            .render(area, &mut buf);
 
         assert_eq!(buf.get(0, 0).symbol, 'N'); // header row
         assert_eq!(buf.get(0, 1).symbol, 's'); // first data row
@@ -189,7 +225,9 @@ mod tests {
             height: 3,
         };
 
-        Table::new(&headers, &rows, 1, 5).render(area, &mut buf);
+        Table::new(&headers, &rows, 1)
+            .widths(&[Constraint::Fixed(5)])
+            .render(area, &mut buf);
 
         assert_eq!(buf.get(0, 0).bg, Color::Reset);
         assert_eq!(buf.get(0, 1).bg, Color::Reset);
@@ -208,7 +246,9 @@ mod tests {
             height: 0,
         };
 
-        Table::new(&headers, &rows, 0, 5).render(area, &mut buf);
+        Table::new(&headers, &rows, 0)
+            .widths(&[Constraint::Fixed(5)])
+            .render(area, &mut buf);
         // Should return without panicking; buffer is untouched
     }
 
@@ -227,7 +267,8 @@ mod tests {
         };
         let theme = test_theme();
 
-        Table::new(&headers, &rows, 0, 5)
+        Table::new(&headers, &rows, 0)
+            .widths(&[Constraint::Fixed(5)])
             .theme(&theme)
             .render(area, &mut buf);
 
@@ -274,6 +315,111 @@ mod tests {
     }
 
     #[test]
+    fn column_rects_gives_fixed_columns_their_width_and_fill_the_rest() {
+        // #170's exact shape: narrow columns plus one that takes the rest.
+        let headers = vec!["a".into(), "b".into(), "c".into()];
+        let rows: Vec<Vec<String>> = vec![];
+        let widths = [
+            Constraint::Fixed(4),
+            Constraint::Fixed(6),
+            Constraint::Fill(1),
+        ];
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 30,
+            height: 2,
+        };
+
+        let t = Table::new(&headers, &rows, 0).widths(&widths);
+        let rects = t.column_rects(area);
+
+        assert_eq!(rects.len(), 3);
+        assert_eq!((rects[0].x, rects[0].width), (0, 4));
+        assert_eq!((rects[1].x, rects[1].width), (4, 6));
+        assert_eq!((rects[2].x, rects[2].width), (10, 20)); // the rest
+    }
+
+    #[test]
+    fn spacing_inserts_a_gap_between_columns() {
+        let headers = vec!["a".into(), "b".into()];
+        let rows: Vec<Vec<String>> = vec![];
+        let widths = [Constraint::Fixed(4), Constraint::Fixed(4)];
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 2,
+        };
+
+        let rects = Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .spacing(1)
+            .column_rects(area);
+
+        assert_eq!(rects[0].x, 0);
+        assert_eq!(rects[1].x, 5); // 4 wide + 1 gap
+    }
+
+    #[test]
+    fn without_widths_columns_split_equally() {
+        // Characterisation of the pre-2.0 default.
+        let headers = vec!["a".into(), "b".into(), "c".into()];
+        let rows: Vec<Vec<String>> = vec![];
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 30,
+            height: 2,
+        };
+
+        let rects = Table::new(&headers, &rows, 0).column_rects(area);
+
+        assert_eq!(rects.len(), 3);
+        for r in &rects {
+            assert_eq!(r.width, 10);
+        }
+    }
+
+    #[test]
+    fn more_widths_than_headers_renders_only_the_headers_columns() {
+        let headers = vec!["a".into(), "b".into()];
+        let rows: Vec<Vec<String>> = vec![];
+        let widths = [Constraint::Fixed(3); 5];
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 30,
+            height: 2,
+        };
+
+        let rects = Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .column_rects(area);
+
+        assert_eq!(rects.len(), 2);
+    }
+
+    #[test]
+    fn fewer_widths_than_headers_renders_only_the_supplied_columns() {
+        let headers = vec!["a".into(), "b".into(), "c".into()];
+        let rows: Vec<Vec<String>> = vec![];
+        let widths = [Constraint::Fixed(3)];
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 30,
+            height: 2,
+        };
+
+        let rects = Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .column_rects(area);
+
+        assert_eq!(rects.len(), 1);
+    }
+
+    #[test]
     fn unthemed_table_keeps_the_pre_2_0_colours() {
         // Characterisation test: no `.theme()` must render exactly as 1.x
         // did. Worthless if written after the change.
@@ -287,7 +433,9 @@ mod tests {
             height: 3,
         };
 
-        Table::new(&headers, &rows, 0, 5).render(area, &mut buf);
+        Table::new(&headers, &rows, 0)
+            .widths(&[Constraint::Fixed(5)])
+            .render(area, &mut buf);
 
         assert_eq!(buf.get(0, 0).fg, Color::Reset); // header
         assert_eq!(buf.get(0, 1).fg, Color::Black); // selected
