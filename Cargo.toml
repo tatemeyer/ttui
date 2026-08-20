@@ -29,6 +29,7 @@ members = [".", "tools/visual-snapshot"]
 
 [dependencies]
 crossterm = "0.27"
+unicode-width = "0.2"
 
 [dev-dependencies]
 rodio = "0.22"
