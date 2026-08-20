@@ -85,7 +85,7 @@ impl App for Demo {
 
         let table_inner = Block::new().title("Services").render(cols[1], buf);
         Table::new(&self.table_headers, &self.table_rows, self.table_selected)
-            .widths(&[Constraint::Fill(1), Constraint::Fill(1)])
+            .widths(&[Constraint::Fixed(12), Constraint::Fixed(12)])
             .render(table_inner, buf);
 
         Text::new("Tab: switch focus | Up/Down: navigate | q: quit").render(rows[1], buf);

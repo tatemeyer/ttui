@@ -115,6 +115,25 @@ impl<'a> Table<'a> {
                 );
                 x += ch.width().unwrap_or(1) as u16;
             }
+            // Pad the rest of the column with blanks carrying the same
+            // fg/bg: a cell narrower than its column must still paint
+            // the whole column's background, or a selection highlight
+            // breaks into separate islands instead of one contiguous
+            // bar. Same clip as above.
+            while x < rect.x + rect.width && x < area.x + area.width {
+                buf.set(
+                    x,
+                    y,
+                    Cell {
+                        symbol: ' ',
+                        fg,
+                        bg,
+                        alpha: 1.0,
+                        ..Default::default()
+                    },
+                );
+                x += 1;
+            }
         }
     }
 
@@ -526,5 +545,32 @@ mod tests {
         // wouldn't catch that regression.
         assert_eq!(buf.get(2, 1).symbol, '京');
         assert_eq!(buf.get(4, 1).symbol, 'o'); // still starts at 4
+    }
+
+    #[test]
+    fn selected_row_highlight_spans_the_full_column_width() {
+        // A cell narrower than its column must still paint the whole
+        // column's background, or the selection highlight breaks into
+        // separate islands instead of one contiguous bar.
+        let headers = vec!["a".into(), "b".into()];
+        let rows = vec![vec!["x".into(), "y".into()]];
+        let widths = [Constraint::Fixed(4), Constraint::Fixed(4)];
+        let mut buf = Buffer::new(20, 2);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 2,
+        };
+
+        Table::new(&headers, &rows, 0)
+            .widths(&widths)
+            .render(area, &mut buf);
+
+        // "x" is one char wide; x=1..4 is past the text but still
+        // inside the 4-wide column and must carry the selected bg.
+        assert_eq!(buf.get(1, 1).symbol, ' ');
+        assert_eq!(buf.get(1, 1).bg, Color::White);
+        assert_eq!(buf.get(3, 1).bg, Color::White);
     }
 }
