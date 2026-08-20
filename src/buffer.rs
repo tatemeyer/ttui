@@ -96,8 +96,8 @@ impl Buffer {
     /// # Panics
     /// In debug builds, if `x >= width` or `y >= height`. Release builds
     /// do not check; an out-of-range `x` reads a later row (see #161 —
-    /// a real `assert!` here measured a 22%/12% (full-paint/single-cell)
-    /// regression on `benches/set.rs`, so the check stays debug-only).
+    /// a real, unconditional bounds check on this path measurably cost
+    /// throughput on `benches/set.rs`, so the check stays debug-only).
     pub fn get(&self, x: u16, y: u16) -> &Cell {
         &self.cells[self.index(x, y)]
     }
@@ -107,9 +107,9 @@ impl Buffer {
     /// # Panics
     /// In debug builds, if `x >= width` or `y >= height`. Release builds
     /// do not check; an out-of-range `x` writes into a later row (see
-    /// #161 — a real `assert!` here measured a 22%/12%
-    /// (full-paint/single-cell) regression on `benches/set.rs`, so the
-    /// check stays debug-only).
+    /// #161 — a real, unconditional bounds check on this path measurably
+    /// cost throughput on `benches/set.rs`, so the check stays
+    /// debug-only).
     pub fn set(&mut self, x: u16, y: u16, cell: Cell) {
         let idx = self.index(x, y);
         self.cells[idx] = cell;
@@ -1121,10 +1121,12 @@ mod tests {
         assert_eq!(*dest.get(0, 0), Cell::default());
     }
 
-    // debug_assert!-gated: benches/set.rs measured a real `assert!` here at
-    // +22.6%/+11.9% (full_paint/single_cell) versus Task 3's baseline, both
-    // p < 0.05 ("Performance has regressed") — see #161. The check (and
-    // these two tests, which exercise it) exists only in debug builds.
+    // debug_assert!-gated: an A/B/A rerun of benches/set.rs in a single
+    // machine state (debug_assert -> assert! -> debug_assert) measured a
+    // real `assert!` here at +10.1%/+17.0% (full_paint/single_cell) over
+    // debug_assert!, clearing the ~5% drift observed between the two
+    // debug_assert! runs — see #161. The check (and these two tests,
+    // which exercise it) exists only in debug builds.
     #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "out of bounds")]

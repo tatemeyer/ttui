@@ -23,10 +23,13 @@ this project follows the SemVer policy defined in
 - `Buffer::get`/`set` now bounds-check `x` in debug builds — previously
   only the flat index was checked, so on a 4x3 buffer `set(5, 0, ..)`
   silently wrote to `(1, 1)` instead of panicking as documented (#161).
-  A real `assert!` measured a 22.6%/11.9% (full_paint/single_cell)
-  regression on `benches/set.rs`, so the check is `debug_assert!`-gated
-  rather than unconditional; release builds are unchanged and the docs
-  now describe that release behavior explicitly instead of promising a
+  An A/B/A rerun of `benches/set.rs` in a single machine state
+  (`debug_assert!` -> `assert!` -> `debug_assert!`) measured a real
+  `assert!` at +10.1%/+17.0% (full_paint/single_cell) over
+  `debug_assert!`, clearing the ~5% drift observed between the two
+  `debug_assert!` runs, so the check is `debug_assert!`-gated rather
+  than unconditional; release builds are unchanged and the docs now
+  describe that release behavior explicitly instead of promising a
   panic that never happened.
 
 ### Added
