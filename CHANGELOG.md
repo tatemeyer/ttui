@@ -35,6 +35,24 @@ this project follows the SemVer policy defined in
   their selection highlight; all three previously hardcoded black-on-
   white and took no colours at all. Omitting `.theme()` renders exactly
   as 1.x did.
+- **`Table::new` no longer takes `col_width`.** Columns are sized with
+  `Constraint`s — the same vocabulary `Layout` uses — via
+  `.widths(&[...])`, so a table can mix narrow fixed columns with one
+  that takes the remaining width (#170). Without `.widths()`, columns
+  split equally, as `col_width` effectively did. `.spacing(n)` inserts
+  a gap between columns, and cells that overflow their column are cut
+  with an ellipsis instead of silently ending. Cells are measured by
+  display width, so CJK and combining marks no longer misalign the
+  columns after them.
+
+  ```rust
+  // 1.x
+  Table::new(&headers, &rows, selected, 12).render(area, buf);
+  // 2.0
+  Table::new(&headers, &rows, selected)
+      .widths(&[Constraint::Fixed(6), Constraint::Fill(1)])
+      .render(area, buf);
+  ```
 
 ### Added
 
