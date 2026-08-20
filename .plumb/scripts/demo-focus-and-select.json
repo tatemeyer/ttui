@@ -1,0 +1,9 @@
+[
+  { "wait_ms": 400 },
+  { "key": "Down" },
+  { "wait_ms": 200 },
+  { "key": "Tab" },
+  { "wait_ms": 200 },
+  { "key": "Down" },
+  { "wait_ms": 200 }
+]
