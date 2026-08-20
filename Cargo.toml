@@ -38,6 +38,10 @@ criterion = "0.5"
 name = "render"
 harness = false
 
+[[bench]]
+name = "set"
+harness = false
+
 [[example]]
 name = "launcher"
 test = true
