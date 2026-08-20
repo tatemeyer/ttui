@@ -107,7 +107,7 @@ this project follows the SemVer policy defined in
   it. Future MSRV increases are treated as minor bumps.
 - The published package no longer ships development-only material —
   `docs/`, `.claude/`, `.plumb/`, `.github/`, `CLAUDE.md` and
-  `parallax.yaml` are now excluded, taking it from 229 files to 92. No
+  `parallax.yaml` are now excluded, taking it from 229 files to 96. No
   code, example, test or bench is affected.
 
 ## [1.1.0] - 2026-08-19
