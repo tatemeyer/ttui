@@ -7,8 +7,7 @@ use crate::buffer::CellStyle;
 use crate::theme::{BorderSet, Theme};
 use crossterm::style::Color;
 
-/// A fully-populated `Theme` fixture. `Theme` has no `Default`, so
-/// every field must be set explicitly here.
+/// A fully-populated `Theme` fixture for testing.
 pub(crate) fn test_theme() -> Theme {
     Theme {
         background: Color::Rgb { r: 0, g: 0, b: 32 },
